@@ -188,9 +188,10 @@ function serveStatic(request, response, url) {
     ? requestedPath
     : path.join(root, "index.html");
   const ext = path.extname(filePath).toLowerCase();
+  const shouldSkipCache = ext === ".html" || ext === ".js" || ext === ".css" || ext === ".webmanifest";
   response.writeHead(200, {
     "content-type": mimeTypes[ext] || "application/octet-stream",
-    "cache-control": ext === ".html" ? "no-store" : "public, max-age=3600"
+    "cache-control": shouldSkipCache ? "no-store" : "public, max-age=3600"
   });
   fs.createReadStream(filePath).pipe(response);
 }
