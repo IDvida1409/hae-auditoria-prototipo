@@ -794,7 +794,7 @@ function sidebar() {
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-logo-card">
-          <img src="assets/einstein-logo-symbol-original.png?v=einstein-card-1" alt="" aria-hidden="true" />
+          <img src="assets/einstein-logo-menu.png?v=einstein-menu-1" alt="" aria-hidden="true" />
         </div>
         <div class="brand-title"><span>Hospital Einstein</span><span>Morumbi</span></div>
       </div>
