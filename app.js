@@ -794,7 +794,7 @@ function sidebar() {
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark brand-logo">
-          <img src="assets/einstein-logo-transparent.png?v=einstein-transparent-1" alt="Hospital Israelita Einstein" />
+          <img src="assets/einstein-symbol.png?v=einstein-symbol-1" alt="Hospital Israelita Einstein" />
         </div>
       </div>
       <nav class="nav-list" aria-label="Navegação principal">

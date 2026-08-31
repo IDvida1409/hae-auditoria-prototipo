@@ -129,7 +129,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  min-height: 78px;
+  min-height: 62px;
   padding: 0;
 }
 
@@ -149,11 +149,11 @@ button {
 }
 
 .brand-mark.brand-logo {
-  width: 88px;
-  height: 70px;
-  flex-basis: 88px;
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
   border: 0;
-  border-radius: 0;
+  border-radius: 50%;
   color: inherit;
   background: transparent;
   box-shadow: none;
@@ -172,8 +172,9 @@ button {
 
 .brand-mark img {
   display: block;
-  width: 88px;
-  height: auto;
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
   transform: none;
   filter: none;
 }
@@ -482,15 +483,16 @@ svg .accent-red {
 }
 
 .app-shell.is-collapsed .brand-mark.brand-logo {
-  width: 70px;
-  height: 64px;
-  flex-basis: 70px;
-  border-radius: 0;
+  width: 54px;
+  height: 54px;
+  flex-basis: 54px;
+  border-radius: 50%;
 }
 
 .app-shell.is-collapsed .brand-mark.brand-logo img {
-  width: 70px;
-  height: auto;
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
   transform: none;
 }
 
@@ -2584,7 +2586,7 @@ h3 {
 
   .brand {
     gap: 10px;
-    min-height: 72px;
+    min-height: 58px;
     padding-inline: 0;
   }
 
@@ -2595,14 +2597,15 @@ h3 {
   }
 
   .brand-mark.brand-logo {
-    width: 76px;
-    height: 66px;
-    flex-basis: 76px;
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
   }
 
   .brand-mark.brand-logo img {
-    width: 76px;
-    height: auto;
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
     transform: none;
   }
 
@@ -3153,7 +3156,7 @@ h3 {
 
   .brand {
     gap: 10px;
-    min-height: 72px;
+    min-height: 58px;
     padding-inline: 0;
   }
 
@@ -3164,14 +3167,15 @@ h3 {
   }
 
   .brand-mark.brand-logo {
-    width: 76px;
-    height: 66px;
-    flex-basis: 76px;
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
   }
 
   .brand-mark.brand-logo img {
-    width: 76px;
-    height: auto;
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
     transform: none;
   }
 
@@ -3431,7 +3435,7 @@ h3 {
   }
 
   .brand {
-    min-height: 68px;
+    min-height: 54px;
   }
 
   .brand-mark {
@@ -3441,14 +3445,15 @@ h3 {
   }
 
   .brand-mark.brand-logo {
-    width: 70px;
-    height: 64px;
-    flex-basis: 70px;
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
   }
 
   .brand-mark.brand-logo img {
-    width: 70px;
-    height: auto;
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
     transform: none;
   }
 
