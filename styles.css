@@ -498,21 +498,21 @@ svg .accent-red {
 
 .app-shell.is-collapsed .brand {
   justify-content: center;
-  min-height: 112px;
+  min-height: 104px;
 }
 
 .app-shell.is-collapsed .brand-title {
-  font-size: 10.5px;
+  font-size: 10px;
   line-height: 1.1;
 }
 
 .app-shell.is-collapsed .brand-title span:last-child {
-  font-size: 10px;
+  font-size: 9.6px;
 }
 
 .app-shell.is-collapsed .brand-logo-card {
-  width: 74px;
-  height: 74px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
 }
 
