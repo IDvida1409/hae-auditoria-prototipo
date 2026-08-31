@@ -491,6 +491,7 @@ svg .accent-red {
   padding-inline: 12px;
 }
 
+.app-shell.is-collapsed .brand-title,
 .app-shell.is-collapsed .nav-label,
 .app-shell.is-collapsed .sidebar-hospital-art {
   display: none;
@@ -498,21 +499,12 @@ svg .accent-red {
 
 .app-shell.is-collapsed .brand {
   justify-content: center;
-  min-height: 104px;
-}
-
-.app-shell.is-collapsed .brand-title {
-  font-size: 10px;
-  line-height: 1.1;
-}
-
-.app-shell.is-collapsed .brand-title span:last-child {
-  font-size: 9.6px;
+  min-height: 70px;
 }
 
 .app-shell.is-collapsed .brand-logo-card {
-  width: 66px;
-  height: 66px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
 }
 
