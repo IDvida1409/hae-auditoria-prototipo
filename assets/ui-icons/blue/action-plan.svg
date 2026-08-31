@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-88 -88 176 176" width="176" height="176">
+  <defs>
+    <style>
+    .line { fill: none; stroke: #1f6fbd; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .fine { fill: none; stroke: #1f6fbd; stroke-width: 4.8; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: none; stroke: #58a6ff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .teal { fill: none; stroke: #14aeb6; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .green { fill: none; stroke: #35b85a; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: none; stroke: #f4a338; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .red { fill: none; stroke: #ef4c55; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .softBlue { fill: #58a6ff; opacity: .14; stroke: none; }
+    .softGreen { fill: #35b85a; opacity: .14; stroke: none; }
+    .softOrange { fill: #f4a338; opacity: .14; stroke: none; }
+    .softRed { fill: #ef4c55; opacity: .14; stroke: none; }
+  </style>
+  </defs>
+  <path class="line" d="M-62 58h86c22 0 39-18 39-39v-18c0-22-17-39-39-39h-86"/>
+    <path class="line" d="M-62 58V-58h78"/>
+    <path class="fine" d="M-34-23H8M-34 12H16"/>
+    <path class="teal" d="M-55-30l11 11 22-26"/>
+    <path class="orange" d="M-55 6l11 11 22-26"/>
+    <circle class="softGreen" cx="45" cy="46" r="30"/>
+    <path class="green" d="m31 47 12 12 27-31"/>
+</svg>

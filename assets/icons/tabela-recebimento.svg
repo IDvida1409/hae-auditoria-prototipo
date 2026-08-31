@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Recebimento">
+  <defs>
+    <radialGradient id="bg-recebimento" cx="35%" cy="28%" r="72%">
+      <stop offset="0" stop-color="#fff4ec"/>
+      <stop offset="0.72" stop-color="#ffd9c3"/>
+      <stop offset="1" stop-color="#ffc9aa"/>
+    </radialGradient>
+    <filter id="soft-shadow-recebimento" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#08204a" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <circle cx="120" cy="120" r="78" fill="url(#bg-recebimento)" stroke="#f6fbff" stroke-width="6" filter="url(#soft-shadow-recebimento)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 102h100l-12 58H82L70 102Z" stroke="#0b4388" stroke-width="7"/>
+    <path d="M82 102l17-24h42l17 24" stroke="#0b4388" stroke-width="7"/>
+    <path d="M97 124h46" stroke="#ff8a4a" stroke-width="7"/>
+    <path d="M120 72v42" stroke="#277dd8" stroke-width="7"/>
+    <path d="M105 99l15 15 15-15" stroke="#277dd8" stroke-width="7"/>
+    <path d="M90 160h58" stroke="#0b4388" stroke-width="7"/>
+    <path d="M158 144l11 11 22-25" stroke="#1fb36a" stroke-width="7"/>
+  </g>
+</svg>

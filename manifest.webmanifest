@@ -1,0 +1,25 @@
+{
+  "name": "HAE Auditoria",
+  "short_name": "HAE Auditoria",
+  "description": "Dashboard de auditoria, checklist, gráficos e planos de ação.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#373b3e",
+  "theme_color": "#06244a",
+  "icons": [
+    {
+      "src": "/assets/icons/documentacao.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icons/cozinha-catering.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">
+  <defs>
+    <radialGradient id="tile" cx="35%" cy="25%" r="75%">
+      <stop offset="0" stop-color="#143a5c"/>
+      <stop offset="0.72" stop-color="#062742"/>
+      <stop offset="1" stop-color="#031e34"/>
+    </radialGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#06192a" flood-opacity="0.18"/>
+    </filter>
+    <style>
+      .tile { fill: url(#tile); filter: url(#softShadow); }
+      .line { fill: none; stroke: #f8fbff; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .fine { fill: none; stroke: #f8fbff; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+      .blue { fill: none; stroke: #72a9ff; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .teal { fill: none; stroke: #5eead4; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .green { fill: none; stroke: #5de07b; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .orange { fill: none; stroke: #ffad48; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .red { fill: none; stroke: #ff5a5f; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .softBlue { fill: #72a9ff; opacity: .18; stroke: none; }
+      .softGreen { fill: #5de07b; opacity: .18; stroke: none; }
+      .softOrange { fill: #ffad48; opacity: .18; stroke: none; }
+      .softRed { fill: #ff5a5f; opacity: .18; stroke: none; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1200" fill="#f7f9fc"/>
+
+  <!-- 1 Inicio -->
+  <g transform="translate(200 150)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-62-8 0-58 62-8"/>
+    <path class="line" d="M-45-7v65h90V-7"/>
+    <path class="line" d="M-16 58v-38h32v38"/>
+    <path class="blue" d="M0-20v24M-12-8h24"/>
+  </g>
+
+  <!-- 2 Painel -->
+  <g transform="translate(600 150)">
+    <circle class="tile" r="116"/>
+    <rect class="line" x="-70" y="-64" width="54" height="54" rx="10"/>
+    <rect class="line" x="16" y="-64" width="54" height="54" rx="10"/>
+    <rect class="line" x="-70" y="14" width="54" height="54" rx="10"/>
+    <rect class="line" x="16" y="14" width="54" height="54" rx="10"/>
+    <path class="teal" d="M31 50h24M43 38v24"/>
+  </g>
+
+  <!-- 3 Iniciar auditoria -->
+  <g transform="translate(1000 150)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-37-62h74"/>
+    <path class="line" d="M-23-78h46v32h-46z"/>
+    <path class="line" d="M-58-50h96v112h-96z"/>
+    <path class="green" d="M-31-4l16 16 32-36"/>
+    <path class="orange" d="M55-12l20 8-29 70-20-8z"/>
+    <path class="fine" d="M50 66 39 82"/>
+  </g>
+
+  <!-- 4 Auditorias -->
+  <g transform="translate(1400 150)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-42-65h72c14 0 25 11 25 25v88c0 14-11 25-25 25h-72c-14 0-25-11-25-25v-88c0-14 11-25 25-25z"/>
+    <path class="fine" d="M-16-36h48M-16 0h48M-16 36h48"/>
+    <path class="green" d="m-48-36 10 10 19-22M-48 0l10 10 19-22M-48 36l10 10 19-22"/>
+    <path class="blue" d="M55-45c15 4 23 14 23 29v78"/>
+  </g>
+
+  <!-- 5 Graficos -->
+  <g transform="translate(200 430)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-64 42a70 70 0 1 1 70-70v70z"/>
+    <path class="blue" d="M-64 42 6-28"/>
+    <path class="orange" d="M6-28v70"/>
+    <path class="red" d="M6-28h70a70 70 0 0 1-70 70"/>
+    <path class="line" d="M-70 72h124"/>
+    <path class="orange" d="M-42 72V32"/>
+    <path class="blue" d="M-6 72V8"/>
+    <path class="red" d="M30 72v-90"/>
+  </g>
+
+  <!-- 6 Plano de acao -->
+  <g transform="translate(600 430)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-62 58h86c22 0 39-18 39-39v-18c0-22-17-39-39-39h-86"/>
+    <path class="line" d="M-62 58V-58h78"/>
+    <path class="fine" d="M-34-23H8M-34 12H16"/>
+    <path class="teal" d="M-55-30l11 11 22-26"/>
+    <path class="orange" d="M-55 6l11 11 22-26"/>
+    <circle class="softGreen" cx="45" cy="46" r="30"/>
+    <path class="green" d="m31 47 12 12 27-31"/>
+  </g>
+
+  <!-- 7 Documentacao -->
+  <g transform="translate(1000 430)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-70-30h48l14 18h78v82c0 11-9 20-20 20H-50c-11 0-20-9-20-20z"/>
+    <path class="line" d="M-55-58h66l18 24h36"/>
+    <circle class="softGreen" cx="55" cy="58" r="28"/>
+    <path class="green" d="m40 58 11 11 25-30"/>
+  </g>
+
+  <!-- 8 Relatorios -->
+  <g transform="translate(1400 430)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-31-62h54l28 28v90h-82z"/>
+    <path class="line" d="M23-62v28h28"/>
+    <circle class="fine" cx="-5" cy="2" r="34"/>
+    <path class="fine" d="M20 27 54 61"/>
+    <path class="teal" d="M-54-47h-20v20"/>
+    <path class="green" d="m-74-47 9 9 19-22"/>
+    <path class="orange" d="M-54 60h14v-24M-28 60h14V18M-2 60h14V30"/>
+  </g>
+
+  <!-- 9 Tabelas -->
+  <g transform="translate(200 710)">
+    <circle class="tile" r="116"/>
+    <rect class="line" x="-70" y="-54" width="140" height="108" rx="10"/>
+    <path class="blue" d="M-70-18H70"/>
+    <path class="fine" d="M-70 18H70M-35-54v108M0-54v108M35-54v108"/>
+  </g>
+
+  <!-- 10 NCs -->
+  <g transform="translate(600 710)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-50-68h64l31 31v105h-95z"/>
+    <path class="line" d="M14-68v31h31"/>
+    <path class="fine" d="M-25-29h36M-25 0H8"/>
+    <rect class="blue" x="-37" y="31" width="37" height="28" rx="5"/>
+    <path class="orange" d="m45 21 31 55H14z"/>
+    <path class="red" d="M45 39v18M45 66h.01"/>
+  </g>
+
+  <!-- 11 Critico -->
+  <g transform="translate(1000 710)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M0-66 72 60h-144z"/>
+    <path class="red" d="M0-23v45M0 43h.01"/>
+    <path class="softRed" d="M0-66 72 60h-144z"/>
+  </g>
+
+  <!-- 12 Areas atrasadas -->
+  <g transform="translate(1400 710)">
+    <circle class="tile" r="116"/>
+    <rect class="line" x="-64" y="-56" width="112" height="96" rx="10"/>
+    <path class="line" d="M-64-22H48M-34-74v28M18-74v28"/>
+    <path class="fine" d="M-38 2h16M-4 2h16M30 2h16M-38 31h16M-4 31h16"/>
+    <circle class="softOrange" cx="52" cy="52" r="34"/>
+    <circle class="orange" cx="52" cy="52" r="34"/>
+    <path class="orange" d="M52 32v21l15 9"/>
+  </g>
+
+  <!-- 13 Queda de ponto -->
+  <g transform="translate(200 990)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-68-48-32-15 0-31 37 4 71-7"/>
+    <path class="red" d="M23 39h48V-9"/>
+    <path class="red" d="M71 39 37 5"/>
+    <circle class="blue" cx="-68" cy="-48" r="8"/>
+    <circle class="blue" cx="-32" cy="-15" r="8"/>
+    <circle class="blue" cx="0" cy="-31" r="8"/>
+    <circle class="blue" cx="37" cy="4" r="8"/>
+  </g>
+
+  <!-- 14 Subida de ponto -->
+  <g transform="translate(600 990)">
+    <circle class="tile" r="116"/>
+    <path class="line" d="M-68 44-30 10 2 26 38-9 72 2"/>
+    <path class="green" d="M24-39h48V9"/>
+    <path class="green" d="M72-39 38-5"/>
+    <circle class="teal" cx="-68" cy="44" r="8"/>
+    <circle class="teal" cx="-30" cy="10" r="8"/>
+    <circle class="teal" cx="2" cy="26" r="8"/>
+    <circle class="teal" cx="38" cy="-9" r="8"/>
+  </g>
+
+  <!-- 15 Painel web -->
+  <g transform="translate(1000 990)">
+    <circle class="tile" r="116"/>
+    <circle class="line" r="64"/>
+    <path class="fine" d="M-64 0H64"/>
+    <path class="blue" d="M0-64c17 17 27 38 27 64S17 47 0 64"/>
+    <path class="teal" d="M0-64c-17 17-27 38-27 64S-17 47 0 64"/>
+  </g>
+
+  <!-- 16 Configuracoes -->
+  <g transform="translate(1400 990)">
+    <circle class="tile" r="116"/>
+    <circle class="line" r="26"/>
+    <path class="line" d="M0-74v25M0 49v25M-74 0h25M49 0h25"/>
+    <path class="line" d="M-52-52-35-35M35 35l17 17M52-52 35-35M-35 35l-17 17"/>
+    <path class="blue" d="M0-10v20M-10 0h20"/>
+  </g>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="Distribuicao">
+  <defs>
+    <radialGradient id="bg-distribuicao" cx="34%" cy="26%" r="72%">
+      <stop offset="0" stop-color="#fff9ee"/>
+      <stop offset="0.72" stop-color="#ffe2bd"/>
+      <stop offset="1" stop-color="#ffd49d"/>
+    </radialGradient>
+    <filter id="soft-shadow-distribuicao" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#08204a" flood-opacity=".14"/>
+    </filter>
+  </defs>
+  <circle cx="120" cy="120" r="78" fill="url(#bg-distribuicao)" stroke="#f6fbff" stroke-width="6" filter="url(#soft-shadow-distribuicao)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M73 129h94" stroke="#0b4388" stroke-width="7"/>
+    <path d="M90 129a30 30 0 0 1 60 0" stroke="#0b4388" stroke-width="7"/>
+    <path d="M120 85v13" stroke="#ff8a4a" stroke-width="7"/>
+    <path d="M111 84h18" stroke="#0b4388" stroke-width="7"/>
+    <path d="M81 142h78l-8 25H89l-8-25Z" stroke="#277dd8" stroke-width="7"/>
+    <path d="M91 169h58" stroke="#0b4388" stroke-width="7"/>
+    <path d="M103 180h.1M139 180h.1" stroke="#0b4388" stroke-width="10"/>
+    <path d="M172 98h25M187 86l12 12-12 12" stroke="#1fb36a" stroke-width="7"/>
+  </g>
+</svg>

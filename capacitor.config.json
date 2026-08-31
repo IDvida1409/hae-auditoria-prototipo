@@ -1,0 +1,8 @@
+{
+  "appId": "br.com.hae.auditoria",
+  "appName": "HAE Auditoria",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

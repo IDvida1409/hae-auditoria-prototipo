@@ -1,0 +1,8 @@
+node_modules/
+dist/
+www/
+.env
+.DS_Store
+*.log
+preview*.png
+layout-check*.png

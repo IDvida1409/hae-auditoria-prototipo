@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-88 -88 176 176" width="176" height="176">
+  <defs>
+    <style>
+    .line { fill: none; stroke: #1f6fbd; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .fine { fill: none; stroke: #1f6fbd; stroke-width: 4.8; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: none; stroke: #58a6ff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .teal { fill: none; stroke: #14aeb6; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .green { fill: none; stroke: #35b85a; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: none; stroke: #f4a338; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .red { fill: none; stroke: #ef4c55; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .softBlue { fill: #58a6ff; opacity: .14; stroke: none; }
+    .softGreen { fill: #35b85a; opacity: .14; stroke: none; }
+    .softOrange { fill: #f4a338; opacity: .14; stroke: none; }
+    .softRed { fill: #ef4c55; opacity: .14; stroke: none; }
+  </style>
+  </defs>
+  <path class="line" d="M-70-30h48l14 18h78v82c0 11-9 20-20 20H-50c-11 0-20-9-20-20z"/>
+    <path class="line" d="M-55-58h66l18 24h36"/>
+    <circle class="softGreen" cx="55" cy="58" r="28"/>
+    <path class="green" d="m40 58 11 11 25-30"/>
+</svg>

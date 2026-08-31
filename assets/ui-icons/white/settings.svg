@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-88 -88 176 176" width="176" height="176">
+  <defs>
+    <style>
+    .line { fill: none; stroke: #ffffff; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+    .fine { fill: none; stroke: #ffffff; stroke-width: 4.8; stroke-linecap: round; stroke-linejoin: round; }
+    .blue { fill: none; stroke: #ffffff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .teal { fill: none; stroke: #ffffff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .green { fill: none; stroke: #ffffff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .orange { fill: none; stroke: #ffffff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .red { fill: none; stroke: #ffffff; stroke-width: 5.3; stroke-linecap: round; stroke-linejoin: round; }
+    .softBlue { fill: #ffffff; opacity: .14; stroke: none; }
+    .softGreen { fill: #ffffff; opacity: .14; stroke: none; }
+    .softOrange { fill: #ffffff; opacity: .14; stroke: none; }
+    .softRed { fill: #ffffff; opacity: .14; stroke: none; }
+  </style>
+  </defs>
+  <circle class="line" r="26"/>
+    <path class="line" d="M0-74v25M0 49v25M-74 0h25M49 0h25"/>
+    <path class="line" d="M-52-52-35-35M35 35l17 17M52-52 35-35M-35 35l-17 17"/>
+    <path class="blue" d="M0-10v20M-10 0h20"/>
+</svg>

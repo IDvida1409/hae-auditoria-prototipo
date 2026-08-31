@@ -1,0 +1,18 @@
+{
+  "name": "hae-auditoria-prototipo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Protótipo publicável do dashboard de auditoria HAE.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:android-web": "node tools/build-android-web.js",
+    "build:sites": "node tools/build-sites-worker.js",
+    "check": "node --check app.js && node --check server.js && node --check tools/build-sites-worker.js && node --check tools/build-android-web.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {}
+}
