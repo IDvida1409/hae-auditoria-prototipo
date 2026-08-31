@@ -808,7 +808,7 @@ function sidebar() {
           )
           .join("")}
       </nav>
-      <img class="sidebar-hospital-art" src="assets/morumbi-hospital-lineart.png?v=sidebar-art-2" alt="" aria-hidden="true" />
+      <img class="sidebar-hospital-art" src="assets/morumbi-hospital-lineart.png?v=sidebar-art-3" alt="" aria-hidden="true" />
       <div class="sidebar-footer">
         <button class="collapse-btn" data-toggle-sidebar title="Recolher menu">
           ${state.sidebarCollapsed ? icons.chevron : icons.chevron.replace("m9 18 6-6-6-6", "m15 18-6-6 6-6")}

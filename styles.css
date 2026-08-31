@@ -393,14 +393,23 @@ svg .accent-red {
 .sidebar-hospital-art {
   position: absolute;
   z-index: 0;
-  right: -64px;
-  bottom: 44px;
-  width: 312px;
+  right: -72px;
+  bottom: 58px;
+  width: 340px;
   max-width: none;
   height: auto;
   pointer-events: none;
-  opacity: 0.36;
-  filter: saturate(1.22) brightness(1.18);
+  opacity: 0.78;
+  filter:
+    brightness(0)
+    saturate(100%)
+    invert(70%)
+    sepia(82%)
+    saturate(1248%)
+    hue-rotate(178deg)
+    brightness(102%)
+    contrast(101%)
+    drop-shadow(0 0 18px rgba(87, 174, 255, 0.34));
   mix-blend-mode: screen;
 }
 
@@ -2604,9 +2613,9 @@ h3 {
   }
 
   .sidebar-hospital-art {
-    right: -58px;
-    bottom: 42px;
-    width: 286px;
+    right: -66px;
+    bottom: 54px;
+    width: 316px;
   }
 
   .sidebar-footer {
@@ -3129,9 +3138,9 @@ h3 {
   }
 
   .sidebar-hospital-art {
-    right: -58px;
-    bottom: 42px;
-    width: 292px;
+    right: -66px;
+    bottom: 54px;
+    width: 320px;
   }
 
   .sidebar-footer {
@@ -3421,9 +3430,9 @@ h3 {
   }
 
   .sidebar-hospital-art {
-    right: -52px;
-    bottom: 38px;
-    width: 272px;
+    right: -60px;
+    bottom: 48px;
+    width: 304px;
   }
 
   .sidebar-footer {
