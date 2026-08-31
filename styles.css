@@ -149,14 +149,15 @@ button {
 }
 
 .brand-mark.brand-logo {
-  width: 72px;
-  height: 72px;
-  flex-basis: 72px;
+  width: 76px;
+  height: 54px;
+  flex-basis: 76px;
   border: 0;
-  border-radius: 0;
+  border-radius: 14px;
   color: inherit;
-  background: transparent;
-  box-shadow: none;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(0, 22, 54, 0.18);
+  overflow: hidden;
 }
 
 .brand-mark svg {
@@ -171,9 +172,9 @@ button {
 
 .brand-mark img {
   display: block;
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
+  width: 118px;
+  height: auto;
+  transform: translateY(-13px);
   filter: none;
 }
 
@@ -482,14 +483,15 @@ svg .accent-red {
 
 .app-shell.is-collapsed .brand-mark.brand-logo {
   width: 66px;
-  height: 66px;
+  height: 50px;
   flex-basis: 66px;
-  border-radius: 0;
+  border-radius: 13px;
 }
 
 .app-shell.is-collapsed .brand-mark.brand-logo img {
-  width: 66px;
-  height: 66px;
+  width: 110px;
+  height: auto;
+  transform: translateY(-13px);
 }
 
 .app-shell.is-collapsed .nav-item {
@@ -2592,14 +2594,16 @@ h3 {
     flex-basis: 50px;
   }
 
-  .brand-mark.brand-logo,
-  .brand-mark.brand-logo img {
+  .brand-mark.brand-logo {
     width: 68px;
-    height: 68px;
+    height: 50px;
+    flex-basis: 68px;
   }
 
-  .brand-mark.brand-logo {
-    flex-basis: 68px;
+  .brand-mark.brand-logo img {
+    width: 112px;
+    height: auto;
+    transform: translateY(-13px);
   }
 
   .brand-mark svg {
@@ -3159,14 +3163,16 @@ h3 {
     flex-basis: 50px;
   }
 
-  .brand-mark.brand-logo,
-  .brand-mark.brand-logo img {
+  .brand-mark.brand-logo {
     width: 68px;
-    height: 68px;
+    height: 50px;
+    flex-basis: 68px;
   }
 
-  .brand-mark.brand-logo {
-    flex-basis: 68px;
+  .brand-mark.brand-logo img {
+    width: 112px;
+    height: auto;
+    transform: translateY(-13px);
   }
 
   .brand-mark svg {
@@ -3434,14 +3440,16 @@ h3 {
     flex-basis: 46px;
   }
 
-  .brand-mark.brand-logo,
-  .brand-mark.brand-logo img {
+  .brand-mark.brand-logo {
     width: 64px;
-    height: 64px;
+    height: 48px;
+    flex-basis: 64px;
   }
 
-  .brand-mark.brand-logo {
-    flex-basis: 64px;
+  .brand-mark.brand-logo img {
+    width: 106px;
+    height: auto;
+    transform: translateY(-12px);
   }
 
   .brand-mark svg {
