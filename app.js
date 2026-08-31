@@ -793,8 +793,10 @@ function sidebar() {
   return `
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">${icons.shield}</div>
-        <div class="brand-title"><span>Hospital</span><span>São Gabriel</span></div>
+        <div class="brand-mark brand-logo">
+          <img src="assets/einstein-logo-mark.png?v=einstein-mark-1" alt="Einstein" />
+        </div>
+        <div class="brand-title"><span>Hospital Einstein</span><span>Morumbi</span></div>
       </div>
       <nav class="nav-list" aria-label="Navegação principal">
         ${navItems
@@ -1168,7 +1170,6 @@ function dashboardHome() {
         <section class="areas-panel">
           <div class="section-head">
             <div class="section-title">
-              <span class="module-icon">${assetIcon("grid", "white")}</span>
               <div>
                 <h2>Painel das áreas</h2>
                 <p class="section-subtitle">Clique em uma área para ver os detalhes rápidos</p>
