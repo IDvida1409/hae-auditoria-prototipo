@@ -8923,7 +8923,8 @@ h3 {
 }
 
 .panel-legend-group:last-child {
-  justify-items: end;
+  justify-self: end;
+  justify-items: start;
 }
 
 .panel-legend-group strong {
@@ -8943,7 +8944,7 @@ h3 {
 }
 
 .panel-legend-group:last-child > span {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .panel-legend-item {
@@ -9094,8 +9095,10 @@ h3 {
 }
 
 .dashboard-grid .selected-panel .nc-tag.is-risk-label {
+  width: 30px !important;
+  min-width: 30px !important;
   min-height: 22px !important;
-  padding: 0 8px !important;
+  padding: 0 !important;
   border-color: color-mix(in srgb, var(--tag) 60%, rgba(255, 255, 255, 0.35)) !important;
   color: #ffffff !important;
   background: color-mix(in srgb, var(--tag) 60%, rgba(255, 255, 255, 0.08)) !important;

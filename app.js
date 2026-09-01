@@ -1005,7 +1005,7 @@ function selectedPanel() {
         <div class="selected-area-copy">
           <h2>${area.name}</h2>
           <div class="selected-status-line">
-            <div class="selected-score">${formatScore(area.score)}</div>
+            <div class="selected-score">${formatScore(area.score)}<small>/10</small></div>
             <span class="status-pill color-only" title="${status.legend || status.label}" aria-label="${status.legend || status.label}"></span>
           </div>
         </div>
@@ -1023,7 +1023,7 @@ function selectedPanel() {
                 <div class="nc-row" style="--tag:${meta.color}">
                   ${svgIcon("warning")}
                   <span>${escapeHtml(row.text)}</span>
-                  <span class="nc-tag is-risk-label">Risco ${meta.label}</span>
+                  <span class="nc-tag is-risk-label" title="Risco ${meta.label}" aria-label="Risco ${meta.label}"></span>
                   <span>›</span>
                 </div>
               `;
