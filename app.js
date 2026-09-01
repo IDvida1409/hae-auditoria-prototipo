@@ -2344,7 +2344,7 @@ function reportStatusMarker(statusKey) {
 }
 
 function reportBlockLabel(label) {
-  return reportCompactText(label, 32).toUpperCase();
+  return reportFullText(label).toUpperCase();
 }
 
 function reportRiskTag(level) {
@@ -2394,16 +2394,12 @@ function reportDocHeader(title, area, showMeta = false) {
         <span>AUDITORIA INTERNA - BOAS PRÁTICAS DE MANIPULAÇÃO DE ALIMENTOS</span>
         <strong>${escapeHtml(title)}</strong>
         <small>${escapeHtml(area.name)} · ${reportMonthLabel(currentMonthId)}</small>
+        ${showMeta ? `<small class="report-doc-audit-window">Data ${audit.date} · Início ${audit.start} · Término ${audit.end} · Duração ${audit.duration}</small>` : ""}
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip">
-        <span><strong>Unidade</strong>Hospital Einstein - Morumbi</span>
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
         <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
         <span><strong>Responsável</strong>Liderança da área auditada</span>
-        <span><strong>Data</strong>${audit.date}</span>
-        <span><strong>Início</strong>${audit.start}</span>
-        <span><strong>Término</strong>${audit.end}</span>
-        <span><strong>Duração</strong>${audit.duration}</span>
       </div>` : ""}
     </header>
   `;
@@ -2412,7 +2408,7 @@ function reportDocHeader(title, area, showMeta = false) {
 function reportDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
-      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011</span>
       <span>Página ${page} de ${total}</span>
     </footer>
   `;
@@ -2554,7 +2550,7 @@ function reportLegendBlock() {
   return `
     <div class="report-doc-legend" aria-label="Legenda do relatório">
       <div>
-        <strong>Risco / classificação</strong>
+        <strong>Risco das NCs</strong>
         ${riskItems.map(([label, tone]) => `<span class="report-legend-item is-${tone}"><i></i>${label}</span>`).join("")}
       </div>
       <div>
@@ -2573,10 +2569,14 @@ function reportActionFootnote() {
   `;
 }
 
+function reportPlural(count, singular, plural) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function reportLegendNote() {
   return `
     <p class="report-footnote">
-      Legenda: C = Conforme; NC = Não Conforme; X = Não Avaliado. A classificação de risco segue a régua Baixo, Moderado, Médio e Alto.
+      Legenda: C = Conforme; NC = Não Conforme; X = Não Avaliado. O risco é atribuído à pergunta do checklist; quando marcada como NC, a ocorrência herda esse risco.
     </p>
   `;
 }
@@ -2594,7 +2594,7 @@ function reportMonthlyInsight(area) {
   return `
     <div class="report-note-box">
       <strong>Leitura do auditor</strong>
-      <p>${metaText} Foram registradas ${totals.NC} não conformidades e ${stats.total} planos de ação vinculados. Os blocos que mais exigem atenção neste mês são: ${escapeHtml(worstBlocks.join(" e "))}.</p>
+      <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}. Os blocos que mais exigem atenção neste mês são: ${escapeHtml(worstBlocks.join(" e "))}.</p>
     </div>
   `;
 }
@@ -2602,6 +2602,10 @@ function reportMonthlyInsight(area) {
 function reportShortChartLabel(label) {
   const clean = String(label || "");
   return clean.length > 20 ? `${clean.slice(0, 19)}...` : clean;
+}
+
+function reportFullText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function reportCompactText(value, maxLength = 86) {
@@ -2757,10 +2761,10 @@ function reportNcDetailRows(area) {
     return [
       `${String(row.number).padStart(2, "0")}`,
       `<strong>${escapeHtml(row.blockTitle)}</strong>`,
-      escapeHtml(reportCompactText(row.text, 58)),
+      escapeHtml(reportFullText(row.text)),
       reportRiskTag(row.riskLevel),
-      escapeHtml(reportCompactText(reportObservationForQuestion(row), 52)),
-      escapeHtml(reportPlanShortTitle(plan, row))
+      escapeHtml(reportObservationForQuestion(row)),
+      escapeHtml(plan?.title || `Plano para ${row.blockTitle}`)
     ];
   });
 }
@@ -2774,8 +2778,11 @@ function reportEvidenceGrid(area) {
         .map(
           (row, index) => `
             <figure class="report-evidence-card">
-              <div class="report-evidence-photo">EVIDÊNCIA ${String(index + 1).padStart(2, "0")}</div>
-              <figcaption><strong>Item ${String(row.number).padStart(2, "0")}</strong>${escapeHtml(reportCompactText(row.blockTitle, 58))}</figcaption>
+              <div class="report-evidence-photo"><span>Foto de evidência ${String(index + 1).padStart(2, "0")}</span></div>
+              <figcaption>
+                <strong>Item ${String(row.number).padStart(2, "0")} · Risco ${escapeHtml((riskMeta[row.riskLevel] || riskMeta.none).label)}</strong>
+                <span>${escapeHtml(row.blockTitle)} - ${escapeHtml(reportObservationForQuestion(row))}</span>
+              </figcaption>
             </figure>
           `
         )
@@ -2784,11 +2791,38 @@ function reportEvidenceGrid(area) {
   `;
 }
 
+function reportMonthlyAttention(area) {
+  const blocks = blockSummaries(area);
+  const totalQuestions = blocks.reduce((sum, block) => sum + block.questions.length, 0);
+  const areaRows = questionRowsForArea(area);
+  const attentionBlocks = blocks
+    .map((block) => {
+      const highRiskNc = areaRows.filter((row) => row.blockId === block.id && row.answer === "NC" && row.riskLevel === "critico").length;
+      return { ...block, highRiskNc };
+    })
+    .sort((a, b) => a.score - b.score || b.sourceCounts.NC - a.sourceCounts.NC || b.highRiskNc - a.highRiskNc)
+    .slice(0, 3);
+  const attentionText = attentionBlocks.length
+    ? attentionBlocks
+        .map((block) => `${block.title} (${block.questions.length} perguntas, nota ${formatScore(block.score)}, ${block.sourceCounts.NC} NCs${block.highRiskNc ? `, ${block.highRiskNc} de risco alto` : ""})`)
+        .join("; ")
+    : "sem bloco crítico no recorte mensal";
+
+  return `
+    <div class="report-analysis-note">
+      <strong>Leitura técnica do gráfico</strong>
+      <p>O checklist desta área possui ${totalQuestions} perguntas distribuídas em ${blocks.length} blocos. Cada barra mostra a nota do bloco no mês vigente; a linha de meta indica o parâmetro mínimo de 8,0.</p>
+      <p><strong>Pontos de atenção:</strong> ${escapeHtml(attentionText)}. A priorização deve considerar menor nota, quantidade de NCs e presença de NC de risco alto.</p>
+      <p class="report-risk-note"><strong>Nota sobre risco:</strong> cada pergunta possui um nível de risco previamente atribuído no checklist. Quando a resposta é NC, a não conformidade registrada herda o risco daquela pergunta.</p>
+    </div>
+  `;
+}
+
 function reportPlanRowsForArea(area) {
   const dueDates = ["05/09/2026", "10/09/2026", "16/09/2026", "20/09/2026"];
   return actionPlansForArea(area).map((plan, index) => [
     `<strong>${escapeHtml(plan.block)}</strong>`,
-    escapeHtml(reportCompactText(plan.title, 54)),
+    escapeHtml(reportFullText(plan.title)),
     escapeHtml(plan.owner),
     dueDates[index % dueDates.length],
     reportActionStatusTag(plan.status)
@@ -2802,7 +2836,7 @@ function reportConclusion(area) {
   return `
     <div class="report-note-box">
       <strong>Conclusão técnica</strong>
-      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${totals.NC} não conformidades, ${stats.total} planos de ação e ${reportOpenActions(stats)} ações abertas. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
+      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${reportPlural(totals.NC, "não conformidade", "não conformidades")}, ${reportPlural(stats.total, "plano de ação", "planos de ação")} e ${reportPlural(reportOpenActions(stats), "ação aberta", "ações abertas")}. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
     <div class="report-signatures">
       <span>Auditor responsável</span>
@@ -2978,9 +3012,10 @@ function monthlyReportPage() {
         ${reportSection("3", "Resultado por bloco do checklist", `
           ${reportBlockScoreChart(area)}
           ${reportDocTable(["Bloco", "Itens", "C", "NC", "X", "Nota", "Class."], reportBlockRows(area), "is-blocks")}
+          ${reportLegendNote()}
         `)}
         ${reportSection("4", "Pontos de atenção do mês", `
-          <p class="report-doc-text">A análise técnica prioriza blocos com menor nota, maior quantidade de NCs e presença de risco alto. Essa leitura direciona o plano de ação do mês sem misturar avaliação histórica.</p>
+          ${reportMonthlyAttention(area)}
         `)}
       `)}
       ${reportPage(title, area, 3, pages, `
@@ -2994,7 +3029,7 @@ function monthlyReportPage() {
           ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
           ${reportActionFootnote()}
         `)}
-        ${reportSection("8", "Conclusão e encaminhamento", reportConclusion(area))}
+        ${reportSection("8", "Conclusão", reportConclusion(area))}
       `)}
     </div>
   `;
