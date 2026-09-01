@@ -2409,12 +2409,58 @@ function reportDocHeader(title, area, showMeta = false) {
   `;
 }
 
+function reportMonthlyDocHeader(title, area, showMeta = false) {
+  const audit = reportAuditWindow();
+  return `
+    <header class="report-doc-header report-monthly-header">
+      <div class="report-doc-brand">
+        <span class="report-doc-idvida">ID<span>VIDA</span></span>
+        <span class="report-doc-separator"></span>
+        <span class="report-doc-hospital">
+          <img src="assets/einstein-logo-menu.png?v=doc-report-1" alt="" aria-hidden="true" />
+          <span>Hospital Einstein<br />Morumbi</span>
+        </span>
+      </div>
+      <div class="report-doc-heading">
+        <span>AUDITORIA INTERNA - BOAS PRÁTICAS DE MANIPULAÇÃO DE ALIMENTOS</span>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(area.name)} · ${reportMonthLabel(currentMonthId)}</small>
+        ${showMeta ? `<small class="report-doc-audit-window">Data ${audit.date} · Início ${audit.start} · Término ${audit.end} · Duração ${audit.duration}</small>` : ""}
+      </div>
+      ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
+        <span><strong>Área</strong>${escapeHtml(area.name)}</span>
+        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
+        <span><strong>Responsável</strong>Liderança da área auditada</span>
+      </div>` : ""}
+    </header>
+  `;
+}
+
 function reportDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
       <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
       <span>Página ${page} de ${total}</span>
     </footer>
+  `;
+}
+
+function reportMonthlyDocFooter(page, total) {
+  return `
+    <footer class="report-doc-footer">
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011</span>
+      <span>Página ${page} de ${total}</span>
+    </footer>
+  `;
+}
+
+function reportMonthlyPage(title, area, page, total, content) {
+  return `
+    <article class="report-doc-page report-monthly-page">
+      ${reportMonthlyDocHeader(title, area, page === 1)}
+      <main class="report-doc-body">${content}</main>
+      ${reportMonthlyDocFooter(page, total)}
+    </article>
   `;
 }
 
@@ -2565,12 +2611,42 @@ function reportLegendBlock() {
   `;
 }
 
+function reportMonthlyLegendBlock() {
+  const riskItems = [
+    ["Baixo", "good"],
+    ["Moderado", "moderate"],
+    ["Médio", "medium"],
+    ["Alto", "danger"]
+  ];
+  const answerItems = [
+    ["C", "Conforme", "good"],
+    ["NC", "Não conforme", "danger"],
+    ["X", "Não avaliado", "neutral"]
+  ];
+  return `
+    <div class="report-doc-legend report-monthly-legend" aria-label="Legenda do relatório mensal">
+      <div>
+        <strong>Risco das NCs</strong>
+        ${riskItems.map(([label, tone]) => `<span class="report-legend-item is-${tone}"><i></i>${label}</span>`).join("")}
+      </div>
+      <div>
+        <strong>Respostas</strong>
+        ${answerItems.map(([code, label, tone]) => `<span class="report-legend-item is-${tone}"><b>${code}</b>${label}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function reportActionFootnote() {
   return `
     <p class="report-footnote">
       Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da área.
     </p>
   `;
+}
+
+function reportPlural(count, singular, plural) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function reportLegendNote() {
@@ -2593,8 +2669,8 @@ function reportMonthlyInsight(area) {
     : "A área está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
   return `
     <div class="report-note-box">
-      <strong>Leitura do auditor</strong>
-      <p>${metaText} Foram registradas ${totals.NC} não conformidades e ${stats.total} planos de ação vinculados. Os blocos que mais exigem atenção neste mês são: ${escapeHtml(worstBlocks.join(" e "))}.</p>
+      <strong>Síntese técnica da área</strong>
+      <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}; os blocos que exigem atenção neste mês são ${escapeHtml(worstBlocks.join(" e "))}.</p>
     </div>
   `;
 }
@@ -2602,6 +2678,10 @@ function reportMonthlyInsight(area) {
 function reportShortChartLabel(label) {
   const clean = String(label || "");
   return clean.length > 20 ? `${clean.slice(0, 19)}...` : clean;
+}
+
+function reportFullText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function reportCompactText(value, maxLength = 86) {
@@ -2633,12 +2713,13 @@ function reportPreviousBlockScore(area, block, index) {
   return clamp(block.score - delta + adjustment, 4.2, 9.8);
 }
 
-function reportBlockScoreChart(area, comparison = false) {
+function reportBlockScoreChart(area, comparison = false, options = {}) {
   const blocks = blockSummaries(area);
   if (!blocks.length) {
     return `<div class="report-empty-chart">Sem blocos de checklist cadastrados para esta área.</div>`;
   }
 
+  const isMonthly = options.variant === "monthly";
   const width = 760;
   const height = 238;
   const pad = { left: 42, right: 72, top: comparison ? 34 : 30, bottom: 30 };
@@ -2655,7 +2736,7 @@ function reportBlockScoreChart(area, comparison = false) {
   });
 
   return `
-    <figure class="report-doc-chart">
+    <figure class="report-doc-chart ${isMonthly ? "is-monthly-chart" : ""}">
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
         ${ticks
           .map(
@@ -2695,7 +2776,7 @@ function reportBlockScoreChart(area, comparison = false) {
         ` : ""}
       </svg>
       <div class="report-chart-labels" style="--items:${blocks.length}">
-        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(reportBlockLabel(block.title))}</span>`).join("")}
+        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(isMonthly ? reportFullText(block.title).toUpperCase() : reportBlockLabel(block.title))}</span>`).join("")}
       </div>
       <figcaption>${comparison ? "Figura 1 - Comparativo do desempenho por bloco." : "Figura 1 - Desempenho dos blocos no mês vigente."}</figcaption>
     </figure>
@@ -2757,12 +2838,20 @@ function reportNcDetailRows(area) {
     return [
       `${String(row.number).padStart(2, "0")}`,
       `<strong>${escapeHtml(row.blockTitle)}</strong>`,
-      escapeHtml(reportCompactText(row.text, 58)),
+      escapeHtml(reportFullText(row.text)),
       reportRiskTag(row.riskLevel),
-      escapeHtml(reportCompactText(reportObservationForQuestion(row), 52)),
-      escapeHtml(reportPlanShortTitle(plan, row))
+      escapeHtml(reportObservationForQuestion(row)),
+      escapeHtml(plan?.title || `Plano para ${row.blockTitle}`)
     ];
   });
+}
+
+function reportEvidenceImageForQuestion(row) {
+  const text = `${row.text} ${row.blockTitle}`.toLowerCase();
+  if (text.includes("utens") || text.includes("equipamento") || text.includes("móveis")) {
+    return "assets/report-evidence-utensilios.png?v=monthly-evidence-1";
+  }
+  return "assets/report-evidence-utensilios.png?v=monthly-evidence-1";
 }
 
 function reportEvidenceGrid(area) {
@@ -2774,8 +2863,13 @@ function reportEvidenceGrid(area) {
         .map(
           (row, index) => `
             <figure class="report-evidence-card">
-              <div class="report-evidence-photo">EVIDÊNCIA ${String(index + 1).padStart(2, "0")}</div>
-              <figcaption><strong>Item ${String(row.number).padStart(2, "0")}</strong>${escapeHtml(reportCompactText(row.blockTitle, 58))}</figcaption>
+              <div class="report-evidence-photo">
+                <img src="${reportEvidenceImageForQuestion(row)}" alt="Foto de evidência do item ${String(row.number).padStart(2, "0")}" />
+              </div>
+              <figcaption>
+                <strong>Item ${String(row.number).padStart(2, "0")} · Risco ${escapeHtml((riskMeta[row.riskLevel] || riskMeta.none).label)}</strong>
+                <span>${escapeHtml(row.blockTitle)} - ${escapeHtml(reportObservationForQuestion(row))}</span>
+              </figcaption>
             </figure>
           `
         )
@@ -2784,11 +2878,33 @@ function reportEvidenceGrid(area) {
   `;
 }
 
+function reportMonthlyAttention(area) {
+  const blocks = blockSummaries(area);
+  const totalQuestions = blocks.reduce((sum, block) => sum + block.questions.length, 0);
+  const areaRows = questionRowsForArea(area);
+  const attentionBlocks = blocks
+    .map((block) => {
+      const highRiskNc = areaRows.filter((row) => row.blockId === block.id && row.answer === "NC" && row.riskLevel === "critico").length;
+      return { ...block, highRiskNc };
+    })
+    .sort((a, b) => a.score - b.score || b.sourceCounts.NC - a.sourceCounts.NC || b.highRiskNc - a.highRiskNc)
+    .slice(0, 3);
+  const attentionText = attentionBlocks
+    .map((block) => `${block.title} (${block.questions.length} perguntas, nota ${formatScore(block.score)}, ${block.sourceCounts.NC} NCs${block.highRiskNc ? `, ${block.highRiskNc} de risco alto` : ""})`)
+    .join("; ");
+
+  return `
+    <p class="report-doc-text report-monthly-attention-text">
+      O gráfico consolida ${totalQuestions} perguntas em ${blocks.length} blocos; os principais pontos de atenção do mês são ${escapeHtml(attentionText)}, considerando menor nota, quantidade de NCs e risco atribuído às perguntas não conformes.
+    </p>
+  `;
+}
+
 function reportPlanRowsForArea(area) {
   const dueDates = ["05/09/2026", "10/09/2026", "16/09/2026", "20/09/2026"];
   return actionPlansForArea(area).map((plan, index) => [
     `<strong>${escapeHtml(plan.block)}</strong>`,
-    escapeHtml(reportCompactText(plan.title, 54)),
+    escapeHtml(reportFullText(plan.title)),
     escapeHtml(plan.owner),
     dueDates[index % dueDates.length],
     reportActionStatusTag(plan.status)
@@ -2802,7 +2918,7 @@ function reportConclusion(area) {
   return `
     <div class="report-note-box">
       <strong>Conclusão técnica</strong>
-      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${totals.NC} não conformidades, ${stats.total} planos de ação e ${reportOpenActions(stats)} ações abertas. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
+      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${reportPlural(totals.NC, "não conformidade", "não conformidades")}, ${reportPlural(stats.total, "plano de ação", "planos de ação")} e ${reportPlural(reportOpenActions(stats), "ação aberta", "ações abertas")}. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
     <div class="report-signatures">
       <span>Auditor responsável</span>
@@ -2956,11 +3072,11 @@ function monthlyReportPage() {
 
   return `
     <div class="technical-report">
-      ${reportPage(title, area, 1, pages, `
+      ${reportMonthlyPage(title, area, 1, pages, `
         <h1>${title}</h1>
         <p class="report-doc-lead">Relatório mensal individual da área auditada, com resultado do mês vigente, blocos do checklist, não conformidades, evidências e planos de ação gerados.</p>
         ${reportMiniKpis(area)}
-        ${reportLegendBlock()}
+        ${reportMonthlyLegendBlock()}
         ${reportSection("1", "Síntese executiva da área", `
           ${reportDocTable(["Indicador", "Resultado", "Indicador", "Resultado"], reportSummaryRows(area), "is-meta")}
           ${reportMonthlyInsight(area)}
@@ -2970,31 +3086,32 @@ function monthlyReportPage() {
             ["Conforme (C)", "Requisito atendido conforme checklist e referência legal aplicada."],
             ["Não Conforme (NC)", "Requisito não atendido, com necessidade de evidência, plano de ação e acompanhamento."],
             ["Não Avaliado (X)", "Item não aplicável ou não verificado no ciclo mensal analisado."],
-            ["Meta de desempenho", "Nota mínima de 8,0 para leitura satisfatória da área no mês vigente."]
+            ["Meta de desempenho", "Nota mínima de 8,0 para leitura satisfatória da área no mês vigente."],
+            ["Risco da pergunta", "Cada pergunta possui um risco previamente atribuído; quando marcada como NC, a ocorrência herda esse nível de risco."]
           ])}
         `)}
       `)}
-      ${reportPage(title, area, 2, pages, `
+      ${reportMonthlyPage(title, area, 2, pages, `
         ${reportSection("3", "Resultado por bloco do checklist", `
-          ${reportBlockScoreChart(area)}
+          ${reportBlockScoreChart(area, false, { variant: "monthly" })}
           ${reportDocTable(["Bloco", "Itens", "C", "NC", "X", "Nota", "Class."], reportBlockRows(area), "is-blocks")}
         `)}
         ${reportSection("4", "Pontos de atenção do mês", `
-          <p class="report-doc-text">A análise técnica prioriza blocos com menor nota, maior quantidade de NCs e presença de risco alto. Essa leitura direciona o plano de ação do mês sem misturar avaliação histórica.</p>
+          ${reportMonthlyAttention(area)}
         `)}
       `)}
-      ${reportPage(title, area, 3, pages, `
+      ${reportMonthlyPage(title, area, 3, pages, `
         ${reportSection("5", "Não conformidades registradas", `
           ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
         `)}
         ${reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area))}
       `)}
-      ${reportPage(title, area, 4, pages, `
+      ${reportMonthlyPage(title, area, 4, pages, `
         ${reportSection("7", "Planos de ação vigentes", `
           ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
           ${reportActionFootnote()}
         `)}
-        ${reportSection("8", "Conclusão e encaminhamento", reportConclusion(area))}
+        ${reportSection("8", "Conclusão", reportConclusion(area))}
       `)}
     </div>
   `;

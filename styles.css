@@ -8155,6 +8155,22 @@ h3 {
   font-weight: 650;
 }
 
+.report-monthly-header .report-doc-audit-window {
+  color: #4b5563;
+  font-size: 8.6px;
+  font-weight: 680;
+}
+
+.report-monthly-meta-strip {
+  gap: 4px 24px;
+  padding-top: 6px;
+}
+
+.report-monthly-meta-strip span {
+  color: #111827;
+  font-size: 8.8px;
+}
+
 .report-doc-body {
   padding-top: 19px;
   font-size: 10.8px;
@@ -8699,6 +8715,22 @@ h3 {
   text-align: center;
 }
 
+.report-doc-chart.is-monthly-chart {
+  padding-bottom: 6px;
+}
+
+.report-doc-chart.is-monthly-chart .report-chart-labels {
+  min-height: 66px;
+  margin: -1px 72px 2px 42px;
+}
+
+.report-doc-chart.is-monthly-chart .report-chart-labels span {
+  width: 112px;
+  color: #111827;
+  font-size: 7.5px;
+  transform: rotate(-36deg);
+}
+
 .report-empty-chart {
   min-height: 120px;
   display: grid;
@@ -8745,6 +8777,14 @@ h3 {
   letter-spacing: 0;
 }
 
+.report-evidence-photo img {
+  width: 100%;
+  height: 100%;
+  min-height: 96px;
+  display: block;
+  object-fit: cover;
+}
+
 .report-evidence-card figcaption {
   min-height: 48px;
   padding: 7px 8px;
@@ -8772,6 +8812,65 @@ h3 {
 .report-evidence-list .report-evidence-card figcaption {
   min-height: 0;
   align-content: center;
+}
+
+.report-monthly-page {
+  color: #111827;
+}
+
+.report-monthly-page .report-doc-lead,
+.report-monthly-page .report-doc-text,
+.report-monthly-page .report-note-box,
+.report-monthly-page .report-analysis-note,
+.report-monthly-page .report-footnote,
+.report-monthly-page .report-evidence-card figcaption {
+  color: #111827;
+}
+
+.report-monthly-page .report-note-box strong,
+.report-monthly-page .report-analysis-note strong,
+.report-monthly-page .report-doc-table strong,
+.report-monthly-page .report-evidence-card figcaption strong {
+  color: #111827;
+}
+
+.report-monthly-page .report-monthly-attention-text {
+  max-width: none;
+  font-weight: 560;
+}
+
+.report-monthly-page .report-doc-table.is-blocks {
+  font-size: 8.85px;
+}
+
+.report-monthly-page .report-doc-table.is-blocks th:nth-child(1),
+.report-monthly-page .report-doc-table.is-blocks td:nth-child(1) {
+  width: 46%;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.report-monthly-page .report-doc-table.is-blocks th:nth-child(n+2),
+.report-monthly-page .report-doc-table.is-blocks td:nth-child(n+2) {
+  width: 7.4%;
+}
+
+.report-monthly-page .report-doc-table.is-blocks th:nth-child(6),
+.report-monthly-page .report-doc-table.is-blocks td:nth-child(6),
+.report-monthly-page .report-doc-table.is-blocks th:nth-child(7),
+.report-monthly-page .report-doc-table.is-blocks td:nth-child(7) {
+  width: 10.6%;
+}
+
+.report-monthly-page .report-doc-table.is-ncs {
+  font-size: 8.8px;
+  line-height: 1.3;
+}
+
+.report-monthly-page .report-doc-table.is-ncs td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .report-doc-list {
