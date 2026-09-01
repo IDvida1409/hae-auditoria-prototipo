@@ -965,8 +965,7 @@ function quickMetrics(area) {
     <div class="quick-metrics quick-metrics-risk">
       <div class="quick-metric metric-weighted-score" style="--metric-color:${status.color}">
         <small>Nota da área</small>
-        <b>${formatScore(area.score)}<em>/10</em></b>
-        <span>${status.label}</span>
+        <b>${formatScore(area.score)}</b>
       </div>
       <div class="quick-metric metric-risk-distribution">
         <small>NCs por nível de risco</small>
@@ -1006,7 +1005,7 @@ function selectedPanel() {
         <div class="selected-area-copy">
           <h2>${area.name}</h2>
           <div class="selected-status-line">
-            <div class="selected-score">${formatScore(area.score)} <small>/10</small></div>
+            <div class="selected-score">${formatScore(area.score)}</div>
             <span class="status-pill color-only" title="${status.legend || status.label}" aria-label="${status.legend || status.label}"></span>
           </div>
         </div>

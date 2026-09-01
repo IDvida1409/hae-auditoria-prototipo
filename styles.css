@@ -8897,26 +8897,33 @@ h3 {
 
 /* Separação visual entre desempenho da nota e risco das NCs */
 .areas-panel .section-head {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
   align-items: flex-start;
   gap: 28px !important;
-  padding-bottom: 22px !important;
+  padding-bottom: 18px !important;
 }
 
 .panel-legends {
   display: grid;
-  grid-template-columns: 1fr;
-  justify-content: start;
-  justify-items: start;
-  gap: 10px;
-  max-width: 620px;
-  margin-top: 4px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  justify-content: stretch;
+  justify-items: stretch;
+  gap: 16px;
+  width: 100%;
+  max-width: none;
+  margin-top: 2px;
   color: rgba(255, 255, 255, 0.86);
 }
 
 .panel-legend-group {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   justify-items: start;
+}
+
+.panel-legend-group:last-child {
+  justify-items: end;
 }
 
 .panel-legend-group strong {
@@ -8935,6 +8942,10 @@ h3 {
   gap: 6px 10px;
 }
 
+.panel-legend-group:last-child > span {
+  justify-content: flex-end;
+}
+
 .panel-legend-item {
   display: inline-flex;
   align-items: center;
@@ -8951,6 +8962,10 @@ h3 {
   height: 3px;
   border-radius: 999px;
   background: var(--legend-color);
+}
+
+.dashboard-grid.has-selection .panel-legends {
+  display: none !important;
 }
 
 .dashboard-grid .quick-metrics.quick-metrics-risk {
@@ -9010,6 +9025,10 @@ h3 {
 .dashboard-grid .quick-metrics.quick-metrics-risk .metric-risk-distribution {
   grid-template-columns: 1fr !important;
   align-items: start !important;
+}
+
+.dashboard-grid .quick-metrics.quick-metrics-risk .metric-weighted-score {
+  grid-template-columns: minmax(92px, 1fr) auto !important;
 }
 
 .dashboard-grid .quick-metrics.quick-metrics-risk .metric-risk-distribution .risk-count-strip {
