@@ -9095,14 +9095,14 @@ h3 {
 }
 
 .dashboard-grid .selected-panel .nc-tag.is-risk-label {
-  width: 30px !important;
-  min-width: 30px !important;
+  width: auto !important;
+  min-width: 76px !important;
   min-height: 22px !important;
-  padding: 0 !important;
+  padding: 0 8px !important;
   border-color: color-mix(in srgb, var(--tag) 60%, rgba(255, 255, 255, 0.35)) !important;
   color: #ffffff !important;
   background: color-mix(in srgb, var(--tag) 60%, rgba(255, 255, 255, 0.08)) !important;
-  font-size: 10.5px !important;
+  font-size: 10px !important;
   font-weight: 760 !important;
   white-space: nowrap !important;
 }

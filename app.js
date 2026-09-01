@@ -1023,7 +1023,7 @@ function selectedPanel() {
                 <div class="nc-row" style="--tag:${meta.color}">
                   ${svgIcon("warning")}
                   <span>${escapeHtml(row.text)}</span>
-                  <span class="nc-tag is-risk-label" title="Risco ${meta.label}" aria-label="Risco ${meta.label}"></span>
+                  <span class="nc-tag is-risk-label">Risco ${meta.label}</span>
                   <span>›</span>
                 </div>
               `;
