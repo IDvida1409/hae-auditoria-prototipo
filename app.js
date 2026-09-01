@@ -2449,7 +2449,7 @@ function reportDocFooter(page, total) {
 function reportMonthlyDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
-      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011</span>
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
       <span>Página ${page} de ${total}</span>
     </footer>
   `;
