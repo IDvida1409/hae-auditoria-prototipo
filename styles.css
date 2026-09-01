@@ -6366,13 +6366,13 @@ h3 {
 .impact-highlight b {
   display: grid !important;
   place-items: center !important;
-  min-width: 68px !important;
+  min-width: 78px !important;
   min-height: 52px !important;
   padding: 6px 9px !important;
   border-radius: 8px !important;
   color: var(--red) !important;
   background: #fff1f2 !important;
-  font-size: 24px !important;
+  font-size: 18px !important;
   font-weight: 760 !important;
   line-height: 1 !important;
 }
@@ -6661,6 +6661,9 @@ h3 {
 
 .dashboard-grid .selected-score small {
   color: rgba(255, 255, 255, 0.78) !important;
+  font-size: 11px !important;
+  font-weight: 620 !important;
+  line-height: 1 !important;
 }
 
 .dashboard-grid .status-pill {
@@ -8895,21 +8898,25 @@ h3 {
 /* Separação visual entre desempenho da nota e risco das NCs */
 .areas-panel .section-head {
   align-items: flex-start;
+  gap: 28px !important;
+  padding-bottom: 22px !important;
 }
 
 .panel-legends {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 7px 16px;
-  max-width: 760px;
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-content: start;
+  justify-items: start;
+  gap: 10px;
+  max-width: 620px;
+  margin-top: 4px;
   color: rgba(255, 255, 255, 0.86);
 }
 
 .panel-legend-group {
   display: grid;
   gap: 4px;
-  justify-items: end;
+  justify-items: start;
 }
 
 .panel-legend-group strong {
@@ -8924,7 +8931,7 @@ h3 {
 .panel-legend-group > span {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px 10px;
 }
 
@@ -8953,12 +8960,13 @@ h3 {
 }
 
 .dashboard-grid .quick-metrics.quick-metrics-risk .quick-metric {
-  display: flex !important;
-  min-height: 82px !important;
+  display: grid !important;
+  grid-template-columns: minmax(92px, 1fr) auto minmax(78px, 1fr) !important;
+  min-height: 64px !important;
   padding: 11px 12px !important;
-  align-items: flex-start !important;
-  justify-content: center !important;
-  gap: 5px !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  gap: 8px !important;
   border-right: 0 !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.13) !important;
 }
@@ -8969,7 +8977,7 @@ h3 {
 
 .dashboard-grid .quick-metrics.quick-metrics-risk .quick-metric small {
   color: rgba(255, 255, 255, 0.68);
-  font-size: 9.8px;
+  font-size: 9.5px;
   font-weight: 780;
   letter-spacing: 0;
   line-height: 1.15;
@@ -8978,14 +8986,16 @@ h3 {
 
 .dashboard-grid .quick-metrics.quick-metrics-risk .quick-metric > b {
   color: var(--metric-color, #ffffff) !important;
-  font-size: 22px !important;
+  font-size: 19px !important;
   font-weight: 790 !important;
   line-height: 1 !important;
+  white-space: nowrap !important;
 }
 
 .dashboard-grid .quick-metrics.quick-metrics-risk .quick-metric > b em {
   color: rgba(255, 255, 255, 0.62);
-  font-size: 12px;
+  margin-left: 2px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 620;
 }
@@ -8997,10 +9007,28 @@ h3 {
   line-height: 1.2 !important;
 }
 
+.dashboard-grid .quick-metrics.quick-metrics-risk .metric-risk-distribution {
+  grid-template-columns: 1fr !important;
+  align-items: start !important;
+}
+
+.dashboard-grid .quick-metrics.quick-metrics-risk .metric-risk-distribution .risk-count-strip {
+  grid-column: 1;
+  margin-top: 2px;
+}
+
+.dashboard-grid .quick-metrics.quick-metrics-risk .metric-highest-risk > b {
+  font-size: 17px !important;
+}
+
+.dashboard-grid .quick-metrics.quick-metrics-risk .metric-high-risk-nc > b {
+  font-size: 20px !important;
+}
+
 .risk-count-strip {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 12px;
   width: 100%;
 }
 
@@ -9010,7 +9038,7 @@ h3 {
   min-width: 0;
   gap: 5px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 10.7px;
+  font-size: 10.4px;
   font-weight: 650;
   line-height: 1;
 }

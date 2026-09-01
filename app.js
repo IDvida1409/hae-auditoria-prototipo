@@ -47,7 +47,7 @@ const areaData = [
 
 const statusMap = {
   satisfatorio: { label: "Acima da meta", legend: "Nota acima da meta", color: "#31aa42" },
-  moderado: { label: "Atenção", legend: "Nota em atenção", color: "#e9b300" },
+  moderado: { label: "Na meta", legend: "Nota na meta", color: "#e9b300" },
   medio: { label: "Abaixo da meta", legend: "Nota abaixo da meta", color: "#f47b20" },
   critico: { label: "Crítico", legend: "Nota crítica", color: "#ee2f36" },
   naoAvaliado: { label: "Não avaliado", legend: "Sem avaliação", color: "#8a96a8" }
@@ -964,7 +964,7 @@ function quickMetrics(area) {
   return `
     <div class="quick-metrics quick-metrics-risk">
       <div class="quick-metric metric-weighted-score" style="--metric-color:${status.color}">
-        <small>Nota ponderada da área</small>
+        <small>Nota da área</small>
         <b>${formatScore(area.score)}<em>/10</em></b>
         <span>${status.label}</span>
       </div>
@@ -996,7 +996,7 @@ function selectedPanel() {
   const highRiskCount = ncRiskCounts(area).critico;
   const attentionText = highRiskCount
     ? `${highRiskCount} ${highRiskCount === 1 ? "item de alto risco está não conforme" : "itens de alto risco estão não conformes"}; priorizar ação corretiva.`
-    : "Acompanhar as não conformidades registradas e manter a evolução da nota ponderada.";
+    : "Acompanhar as não conformidades registradas e manter a evolução da nota.";
   return `
     <aside class="selected-panel surface">
       <button class="panel-close" data-clear-selection title="Fechar detalhe">${icons.close}</button>
@@ -1320,7 +1320,7 @@ function dashboardHome() {
             <div class="mini-panel-head mini-panel-head-stacked">
               ${svgIcon("chart")}
               <span class="mini-panel-title-copy">
-                <strong>Evolução da nota ponderada</strong>
+                <strong>Evolução da nota</strong>
                 <small>${selectedArea ? escapeHtml(selectedArea.name) : "Geral"}</small>
               </span>
             </div>
@@ -1655,6 +1655,12 @@ function opportunityScore(area, stats) {
   return clamp(12 + belowMeta + fall + risk + ncs + openPlans + recurrence + noEffect, 8, 100);
 }
 
+function priorityLabel(score) {
+  if (score >= 68) return "Alta";
+  if (score >= 42) return "Média";
+  return "Baixa";
+}
+
 function actionImpactRows() {
   return areaData
     .map((area) => {
@@ -1683,7 +1689,7 @@ function actionImpactChart() {
           <strong>${top.area.name}</strong>
           <small>${formatScore(top.area.score)} de nota · ${top.stats.total} planos · ${top.stats.recurrent} NCs recorrentes</small>
         </div>
-        <b><small>prioridade</small>${Math.round(top.priority)}</b>
+        <b><small>prioridade</small>${priorityLabel(top.priority)}</b>
       </div>
       <div class="impact-row-list">
         ${rows
@@ -1717,14 +1723,14 @@ function chartsPage() {
   const monthOptions = comparisonMonths();
   const focusedArea = state.chartFocusArea ? areaById(state.chartFocusArea) : null;
   const isImpactMode = state.chartMode === "actions";
-  const nextModeLabel = isImpactMode ? "Evolução da nota ponderada" : "Áreas com maior prioridade de ação";
+  const nextModeLabel = isImpactMode ? "Evolução da nota" : "Áreas com maior prioridade de ação";
   return `
     <div class="graph-layout ${state.chartExpanded ? "is-expanded" : ""} ${isImpactMode ? "is-impact-mode" : ""}">
       <div>
         <section class="surface chart-panel chart-panel-large">
           <div class="chart-head">
             <div>
-              <h2>${isImpactMode ? "Áreas com maior prioridade de ação" : "Evolução da nota ponderada"}</h2>
+              <h2>${isImpactMode ? "Áreas com maior prioridade de ação" : "Evolução da nota"}</h2>
               <p class="chart-note">${isImpactMode ? "Ranking combinado por nota baixa, NCs de alto risco, recorrência e andamento dos planos." : "Clique em um mês abaixo para comparar com o mês atual (Agosto/2026)."}</p>
             </div>
             <div class="chart-tools">
@@ -1754,7 +1760,7 @@ function chartsPage() {
         </section>
         ${state.chartExpanded ? "" : `<div class="graph-bottom">
           <section class="mini-panel surface">
-            <div class="mini-panel-head">${svgIcon("chart")} Evolução da nota ponderada</div>
+            <div class="mini-panel-head">${svgIcon("chart")} Evolução da nota</div>
             ${graphGeneralAssessment()}
           </section>
           <section class="mini-panel surface">
