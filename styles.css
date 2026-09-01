@@ -8832,6 +8832,11 @@ h3 {
   color: #111827;
 }
 
+.report-monthly-page .report-doc-body h1 {
+  font-size: 15.8px;
+  line-height: 1.22;
+}
+
 .report-monthly-page .report-note-box strong,
 .report-monthly-page .report-analysis-note strong,
 .report-monthly-page .report-doc-table strong,

@@ -2425,7 +2425,6 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
       </div>
       <div class="report-doc-heading">
         <span>AUDITORIA INTERNA - BOAS PRÁTICAS DE MANIPULAÇÃO DE ALIMENTOS</span>
-        <strong>${escapeHtml(title)}</strong>
         <small>${escapeHtml(area.name)} · ${reportMonthLabel(currentMonthId)}</small>
         ${showMeta ? `<small class="report-doc-audit-window">Data ${audit.date} · Início ${audit.start} · Término ${audit.end} · Duração ${audit.duration}</small>` : ""}
       </div>
@@ -3071,11 +3070,12 @@ function monthlyReportPage() {
   const area = reportSelectedArea();
   const pages = 4;
   const title = "Relatório Consolidado da Auditoria do Mês";
+  const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
 
   return `
     <div class="technical-report">
       ${reportMonthlyPage(title, area, 1, pages, `
-        <h1>${title}</h1>
+        <h1>${titleWithMonth}</h1>
         <p class="report-doc-lead">Relatório mensal individual da área auditada, com resultado do mês vigente, blocos do checklist, não conformidades, evidências e planos de ação gerados.</p>
         ${reportMiniKpis(area)}
         ${reportMonthlyLegendBlock()}
