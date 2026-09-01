@@ -46,11 +46,11 @@ const areaData = [
 ];
 
 const statusMap = {
-  satisfatorio: { label: "Baixo", legend: "Risco baixo", color: "#31aa42" },
-  moderado: { label: "Moderado", legend: "Risco moderado", color: "#e9b300" },
-  medio: { label: "Médio", legend: "Risco médio", color: "#f47b20" },
-  critico: { label: "Alto", legend: "Risco alto", color: "#ee2f36" },
-  naoAvaliado: { label: "Não avaliado", color: "#8a96a8" }
+  satisfatorio: { label: "Acima da meta", legend: "Nota acima da meta", color: "#31aa42" },
+  moderado: { label: "Atenção", legend: "Nota em atenção", color: "#e9b300" },
+  medio: { label: "Abaixo da meta", legend: "Nota abaixo da meta", color: "#f47b20" },
+  critico: { label: "Crítico", legend: "Nota crítica", color: "#ee2f36" },
+  naoAvaliado: { label: "Não avaliado", legend: "Sem avaliação", color: "#8a96a8" }
 };
 
 const subareaData = {
@@ -344,6 +344,9 @@ const riskMeta = {
   critico: { label: "Alto", color: "var(--red)" }
 };
 
+const riskDisplayOrder = ["baixo", "moderado", "medio", "critico"];
+const riskPriorityOrder = ["critico", "medio", "moderado", "baixo"];
+
 const foodTableSections = [
   {
     id: "recebimento",
@@ -444,11 +447,12 @@ function defaultState() {
   return {
     view: "home",
     sidebarCollapsed: false,
-    selectedArea: "area-residuos",
+    selectedArea: "",
     chartFocusArea: null,
     chartExpanded: false,
     chartMode: "scores",
     selectedMonth: currentMonthId,
+    reportKind: "monthly",
     answers: {},
     detailBlock: null,
     detailActionsOpen: false,
@@ -469,6 +473,7 @@ function persistableState(source = state) {
     chartFocusArea: source.chartFocusArea,
     chartMode: source.chartMode,
     selectedMonth: source.selectedMonth,
+    reportKind: source.reportKind,
     answers: source.answers,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
@@ -490,6 +495,7 @@ function normalizeSavedState(saved = {}) {
     chartExpanded: false,
     chartMode: merged.chartMode === "actions" ? "actions" : "scores",
     selectedMonth: validMonthIds.has(merged.selectedMonth) ? merged.selectedMonth : currentMonthId,
+    reportKind: merged.reportKind === "comparison" ? "comparison" : "monthly",
     answers: merged.answers && typeof merged.answers === "object" ? merged.answers : {},
     detailBlock: null,
     detailActionsOpen: false,
@@ -507,7 +513,20 @@ function readSavedState() {
   }
 }
 
+function viewFromHash() {
+  const view = location.hash.replace(/^#\/?/, "");
+  return navItems.some(([id]) => id === view) ? view : null;
+}
+
+function syncHashWithView(view) {
+  if (!navItems.some(([id]) => id === view) || location.protocol === "file:") return;
+  const nextHash = `#${view}`;
+  if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
+}
+
 let state = readSavedState();
+const hashView = viewFromHash();
+if (hashView) state.view = hashView;
 let backendReady = false;
 let backendSaveTimer = null;
 
@@ -540,6 +559,8 @@ async function hydrateStateFromBackend() {
     const payload = await response.json();
     if (payload?.state) {
       state = normalizeSavedState({ ...persistableState(), ...payload.state });
+      const hashView = viewFromHash();
+      if (hashView) state.view = hashView;
       render({ skipSave: true });
     }
     backendReady = true;
@@ -657,17 +678,35 @@ function countsFromRows(rows) {
   );
 }
 
-function riskSummary(area) {
+function ncRowsForArea(area) {
+  return questionRowsForArea(area).filter((question) => question.answer === "NC");
+}
+
+function ncRiskCounts(area = null) {
   const base = { baixo: 0, moderado: 0, medio: 0, critico: 0 };
-  questionRowsForArea(area).filter((question) => question.answer === "NC").forEach((question) => {
+  const rows = area ? ncRowsForArea(area) : areaData.flatMap((entry) => ncRowsForArea(entry));
+  rows.forEach((question) => {
     if (base[question.riskLevel] !== undefined) base[question.riskLevel] += 1;
   });
+  return base;
+}
+
+function highestNcRiskLevel(area) {
+  const rows = ncRowsForArea(area);
+  return riskPriorityOrder.find((level) => rows.some((row) => row.riskLevel === level)) || "none";
+}
+
+function riskSummary(area) {
+  const base = ncRiskCounts(area);
   const max = Math.max(1, ...Object.values(base));
-  return Object.entries(base).map(([level, count]) => ({
-    level,
-    count,
-    width: Math.max(10, Math.round((count / max) * 86))
-  }));
+  return riskDisplayOrder.map((level) => {
+    const count = base[level];
+    return {
+      level,
+      count,
+      width: Math.max(10, Math.round((count / max) * 86))
+    };
+  });
 }
 
 function actionPlansForArea(area) {
@@ -772,6 +811,7 @@ function svgIcon(name, className = "tiny-icon", variant = "blue") {
 
 function setView(view) {
   state.view = view;
+  syncHashWithView(view);
   render();
 }
 
@@ -877,14 +917,71 @@ function areaTile(area, compact = false) {
   `;
 }
 
-function quickMetrics(area) {
-  const improved = area.score >= area.last;
+function dashboardLegend() {
+  const performanceItems = [
+    ["satisfatorio", statusMap.satisfatorio.label],
+    ["moderado", statusMap.moderado.label],
+    ["medio", statusMap.medio.label],
+    ["critico", statusMap.critico.label]
+  ];
+  const riskItems = riskDisplayOrder.map((level) => [level, riskMeta[level].label]);
+  const legendItem = ([key, label], type) => {
+    const color = type === "risk" ? riskMeta[key].color : statusMap[key].color;
+    return `<span class="panel-legend-item" style="--legend-color:${color}"><i></i>${label}</span>`;
+  };
+
   return `
-    <div class="quick-metrics">
-      <div class="quick-metric"><span class="quick-icon danger">${assetIcon("fileWarning", "blue")}</span><b>${area.ncs}</b><span>NCs</span></div>
-      <div class="quick-metric"><span class="quick-icon danger">${assetIcon("warning", "blue")}</span><b>${area.critical}</b><span>críticas</span></div>
-      <div class="quick-metric"><span class="quick-icon ${improved ? "positive" : "danger"}">${assetIcon(improved ? "trendingUp" : "trendingDown", "blue")}</span><b>${formatScore(Math.abs(area.score - area.last))}</b><span>${improved ? "ganho" : "queda"} de ponto</span></div>
-      <div class="quick-metric"><span class="quick-icon warn">${assetIcon("plans", "blue")}</span><b>${area.pending}</b><span>planos pendentes</span></div>
+    <div class="panel-legends" aria-label="Legendas do painel">
+      <div class="panel-legend-group">
+        <strong>Desempenho da nota</strong>
+        <span>${performanceItems.map((item) => legendItem(item, "performance")).join("")}</span>
+      </div>
+      <div class="panel-legend-group">
+        <strong>Risco das NCs</strong>
+        <span>${riskItems.map((item) => legendItem(item, "risk")).join("")}</span>
+      </div>
+    </div>
+  `;
+}
+
+function quickMetrics(area) {
+  const status = statusMap[area.status];
+  const counts = ncRiskCounts(area);
+  const highestLevel = highestNcRiskLevel(area);
+  const highestMeta = riskMeta[highestLevel] || riskMeta.none;
+  const riskItems = riskDisplayOrder
+    .map((level) => {
+      const meta = riskMeta[level];
+      return `
+        <span class="risk-count-item" style="--risk-color:${meta.color}">
+          <i></i>
+          <em>${meta.label}</em>
+          <b>${counts[level]}</b>
+        </span>
+      `;
+    })
+    .join("");
+  return `
+    <div class="quick-metrics quick-metrics-risk">
+      <div class="quick-metric metric-weighted-score" style="--metric-color:${status.color}">
+        <small>Nota ponderada da área</small>
+        <b>${formatScore(area.score)}<em>/10</em></b>
+        <span>${status.label}</span>
+      </div>
+      <div class="quick-metric metric-risk-distribution">
+        <small>NCs por nível de risco</small>
+        <div class="risk-count-strip">${riskItems}</div>
+      </div>
+      <div class="quick-metric metric-highest-risk" style="--metric-color:${highestMeta.color}">
+        <small>Maior risco encontrado</small>
+        <b>${highestMeta.label}</b>
+        <span>${area.ncs} NCs registradas</span>
+      </div>
+      <div class="quick-metric metric-high-risk-nc" style="--metric-color:${riskMeta.critico.color}">
+        <small>Itens de alto risco não conformes</small>
+        <b>${counts.critico}</b>
+        <span>${counts.critico === 1 ? "item exige prioridade" : "itens exigem prioridade"}</span>
+      </div>
     </div>
   `;
 }
@@ -895,10 +992,11 @@ function selectedPanel() {
   }
   const area = areaById(state.selectedArea);
   const status = statusMap[area.status];
-  const attentionText =
-    area.id === "area-residuos"
-      ? "Maior atenção em segregação, tampa dos recipientes e armazenamento."
-      : "Acompanhar os itens não conformes para manter a evolução da nota.";
+  const ncRows = ncRowsForArea(area);
+  const highRiskCount = ncRiskCounts(area).critico;
+  const attentionText = highRiskCount
+    ? `${highRiskCount} ${highRiskCount === 1 ? "item de alto risco está não conforme" : "itens de alto risco estão não conformes"}; priorizar ação corretiva.`
+    : "Acompanhar as não conformidades registradas e manter a evolução da nota ponderada.";
   return `
     <aside class="selected-panel surface">
       <button class="panel-close" data-clear-selection title="Fechar detalhe">${icons.close}</button>
@@ -916,11 +1014,22 @@ function selectedPanel() {
       ${quickMetrics(area)}
       <div class="attention-note">${svgIcon("idea")} <span>${attentionText}</span></div>
       <div>
-        <div class="side-title">Principais não conformidades</div>
+        <div class="side-title">Principais NCs por risco</div>
         <div class="ncs-list">
-          <div class="nc-row">${svgIcon("warning")} <span>Recipiente sem tampa acionada sem contato manual</span><span class="nc-tag is-nc" style="--tag:var(--red)">NC</span><span>›</span></div>
-          <div class="nc-row">${svgIcon("warning")} <span>Separação e armazenamento fora do fluxo esperado</span><span class="nc-tag is-risk-capsule" style="--tag:var(--red)" title="Risco alto" aria-label="Risco alto"></span><span>›</span></div>
-          <div class="nc-row">${svgIcon("warning")} <span>Rotina de higienização com evidência pendente</span><span class="nc-tag is-risk-capsule" style="--tag:var(--orange)" title="Risco médio" aria-label="Risco médio"></span><span>›</span></div>
+          ${ncRows
+            .slice(0, 3)
+            .map((row) => {
+              const meta = riskMeta[row.riskLevel] || riskMeta.none;
+              return `
+                <div class="nc-row" style="--tag:${meta.color}">
+                  ${svgIcon("warning")}
+                  <span>${escapeHtml(row.text)}</span>
+                  <span class="nc-tag is-risk-label">Risco ${meta.label}</span>
+                  <span>›</span>
+                </div>
+              `;
+            })
+            .join("")}
         </div>
       </div>
       <div class="detail-links">
@@ -1147,6 +1256,22 @@ function graphStatusSummary() {
   return graphSummaryRows(rows, areaData.length);
 }
 
+function graphRiskSummary() {
+  const counts = ncRiskCounts();
+  const total = Math.max(1, Object.values(counts).reduce((sum, value) => sum + value, 0));
+  const rows = riskDisplayOrder.map((level) => ({
+    label: riskMeta[level].label,
+    color: riskMeta[level].color,
+    value: counts[level]
+  }));
+  return `
+    <div class="graph-card-body graph-risk-summary">
+      <div class="risk-total-line"><strong>${total}</strong><span>NCs registradas no mês</span></div>
+      ${graphSummaryRows(rows, total)}
+    </div>
+  `;
+}
+
 function graphAuditSummary() {
   const rows = [
     { label: "Realizadas", color: "var(--green)", value: 8 },
@@ -1175,12 +1300,7 @@ function dashboardHome() {
                 <p class="section-subtitle">Clique em uma área para ver os detalhes rápidos</p>
               </div>
             </div>
-            <div class="legend" aria-label="Legenda de risco">
-              <span class="legend-item"><span class="legend-line" style="background:var(--green)"></span>Baixo</span>
-              <span class="legend-item"><span class="legend-line" style="background:var(--yellow)"></span>Moderado</span>
-              <span class="legend-item"><span class="legend-line" style="background:var(--orange)"></span>Médio</span>
-              <span class="legend-item"><span class="legend-line" style="background:var(--red)"></span>Alto</span>
-            </div>
+            ${dashboardLegend()}
           </div>
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
             ${areaData.map((area) => areaTile(area)).join("")}
@@ -1200,7 +1320,7 @@ function dashboardHome() {
             <div class="mini-panel-head mini-panel-head-stacked">
               ${svgIcon("chart")}
               <span class="mini-panel-title-copy">
-                <strong>Evolução das notas</strong>
+                <strong>Evolução da nota ponderada</strong>
                 <small>${selectedArea ? escapeHtml(selectedArea.name) : "Geral"}</small>
               </span>
             </div>
@@ -1597,15 +1717,15 @@ function chartsPage() {
   const monthOptions = comparisonMonths();
   const focusedArea = state.chartFocusArea ? areaById(state.chartFocusArea) : null;
   const isImpactMode = state.chartMode === "actions";
-  const nextModeLabel = isImpactMode ? "Avaliação geral" : "Impacto dos planos de ação";
+  const nextModeLabel = isImpactMode ? "Evolução da nota ponderada" : "Áreas com maior prioridade de ação";
   return `
     <div class="graph-layout ${state.chartExpanded ? "is-expanded" : ""} ${isImpactMode ? "is-impact-mode" : ""}">
       <div>
         <section class="surface chart-panel chart-panel-large">
           <div class="chart-head">
             <div>
-              <h2>${isImpactMode ? "Impacto dos planos de ação" : "Avaliação geral - período atual"}</h2>
-              <p class="chart-note">${isImpactMode ? "Oportunidades de melhoria priorizadas por nota, risco, recorrência e andamento dos planos." : "Clique em um mês abaixo para comparar com o mês atual (Agosto/2026)."}</p>
+              <h2>${isImpactMode ? "Áreas com maior prioridade de ação" : "Evolução da nota ponderada"}</h2>
+              <p class="chart-note">${isImpactMode ? "Ranking combinado por nota baixa, NCs de alto risco, recorrência e andamento dos planos." : "Clique em um mês abaixo para comparar com o mês atual (Agosto/2026)."}</p>
             </div>
             <div class="chart-tools">
               <button class="chart-mode-btn" data-toggle-chart-mode title="Ver ${nextModeLabel}">
@@ -1634,12 +1754,12 @@ function chartsPage() {
         </section>
         ${state.chartExpanded ? "" : `<div class="graph-bottom">
           <section class="mini-panel surface">
-            <div class="mini-panel-head">${svgIcon("chart")} Avaliação geral</div>
+            <div class="mini-panel-head">${svgIcon("chart")} Evolução da nota ponderada</div>
             ${graphGeneralAssessment()}
           </section>
           <section class="mini-panel surface">
-            <div class="mini-panel-head">${svgIcon("grid")} Distribuição de status das auditorias</div>
-            ${graphStatusSummary()}
+            <div class="mini-panel-head">${svgIcon("grid")} Distribuição das NCs por risco</div>
+            ${graphRiskSummary()}
           </section>
           <section class="mini-panel surface">
             <div class="mini-panel-head">${svgIcon("audit")} Auditorias realizadas</div>
@@ -1661,6 +1781,1278 @@ function chartsPage() {
           `}
       </aside>`}
     </div>
+  `;
+}
+
+function reportPreviousMonthId() {
+  const available = availableMonthIds();
+  const currentIndex = available.indexOf(currentMonthId);
+  return currentIndex > 0 ? available[currentIndex - 1] : available[0] || currentMonthId;
+}
+
+function reportMonthLabel(monthId) {
+  const monthNames = {
+    jan: "Janeiro",
+    fev: "Fevereiro",
+    mar: "Março",
+    abr: "Abril",
+    mai: "Maio",
+    jun: "Junho",
+    jul: "Julho",
+    ago: "Agosto",
+    set: "Setembro",
+    out: "Outubro",
+    nov: "Novembro",
+    dez: "Dezembro"
+  };
+  const [month, year] = String(monthId).split("/");
+  return `${monthNames[month] || month}/${year ? `20${year}` : "2026"}`;
+}
+
+function reportShortMonthLabel(monthId) {
+  const monthNames = {
+    jan: "Jan",
+    fev: "Fev",
+    mar: "Mar",
+    abr: "Abr",
+    mai: "Mai",
+    jun: "Jun",
+    jul: "Jul",
+    ago: "Ago",
+    set: "Set",
+    out: "Out",
+    nov: "Nov",
+    dez: "Dez"
+  };
+  const [month, year] = String(monthId).split("/");
+  return `${monthNames[month] || month}/${year || "26"}`;
+}
+
+function reportQuestionTotals() {
+  return areaData.reduce(
+    (totals, area) => {
+      const counts = countsFromRows(questionRowsForArea(area));
+      totals.C += counts.C;
+      totals.NC += counts.NC;
+      totals.X += counts.X;
+      return totals;
+    },
+    { C: 0, NC: 0, X: 0 }
+  );
+}
+
+function reportActionTotals() {
+  return areaData.reduce(
+    (totals, area) => {
+      const stats = actionPlanStats(area);
+      totals.total += stats.total;
+      totals.pending += stats.pending;
+      totals.inProgress += stats.inProgress;
+      totals.done += stats.done;
+      totals.late += stats.late;
+      totals.recurrent += stats.recurrent;
+      totals.improved += stats.improved;
+      totals.noEffect += stats.noEffect;
+      totals.critical += stats.critical;
+      return totals;
+    },
+    { total: 0, pending: 0, inProgress: 0, done: 0, late: 0, recurrent: 0, improved: 0, noEffect: 0, critical: 0 }
+  );
+}
+
+function reportHeader(title, subtitle, period) {
+  return `
+    <header class="report-header-block">
+      <div class="report-brand-row">
+        <div class="report-idvida-mark">ID<span>VIDA</span></div>
+        <span class="report-brand-divider"></span>
+        <div class="report-einstein-mark">
+          <img src="assets/einstein-logo-menu.png?v=report-logo-1" alt="" aria-hidden="true" />
+          <span>Hospital Einstein<br />Morumbi</span>
+        </div>
+      </div>
+      <div class="report-title-copy">
+        <span>AUDITORIA INTERNA</span>
+        <h2>${title}</h2>
+        <p>${subtitle}</p>
+      </div>
+      <div class="report-period-card">
+        <span>Período analisado</span>
+        <strong>${period}</strong>
+      </div>
+    </header>
+  `;
+}
+
+function reportAuditInfo() {
+  const rows = [
+    ["Auditoria Interna realizada por:", "Equipe de Qualidade / Segurança dos Alimentos"],
+    ["Reunião realizada com:", "Responsáveis das áreas auditadas"],
+    ["Periodicidade da Auditoria Interna:", "Mensal"],
+    ["Data da Auditoria Interna:", "30/08/2026"],
+    ["Horário da Auditoria Interna:", "08h00 às 17h00"]
+  ];
+
+  return `
+    <section class="report-info-card">
+      <div>
+        <span>Unidade auditada</span>
+        <strong>Hospital Einstein - Morumbi</strong>
+      </div>
+      <div class="report-info-grid">
+        ${rows
+          .map(
+            ([label, value]) => `
+              <div class="report-info-row">
+                <span>${label}</span>
+                <strong>${value}</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function reportKpiCard(label, value, note, tone = "neutral") {
+  return `
+    <div class="report-kpi is-${tone}">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <small>${note}</small>
+    </div>
+  `;
+}
+
+function reportDeltaText(delta) {
+  if (delta > 0) return `+${formatScore(delta)}`;
+  if (delta < 0) return `-${formatScore(Math.abs(delta))}`;
+  return "0,0";
+}
+
+function reportEffectLabel(effect) {
+  const labels = {
+    positive: "Com melhora",
+    warning: "Melhora parcial",
+    pending: "Em execução",
+    danger: "Sem efeito",
+    neutral: "Sem histórico"
+  };
+  return labels[effect.tone] || effect.label;
+}
+
+function reportStatusBadge(statusKey) {
+  const status = statusMap[statusKey] || statusMap.moderado;
+  return `<span class="report-status-badge" style="--badge-color:${status.color}">${status.label}</span>`;
+}
+
+function reportComparisonStatus(area, stats, delta) {
+  const effect = actionEffectForArea(area, stats, delta);
+  return `<span class="report-action-effect is-${effect.tone}">${reportEffectLabel(effect)}</span>`;
+}
+
+function reportBarChart({ comparison = false } = {}) {
+  const previousId = reportPreviousMonthId();
+  const currentValues = monthLines[currentMonthId] || areaData.map((area) => area.score);
+  const previousValues = monthLines[previousId] || areaData.map((area) => area.last);
+  const width = 1080;
+  const height = comparison ? 430 : 410;
+  const pad = { left: 48, right: 58, top: 48, bottom: 116 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const plotBottom = pad.top + innerH;
+  const slotW = innerW / areaData.length;
+  const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
+  const ticks = [0, 2, 4, 6, 8, 10];
+  const currentLabel = reportMonthLabel(currentMonthId);
+  const previousLabel = reportMonthLabel(previousId);
+
+  return `
+    <div class="report-chart-frame">
+      <svg class="report-bar-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo das notas por área" : "Notas por área no mês"}">
+        ${ticks
+          .map(
+            (tick) => `
+              <line x1="${pad.left}" y1="${yFor(tick)}" x2="${width - pad.right}" y2="${yFor(tick)}" stroke="${tick === 8 ? "#bdddc3" : "#e5ebf3"}" stroke-width="${tick === 8 ? 1.8 : 1}" />
+              <text x="${pad.left - 14}" y="${yFor(tick) + 4}" text-anchor="end" fill="#566781" font-size="11" font-weight="650">${tick}</text>
+            `
+          )
+          .join("")}
+        <text x="${width - pad.right + 8}" y="${yFor(8) + 4}" fill="#2f8f46" font-size="12" font-weight="760">Meta 8,0</text>
+        <g class="report-chart-legend">
+          ${comparison
+            ? `
+              <rect x="${pad.left}" y="12" width="22" height="6" rx="3" fill="#a9b8ca"></rect>
+              <text x="${pad.left + 30}" y="19" fill="#425474" font-size="12" font-weight="700">${previousLabel}</text>
+              <rect x="${pad.left + 150}" y="12" width="22" height="6" rx="3" fill="#0a6cff"></rect>
+              <text x="${pad.left + 180}" y="19" fill="#425474" font-size="12" font-weight="700">${currentLabel}</text>
+            `
+            : `
+              <rect x="${pad.left}" y="12" width="22" height="6" rx="3" fill="#0a6cff"></rect>
+              <text x="${pad.left + 30}" y="19" fill="#425474" font-size="12" font-weight="700">${currentLabel}</text>
+            `}
+        </g>
+        ${areaData
+          .map((area, index) => {
+            const center = pad.left + index * slotW + slotW / 2;
+            const current = currentValues[index] ?? area.score;
+            const previous = previousValues[index] ?? area.last;
+            const currentBarWidth = comparison ? 20 : 34;
+            const previousBarWidth = 20;
+            const currentX = comparison ? center + 4 : center - currentBarWidth / 2;
+            const previousX = center - previousBarWidth - 4;
+            const currentY = yFor(current);
+            const previousY = yFor(previous);
+            const currentFill = current < 7 ? "#ee2f36" : "#0a6cff";
+            return `
+              ${comparison ? `<rect x="${previousX}" y="${previousY}" width="${previousBarWidth}" height="${plotBottom - previousY}" rx="7" fill="#a9b8ca"></rect>` : ""}
+              <rect x="${currentX}" y="${currentY}" width="${currentBarWidth}" height="${plotBottom - currentY}" rx="7" fill="${currentFill}"></rect>
+              <text x="${comparison ? currentX + currentBarWidth / 2 : center}" y="${currentY - 8}" text-anchor="middle" fill="${currentFill}" font-size="11" font-weight="780">${formatScore(current)}</text>
+              <text transform="translate(${center}, ${plotBottom + 46}) rotate(-35)" text-anchor="end" fill="#071a3d" font-size="10.5" font-weight="760">
+                ${chartLabelLines(area.name)
+                  .map((line, lineIndex) => `<tspan x="0" dy="${lineIndex === 0 ? 0 : 13}">${escapeHtml(line)}</tspan>`)
+                  .join("")}
+              </text>
+            `;
+          })
+          .join("")}
+      </svg>
+    </div>
+  `;
+}
+
+function reportMonthlyAreaRows() {
+  return areaData
+    .map((area) => {
+      const stats = actionPlanStats(area);
+      return `
+        <tr>
+          <td><strong>${escapeHtml(area.name)}</strong></td>
+          <td>${formatScore(area.score)}</td>
+          <td>${area.score >= 8 ? "Dentro da meta" : "Abaixo da meta"}</td>
+          <td>${area.ncs}</td>
+          <td>${reportStatusBadge(area.status)}</td>
+          <td>${stats.pending + stats.inProgress + stats.late} abertos</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function reportComparativeAreaRows() {
+  const previousId = reportPreviousMonthId();
+  const previousValues = monthLines[previousId] || areaData.map((area) => area.last);
+  return areaData
+    .map((area, index) => {
+      const previous = previousValues[index] ?? area.last;
+      const delta = area.score - previous;
+      const stats = actionPlanStats(area);
+      const deltaClass = delta >= 0 ? "positive" : "danger";
+      return `
+        <tr>
+          <td><strong>${escapeHtml(area.name)}</strong></td>
+          <td>${formatScore(previous)}</td>
+          <td>${formatScore(area.score)}</td>
+          <td><span class="report-delta is-${deltaClass}">${reportDeltaText(delta)}</span></td>
+          <td>${stats.total} planos</td>
+          <td>${reportComparisonStatus(area, stats, delta)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function reportPlanRows() {
+  const statusLabels = {
+    pendente: "Pendente",
+    andamento: "Em andamento",
+    concluido: "Concluído",
+    atrasado: "Atrasado"
+  };
+  return areaData
+    .flatMap((area) =>
+      actionPlansForArea(area).slice(0, 2).map((plan) => ({
+        area,
+        plan
+      }))
+    )
+    .slice(0, 8)
+    .map(({ area, plan }) => {
+      const tone = plan.status === "concluido" ? "positive" : plan.status === "atrasado" ? "danger" : plan.status === "andamento" ? "pending" : "warning";
+      return `
+        <tr>
+          <td><strong>${escapeHtml(area.name)}</strong></td>
+          <td>${escapeHtml(plan.title)}</td>
+          <td>${escapeHtml(plan.owner)}</td>
+          <td><span class="report-action-effect is-${tone}">${statusLabels[plan.status] || plan.status}</span></td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function reportPriorityRows() {
+  return actionImpactRows()
+    .slice(0, 5)
+    .map((row, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td><strong>${escapeHtml(row.area.name)}</strong></td>
+        <td>${formatScore(row.area.score)}</td>
+        <td>${row.stats.recurrent} recorrentes</td>
+        <td>${row.stats.pending + row.stats.inProgress + row.stats.late} abertos</td>
+        <td>${Math.round(row.priority)}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+function monthlyReportPage() {
+  const totals = reportQuestionTotals();
+  const actionTotals = reportActionTotals();
+  const belowMeta = areaData.filter((area) => area.score < 8).length;
+  const openActions = actionTotals.pending + actionTotals.inProgress + actionTotals.late;
+  const priority = actionImpactRows()[0];
+
+  return `
+    <article class="audit-report-sheet">
+      <div class="report-top-rule"></div>
+      ${reportHeader(
+        "Relatório Consolidado da Auditoria do Mês",
+        "Boas Práticas de Manipulação de Alimentos",
+        reportMonthLabel(currentMonthId)
+      )}
+      ${reportAuditInfo()}
+      <section class="report-kpi-grid">
+        ${reportKpiCard("Nota geral", formatScore(generalScore()), "média das 12 áreas", "good")}
+        ${reportKpiCard("Áreas auditadas", areaData.length, "setores avaliados no mês", "blue")}
+        ${reportKpiCard("Não conformidades", totals.NC, "itens classificados como NC", "warning")}
+        ${reportKpiCard("Planos abertos", openActions, "pendentes, em andamento ou atrasados", "blue")}
+        ${reportKpiCard("Abaixo da meta", belowMeta, "áreas abaixo de 8,0", belowMeta ? "danger" : "good")}
+      </section>
+      <section class="report-section">
+        <div class="report-section-head">
+          <div>
+            <h3>Avaliação geral por área</h3>
+            <p>Notas finais do mês com referência visual à meta 8,0.</p>
+          </div>
+        </div>
+        ${reportBarChart()}
+      </section>
+      <div class="report-two-columns">
+        <section class="report-section">
+          <div class="report-section-head">
+            <div>
+              <h3>Resumo por área auditada</h3>
+              <p>Visão consolidada de nota, risco, NCs e plano de ação.</p>
+            </div>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead><tr><th>Área</th><th>Nota</th><th>Meta</th><th>NCs</th><th>Risco</th><th>Plano</th></tr></thead>
+              <tbody>${reportMonthlyAreaRows()}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="report-section">
+          <div class="report-section-head">
+            <div>
+              <h3>Planos de ação vinculados</h3>
+              <p>Amostra dos planos associados às NCs registradas.</p>
+            </div>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead><tr><th>Área</th><th>Ação</th><th>Responsável</th><th>Status</th></tr></thead>
+              <tbody>${reportPlanRows()}</tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <section class="report-analysis-box">
+        <h3>Leitura executiva</h3>
+        <p>
+          A nota geral de ${formatScore(generalScore())} indica desempenho acima da meta mensal. A principal oportunidade de melhoria está em ${escapeHtml(priority.area.name)}, que combina nota ${formatScore(priority.area.score)}, ${priority.stats.recurrent} NCs recorrentes e ${priority.stats.pending + priority.stats.inProgress + priority.stats.late} planos ainda abertos.
+        </p>
+      </section>
+    </article>
+  `;
+}
+
+function comparativeReportPage() {
+  const previousId = reportPreviousMonthId();
+  const previousValues = monthLines[previousId] || areaData.map((area) => area.last);
+  const previousAverage = monthAverage(previousId) ?? generalScore();
+  const currentAverage = monthAverage(currentMonthId) ?? generalScore();
+  const delta = currentAverage - previousAverage;
+  const improvedAreas = areaData.filter((area, index) => area.score > (previousValues[index] ?? area.last)).length;
+  const worsenedAreas = areaData.filter((area, index) => area.score < (previousValues[index] ?? area.last)).length;
+  const actionTotals = reportActionTotals();
+  const priority = actionImpactRows()[0];
+
+  return `
+    <article class="audit-report-sheet">
+      <div class="report-top-rule"></div>
+      ${reportHeader(
+        "Relatório Analítico Comparativo",
+        "Mês atual x mês anterior",
+        `${reportMonthLabel(currentMonthId)} x ${reportMonthLabel(previousId)}`
+      )}
+      ${reportAuditInfo()}
+      <section class="report-kpi-grid">
+        ${reportKpiCard("Variação geral", reportDeltaText(delta), `${reportShortMonthLabel(currentMonthId)} contra ${reportShortMonthLabel(previousId)}`, delta >= 0 ? "good" : "danger")}
+        ${reportKpiCard("Áreas com melhora", improvedAreas, "nota aumentou no mês atual", "good")}
+        ${reportKpiCard("Áreas em atenção", worsenedAreas, "nota caiu frente ao mês anterior", worsenedAreas ? "danger" : "good")}
+        ${reportKpiCard("Ações com efeito", actionTotals.improved, "planos marcados com melhora", "blue")}
+        ${reportKpiCard("Sem efeito", actionTotals.noEffect, "ações sem melhora observada", actionTotals.noEffect ? "warning" : "good")}
+      </section>
+      <section class="report-section">
+        <div class="report-section-head">
+          <div>
+            <h3>Comparativo de notas por área</h3>
+            <p>Barras em pares para comparar o mês anterior com o mês atual.</p>
+          </div>
+        </div>
+        ${reportBarChart({ comparison: true })}
+      </section>
+      <div class="report-two-columns">
+        <section class="report-section">
+          <div class="report-section-head">
+            <div>
+              <h3>Leitura comparativa por área</h3>
+              <p>Mostra onde houve melhora, queda ou estabilidade.</p>
+            </div>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead><tr><th>Área</th><th>${reportShortMonthLabel(previousId)}</th><th>${reportShortMonthLabel(currentMonthId)}</th><th>Variação</th><th>Plano</th><th>Leitura</th></tr></thead>
+              <tbody>${reportComparativeAreaRows()}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="report-section">
+          <div class="report-section-head">
+            <div>
+              <h3>Prioridade das ações</h3>
+              <p>Ranking para indicar onde agir primeiro.</p>
+            </div>
+          </div>
+          <div class="report-table-wrap">
+            <table class="report-table">
+              <thead><tr><th>#</th><th>Área</th><th>Nota</th><th>NCs recorrentes</th><th>Planos</th><th>Prioridade</th></tr></thead>
+              <tbody>${reportPriorityRows()}</tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <section class="report-analysis-box">
+        <h3>Interpretação e direcionamento</h3>
+        <p>
+          O comparativo aponta ganho geral de ${reportDeltaText(delta)} ponto. A priorização deve começar por ${escapeHtml(priority.area.name)}, pois a área reúne maior oportunidade de melhoria: nota abaixo da meta, recorrência de NCs e planos ainda em aberto. Esse bloco responde diretamente onde agir primeiro, não apenas se a nota subiu ou caiu.
+        </p>
+      </section>
+    </article>
+  `;
+}
+
+function reportsPage() {
+  const isComparison = state.reportKind === "comparison";
+  return `
+    <section class="reports-page">
+      <div class="report-switch surface" aria-label="Tipo de relatório">
+        <button class="${!isComparison ? "is-active" : ""}" data-report-kind="monthly">Consolidado do mês</button>
+        <button class="${isComparison ? "is-active" : ""}" data-report-kind="comparison">Comparativo mês anterior</button>
+      </div>
+      ${isComparison ? comparativeReportPage() : monthlyReportPage()}
+    </section>
+  `;
+}
+
+function reportSelectedArea() {
+  return areaById(state.selectedArea || "area-residuos");
+}
+
+function reportAreaOptions(selectedId) {
+  return areaData
+    .map((area) => `<option value="${area.id}" ${area.id === selectedId ? "selected" : ""}>${escapeHtml(area.name)}</option>`)
+    .join("");
+}
+
+function reportOpenActions(stats) {
+  return stats.pending + stats.inProgress + stats.late;
+}
+
+function reportAreaTotals(area) {
+  const rows = questionRowsForArea(area);
+  const counts = countsFromRows(rows);
+  return {
+    ...counts,
+    total: rows.length,
+    evaluated: counts.C + counts.NC
+  };
+}
+
+function reportPreviousAreaTotals(area) {
+  const current = reportAreaTotals(area);
+  const delta = area.score - area.last;
+  const ncShift = Math.max(1, Math.round(Math.abs(delta) * 2));
+  let previousNc = current.NC;
+  if (delta < 0) previousNc = Math.max(0, current.NC - ncShift);
+  if (delta > 0) previousNc = Math.min(current.evaluated, current.NC + ncShift);
+  return {
+    C: Math.max(0, current.evaluated - previousNc),
+    NC: previousNc,
+    X: current.X,
+    total: current.total,
+    evaluated: current.evaluated
+  };
+}
+
+function reportToneForStatus(statusKey) {
+  if (statusKey === "satisfatorio") return "good";
+  if (statusKey === "moderado") return "moderate";
+  if (statusKey === "medio") return "medium";
+  return "danger";
+}
+
+function reportToneForRisk(level) {
+  if (level === "baixo") return "good";
+  if (level === "moderado") return "moderate";
+  if (level === "medio") return "medium";
+  if (level === "critico") return "danger";
+  return "neutral";
+}
+
+function reportTag(label, tone = "neutral") {
+  return `<span class="report-doc-tag is-${tone}">${escapeHtml(label)}</span>`;
+}
+
+function reportStatusTag(statusKey) {
+  const status = statusMap[statusKey] || statusMap.moderado;
+  return reportTag(status.label, reportToneForStatus(statusKey));
+}
+
+function reportStatusMarker(statusKey) {
+  const status = statusMap[statusKey] || statusMap.moderado;
+  return `<span class="report-status-marker is-${reportToneForStatus(statusKey)}" title="${escapeHtml(status.label)}" aria-label="${escapeHtml(status.label)}"></span>`;
+}
+
+function reportBlockLabel(label) {
+  return reportCompactText(label, 32).toUpperCase();
+}
+
+function reportRiskTag(level) {
+  const meta = riskMeta[level] || riskMeta.none;
+  return reportTag(meta.label, reportToneForRisk(level));
+}
+
+function reportActionStatusTag(status) {
+  const labels = {
+    pendente: ["Pendente", "medium"],
+    andamento: ["Em andamento", "neutral"],
+    concluido: ["Concluído", "good"],
+    atrasado: ["Atrasado", "danger"]
+  };
+  const [label, tone] = labels[status] || [status || "Pendente", "neutral"];
+  return reportTag(label, tone);
+}
+
+function reportEffectTag(plan) {
+  if (plan.improved === true) return reportTag("Melhora observada", "good");
+  if (plan.improved === false) return reportTag("Sem melhora comprovada", "danger");
+  return reportTag("Em acompanhamento", "neutral");
+}
+
+function reportAuditWindow() {
+  return {
+    date: "30/08/2026",
+    start: "08h15",
+    end: "09h40",
+    duration: "1h25"
+  };
+}
+
+function reportDocHeader(title, area, showMeta = false) {
+  const audit = reportAuditWindow();
+  return `
+    <header class="report-doc-header">
+      <div class="report-doc-brand">
+        <span class="report-doc-idvida">ID<span>VIDA</span></span>
+        <span class="report-doc-separator"></span>
+        <span class="report-doc-hospital">
+          <img src="assets/einstein-logo-menu.png?v=doc-report-1" alt="" aria-hidden="true" />
+          <span>Hospital Einstein<br />Morumbi</span>
+        </span>
+      </div>
+      <div class="report-doc-heading">
+        <span>AUDITORIA INTERNA - BOAS PRÁTICAS DE MANIPULAÇÃO DE ALIMENTOS</span>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(area.name)} · ${reportMonthLabel(currentMonthId)}</small>
+      </div>
+      ${showMeta ? `<div class="report-doc-meta-strip">
+        <span><strong>Unidade</strong>Hospital Einstein - Morumbi</span>
+        <span><strong>Área</strong>${escapeHtml(area.name)}</span>
+        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
+        <span><strong>Responsável</strong>Liderança da área auditada</span>
+        <span><strong>Data</strong>${audit.date}</span>
+        <span><strong>Início</strong>${audit.start}</span>
+        <span><strong>Término</strong>${audit.end}</span>
+        <span><strong>Duração</strong>${audit.duration}</span>
+      </div>` : ""}
+    </header>
+  `;
+}
+
+function reportDocFooter(page, total) {
+  return `
+    <footer class="report-doc-footer">
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
+      <span>Página ${page} de ${total}</span>
+    </footer>
+  `;
+}
+
+function reportPage(title, area, page, total, content) {
+  return `
+    <article class="report-doc-page">
+      ${reportDocHeader(title, area, page === 1)}
+      <main class="report-doc-body">${content}</main>
+      ${reportDocFooter(page, total)}
+    </article>
+  `;
+}
+
+function reportSection(number, title, content) {
+  return `
+    <section class="report-doc-section">
+      <h2><span>${number}</span>${escapeHtml(title)}</h2>
+      ${content}
+    </section>
+  `;
+}
+
+function reportDocTable(headers, rows, extraClass = "") {
+  const body = rows.length
+    ? rows
+        .map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
+        .join("")
+    : `<tr><td colspan="${headers.length}">Sem registros para exibir.</td></tr>`;
+  return `
+    <div class="report-doc-table-wrap">
+      <table class="report-doc-table ${extraClass}">
+        <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function reportToolbar(isComparison, area) {
+  return `
+    <div class="report-toolbar surface" aria-label="Configurações do relatório">
+      <div class="report-tabs">
+        <button class="${!isComparison ? "is-active" : ""}" data-report-kind="monthly">Consolidado do mês</button>
+        <button class="${isComparison ? "is-active" : ""}" data-report-kind="comparison">Comparativo analítico</button>
+      </div>
+      <label class="report-area-picker">
+        <span>Área do relatório</span>
+        <select data-report-area-select>
+          ${reportAreaOptions(area.id)}
+        </select>
+      </label>
+    </div>
+  `;
+}
+
+function reportMetaRows(area, typeLabel) {
+  return [
+    ["Unidade hospitalar", "Hospital Einstein - Morumbi", "Tipo de relatório", typeLabel],
+    ["Área auditada", escapeHtml(area.name), "Base normativa", "Portaria SMS nº 2.619/2011"],
+    ["Auditoria realizada por", "Equipe de Qualidade / Segurança dos Alimentos", "Reunião realizada com", "Responsáveis da área auditada"],
+    ["Periodicidade", "Mensal", "Data e horário", "30/08/2026 · 08h00 às 17h00"]
+  ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
+}
+
+function reportSummaryRows(area) {
+  const totals = reportAreaTotals(area);
+  const stats = actionPlanStats(area);
+  const conformity = totals.evaluated ? Math.round((totals.C / totals.evaluated) * 100) : 0;
+  return [
+    ["Nota final da área", `<strong>${formatScore(area.score)}/10</strong>`, "Classificação", reportStatusTag(area.status)],
+    ["Itens avaliados", String(totals.total), "Conformidade", `${conformity}% dos itens avaliados`],
+    ["Conformes", String(totals.C), "Não conformidades", `<strong>${totals.NC}</strong>`],
+    ["Não avaliados", String(totals.X), "Planos gerados", `${stats.total} (${reportOpenActions(stats)} abertos)`]
+  ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
+}
+
+function reportHighRiskCount(area) {
+  const high = riskSummary(area).find((item) => item.level === "critico");
+  return high ? high.count : 0;
+}
+
+function reportConformityPercent(area) {
+  const totals = reportAreaTotals(area);
+  return totals.evaluated ? Math.round((totals.C / totals.evaluated) * 100) : 0;
+}
+
+function reportMiniKpis(area, mode = "monthly") {
+  const totals = reportAreaTotals(area);
+  const stats = actionPlanStats(area);
+  const delta = area.score - area.last;
+  const kpis = mode === "comparison"
+    ? [
+        { label: "Mês anterior", value: formatScore(area.last), note: reportShortMonthLabel(reportPreviousMonthId()), tone: "neutral" },
+        { label: "Mês atual", value: formatScore(area.score), note: reportShortMonthLabel(currentMonthId), tone: area.score >= 8 ? "good" : "danger" },
+        { label: "Variação", value: reportDeltaText(delta), note: delta >= 0 ? "melhora" : "queda", tone: delta >= 0 ? "good" : "danger" },
+        { label: "NCs atuais", value: String(totals.NC), note: `${reportHighRiskCount(area)} de risco alto`, tone: totals.NC ? "medium" : "good" },
+        { label: "Planos avaliados", value: String(stats.total), note: `${stats.improved} com melhora`, tone: stats.noEffect ? "medium" : "neutral" }
+      ]
+    : [
+        { label: "Nota da área", value: formatScore(area.score), note: "/10", tone: area.score >= 8 ? "good" : "danger" },
+        { label: "Conformidade", value: `${reportConformityPercent(area)}%`, note: "itens conformes", tone: reportConformityPercent(area) >= 80 ? "good" : "medium" },
+        { label: "NCs", value: String(totals.NC), note: "não conformidades", tone: totals.NC ? "medium" : "good" },
+        { label: "Risco alto", value: String(reportHighRiskCount(area)), note: "NCs críticas", tone: reportHighRiskCount(area) ? "danger" : "good" },
+        { label: "Planos vigentes", value: String(stats.total), note: `${reportOpenActions(stats)} abertos`, tone: reportOpenActions(stats) ? "neutral" : "good" },
+        { label: "Duração", value: reportAuditWindow().duration, note: "tempo auditado", tone: "neutral" }
+      ];
+
+  return `
+    <div class="report-mini-kpis">
+      ${kpis
+        .map(
+          (item) => `
+            <div class="report-mini-kpi is-${item.tone}">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value)}</strong>
+              <small>${escapeHtml(item.note)}</small>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function reportLegendBlock() {
+  const riskItems = [
+    ["Baixo", "good"],
+    ["Moderado", "moderate"],
+    ["Médio", "medium"],
+    ["Alto", "danger"]
+  ];
+  const answerItems = [
+    ["C", "Conforme", "good"],
+    ["NC", "Não conforme", "danger"],
+    ["X", "Não avaliado", "neutral"]
+  ];
+  return `
+    <div class="report-doc-legend" aria-label="Legenda do relatório">
+      <div>
+        <strong>Risco / classificação</strong>
+        ${riskItems.map(([label, tone]) => `<span class="report-legend-item is-${tone}"><i></i>${label}</span>`).join("")}
+      </div>
+      <div>
+        <strong>Respostas</strong>
+        ${answerItems.map(([code, label, tone]) => `<span class="report-legend-item is-${tone}"><b>${code}</b>${label}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function reportActionFootnote() {
+  return `
+    <p class="report-footnote">
+      Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da área.
+    </p>
+  `;
+}
+
+function reportLegendNote() {
+  return `
+    <p class="report-footnote">
+      Legenda: C = Conforme; NC = Não Conforme; X = Não Avaliado. A classificação de risco segue a régua Baixo, Moderado, Médio e Alto.
+    </p>
+  `;
+}
+
+function reportMonthlyInsight(area) {
+  const totals = reportAreaTotals(area);
+  const stats = actionPlanStats(area);
+  const worstBlocks = blockSummaries(area)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 2)
+    .map((block) => block.title);
+  const metaText = area.score >= 8
+    ? "A área permanece dentro da meta mínima definida para o ciclo mensal."
+    : "A área está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
+  return `
+    <div class="report-note-box">
+      <strong>Leitura do auditor</strong>
+      <p>${metaText} Foram registradas ${totals.NC} não conformidades e ${stats.total} planos de ação vinculados. Os blocos que mais exigem atenção neste mês são: ${escapeHtml(worstBlocks.join(" e "))}.</p>
+    </div>
+  `;
+}
+
+function reportShortChartLabel(label) {
+  const clean = String(label || "");
+  return clean.length > 20 ? `${clean.slice(0, 19)}...` : clean;
+}
+
+function reportCompactText(value, maxLength = 86) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength - 3).trim()}...`;
+}
+
+function reportSvgLabelLines(label, maxLength = 14) {
+  const words = String(label || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.slice(0, 3);
+}
+
+function reportPreviousBlockScore(area, block, index) {
+  const delta = area.score - area.last;
+  const adjustment = ((index % 3) - 1) * 0.12;
+  return clamp(block.score - delta + adjustment, 4.2, 9.8);
+}
+
+function reportBlockScoreChart(area, comparison = false) {
+  const blocks = blockSummaries(area);
+  if (!blocks.length) {
+    return `<div class="report-empty-chart">Sem blocos de checklist cadastrados para esta área.</div>`;
+  }
+
+  const width = 760;
+  const height = 238;
+  const pad = { left: 42, right: 72, top: comparison ? 34 : 30, bottom: 30 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const plotBottom = pad.top + innerH;
+  const slot = innerW / blocks.length;
+  const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
+  const barW = Math.min(38, slot * 0.38);
+  const ticks = [0, 5, 8, 10];
+  const previousPoints = blocks.map((block, index) => {
+    const center = pad.left + index * slot + slot / 2;
+    return `${center},${yFor(reportPreviousBlockScore(area, block, index))}`;
+  });
+
+  return `
+    <figure class="report-doc-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
+        ${ticks
+          .map(
+            (tick) => `
+              <line x1="${pad.left}" y1="${yFor(tick)}" x2="${width - pad.right}" y2="${yFor(tick)}" stroke="${tick === 8 ? "#9fceb0" : "#e2e8f0"}" stroke-width="${tick === 8 ? 1.4 : 1}" />
+              <text x="${pad.left - 10}" y="${yFor(tick) + 4}" text-anchor="end" font-size="9.5" font-weight="700" fill="#526174">${tick}</text>
+            `
+          )
+          .join("")}
+        <text x="${width - pad.right + 6}" y="${yFor(8) - 5}" text-anchor="start" font-size="10" font-weight="760" fill="#2d8a43">Meta 8,0</text>
+        ${comparison ? `
+          <polyline points="${previousPoints.join(" ")}" fill="none" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        ` : ""}
+        ${blocks
+          .map((block, index) => {
+            const center = pad.left + index * slot + slot / 2;
+            const current = block.score;
+            const previous = reportPreviousBlockScore(area, block, index);
+            const currentY = yFor(current);
+            const previousY = yFor(previous);
+            const barTone = current < 7 ? "#ee2f36" : "#0a6cff";
+            return `
+              ${comparison ? `
+                <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
+                <text x="${center}" y="${previousY - 8}" text-anchor="middle" font-size="8.8" font-weight="760" fill="#7b8797">${formatScore(previous)}</text>
+              ` : ""}
+              <rect x="${center - barW / 2}" y="${currentY}" width="${barW}" height="${plotBottom - currentY}" rx="5" fill="${barTone}"></rect>
+              <text x="${center}" y="${currentY - 6}" text-anchor="middle" font-size="9.6" font-weight="780" fill="${barTone}">${formatScore(current)}</text>
+            `;
+          })
+          .join("")}
+        ${comparison ? `
+          <line x1="${pad.left}" y1="8" x2="${pad.left + 18}" y2="8" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round"></line>
+          <text x="${pad.left + 20}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(reportPreviousMonthId())}</text>
+          <rect x="${pad.left + 86}" y="5" width="14" height="6" rx="3" fill="#0a6cff"></rect>
+          <text x="${pad.left + 106}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(currentMonthId)}</text>
+        ` : ""}
+      </svg>
+      <div class="report-chart-labels" style="--items:${blocks.length}">
+        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(reportBlockLabel(block.title))}</span>`).join("")}
+      </div>
+      <figcaption>${comparison ? "Figura 1 - Comparativo do desempenho por bloco." : "Figura 1 - Desempenho dos blocos no mês vigente."}</figcaption>
+    </figure>
+  `;
+}
+
+function reportBlockRows(area) {
+  return blockSummaries(area).map((block) => {
+    const counts = block.sourceCounts || { C: 0, NC: 0, X: 0 };
+    return [
+      `<strong>${escapeHtml(block.title)}</strong>`,
+      String(block.questions.length),
+      String(counts.C),
+      String(counts.NC),
+      String(counts.X),
+      `<strong>${formatScore(block.score)}</strong>`,
+      reportStatusMarker(block.status)
+    ];
+  });
+}
+
+function reportRiskWeight(row) {
+  const weights = { critico: 4, medio: 3, moderado: 2, baixo: 1, none: 0 };
+  return weights[row.riskLevel] || 0;
+}
+
+function reportNcRows(area, limit = 8) {
+  return questionRowsForArea(area)
+    .filter((row) => row.answer === "NC")
+    .sort((a, b) => reportRiskWeight(b) - reportRiskWeight(a) || a.number - b.number)
+    .slice(0, limit);
+}
+
+function reportObservationForQuestion(row) {
+  const text = `${row.text} ${row.blockTitle}`.toLowerCase();
+  if (text.includes("resíduo") || text.includes("lixo")) return "Falha em segregação ou armazenamento temporário.";
+  if (text.includes("validade") || text.includes("documento")) return "Registro pendente ou documento sem atualização.";
+  if (text.includes("temperatura") || text.includes("conservação")) return "Controle de tempo e temperatura a regularizar.";
+  if (text.includes("higien")) return "Rotina de higienização sem evidência suficiente.";
+  return "NC identificada durante a inspeção do setor.";
+}
+
+function reportPlanForQuestion(area, row, index) {
+  const plans = actionPlansForArea(area);
+  const match = plans.find((plan) => row.blockTitle.toLowerCase().includes(String(plan.block || "").toLowerCase()));
+  return match || plans[index % Math.max(1, plans.length)] || null;
+}
+
+function reportPlanShortTitle(plan, row) {
+  const source = plan?.title || `Plano para ${row?.blockTitle || "item auditado"}`;
+  const compact = source.replace(/^Corrigir não conformidades de\s+/i, "Corrigir ");
+  return reportCompactText(compact, 50);
+}
+
+function reportNcDetailRows(area) {
+  const rows = reportNcRows(area, 10);
+  return rows.map((row, index) => {
+    const plan = reportPlanForQuestion(area, row, index);
+    return [
+      `${String(row.number).padStart(2, "0")}`,
+      `<strong>${escapeHtml(row.blockTitle)}</strong>`,
+      escapeHtml(reportCompactText(row.text, 58)),
+      reportRiskTag(row.riskLevel),
+      escapeHtml(reportCompactText(reportObservationForQuestion(row), 52)),
+      escapeHtml(reportPlanShortTitle(plan, row))
+    ];
+  });
+}
+
+function reportEvidenceGrid(area) {
+  const rows = reportNcRows(area, 4);
+  if (!rows.length) return `<p class="report-muted">Sem evidências fotográficas vinculadas para esta área.</p>`;
+  return `
+    <div class="${rows.length === 1 ? "report-evidence-list" : "report-evidence-grid"}">
+      ${rows
+        .map(
+          (row, index) => `
+            <figure class="report-evidence-card">
+              <div class="report-evidence-photo">EVIDÊNCIA ${String(index + 1).padStart(2, "0")}</div>
+              <figcaption><strong>Item ${String(row.number).padStart(2, "0")}</strong>${escapeHtml(reportCompactText(row.blockTitle, 58))}</figcaption>
+            </figure>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function reportPlanRowsForArea(area) {
+  const dueDates = ["05/09/2026", "10/09/2026", "16/09/2026", "20/09/2026"];
+  return actionPlansForArea(area).map((plan, index) => [
+    `<strong>${escapeHtml(plan.block)}</strong>`,
+    escapeHtml(reportCompactText(plan.title, 54)),
+    escapeHtml(plan.owner),
+    dueDates[index % dueDates.length],
+    reportActionStatusTag(plan.status)
+  ]);
+}
+
+function reportConclusion(area) {
+  const totals = reportAreaTotals(area);
+  const stats = actionPlanStats(area);
+  const statusText = area.score >= 8 ? "resultado satisfatório para o mês vigente" : "necessidade de plano de correção com acompanhamento no próximo ciclo";
+  return `
+    <div class="report-note-box">
+      <strong>Conclusão técnica</strong>
+      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${totals.NC} não conformidades, ${stats.total} planos de ação e ${reportOpenActions(stats)} ações abertas. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
+    </div>
+    <div class="report-signatures">
+      <span>Auditor responsável</span>
+      <span>Responsável da área auditada</span>
+    </div>
+  `;
+}
+
+function reportComparisonSummaryRows(area) {
+  const current = reportAreaTotals(area);
+  const previous = reportPreviousAreaTotals(area);
+  const delta = area.score - area.last;
+  const stats = actionPlanStats(area);
+  const newNcs = Math.max(0, current.NC - previous.NC);
+  const resolvedNcs = Math.max(0, previous.NC - current.NC);
+  const recurring = Math.min(current.NC, previous.NC, Math.max(stats.recurrent, current.NC - newNcs));
+  return [
+    ["Nota do mês anterior", `<strong>${formatScore(area.last)}</strong>`, "Nota atual", `<strong>${formatScore(area.score)}</strong>`],
+    ["Variação da nota", `<strong>${reportDeltaText(delta)}</strong>`, "Leitura", delta >= 0 ? reportTag("Melhora", "good") : reportTag("Queda", "danger")],
+    ["NCs recorrentes", String(recurring), "NCs novas", String(newNcs)],
+    ["NCs resolvidas", String(resolvedNcs), "Planos em aberto", String(reportOpenActions(stats))]
+  ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
+}
+
+function reportComparisonBlockRows(area) {
+  return blockSummaries(area).map((block, index) => {
+    const previous = reportPreviousBlockScore(area, block, index);
+    const delta = block.score - previous;
+    const reading = delta >= 0.15 ? "Melhorou" : delta <= -0.15 ? "Piorou" : "Estável";
+    return [
+      `<strong>${escapeHtml(block.title)}</strong>`,
+      formatScore(previous),
+      formatScore(block.score),
+      `<strong>${reportDeltaText(delta)}</strong>`,
+      reading,
+      delta < 0 ? "Reavaliar plano" : "Manter controle"
+    ];
+  });
+}
+
+function reportActionEffectRowsForArea(area) {
+  return actionPlansForArea(area).map((plan) => {
+    const conduct = plan.improved === true
+      ? "Manter rotina"
+      : plan.improved === false
+        ? "Replanejar ação"
+        : "Acompanhar próximo ciclo";
+    return [
+      `<strong>${escapeHtml(plan.block)}</strong>`,
+      escapeHtml(reportCompactText(plan.title, 54)),
+      escapeHtml(plan.owner),
+      reportActionStatusTag(plan.status),
+      reportEffectTag(plan),
+      conduct
+    ];
+  });
+}
+
+function reportNcTrendList(area) {
+  const rows = reportNcRows(area, 6);
+  if (!rows.length) return `<p class="report-muted">Sem NCs recorrentes no recorte analisado.</p>`;
+  return `
+    <ol class="report-doc-list">
+      ${rows
+        .map((row, index) => {
+          const trend = index % 3 === 0 ? "recorrente" : index % 3 === 1 ? "nova" : "em tratamento";
+          return `<li><strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportShortChartLabel(row.text))} (${trend}).</li>`;
+        })
+        .join("")}
+    </ol>
+  `;
+}
+
+function reportPriorityRowsDoc() {
+  return actionImpactRows()
+    .slice(0, 6)
+    .map((row, index) => {
+      const open = reportOpenActions(row.stats);
+      const reason = row.area.score < 8
+        ? "Nota abaixo da meta, NCs abertas e maior chance de ganho com ação imediata."
+        : "Área dentro da meta, porém com pendências que precisam de sustentação.";
+      return [
+        String(index + 1),
+        `<strong>${escapeHtml(row.area.name)}</strong>`,
+        formatScore(row.area.score),
+        `${row.area.ncs} NCs`,
+        `${open} abertas`,
+        reportCompactText(reason, 82)
+      ];
+    });
+}
+
+function reportComparativeNarrative(area) {
+  const delta = area.score - area.last;
+  const stats = actionPlanStats(area);
+  const blocks = blockSummaries(area);
+  const worsened = blocks
+    .map((block, index) => ({ block, delta: block.score - reportPreviousBlockScore(area, block, index) }))
+    .filter((item) => item.delta < -0.15)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 2);
+  const improved = blocks
+    .map((block, index) => ({ block, delta: block.score - reportPreviousBlockScore(area, block, index) }))
+    .filter((item) => item.delta > 0.15)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 2);
+  const tendency = delta > 0.15 ? "melhora" : delta < -0.15 ? "queda" : "estabilidade";
+  const actionReading = stats.noEffect
+    ? `Há ${stats.noEffect} plano(s) sem melhora comprovada, o que indica necessidade de replanejamento da ação corretiva.`
+    : stats.improved
+      ? `Há ${stats.improved} plano(s) com melhora observada, sugerindo efeito positivo das ações executadas.`
+      : "Os planos ainda não têm evidência suficiente de impacto e devem permanecer em acompanhamento.";
+
+  return `
+    <div class="report-analysis-note">
+      <strong>Análise do auditor</strong>
+      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no comparativo mensal, passando de ${formatScore(area.last)} para ${formatScore(area.score)} (${reportDeltaText(delta)} ponto). ${actionReading}</p>
+      <p>${worsened.length ? `Os blocos com piora mais relevante foram ${escapeHtml(worsened.map((item) => item.block.title).join(" e "))}.` : "Não houve bloco com piora expressiva no recorte analisado."} ${improved.length ? `Os melhores sinais de recuperação aparecem em ${escapeHtml(improved.map((item) => item.block.title).join(" e "))}.` : "Ainda não há melhora expressiva por bloco."}</p>
+    </div>
+  `;
+}
+
+function reportAnalyticQuestionRows(area) {
+  const current = reportAreaTotals(area);
+  const previous = reportPreviousAreaTotals(area);
+  const stats = actionPlanStats(area);
+  const delta = area.score - area.last;
+  const newNcs = Math.max(0, current.NC - previous.NC);
+  const resolvedNcs = Math.max(0, previous.NC - current.NC);
+  const recurring = Math.min(current.NC, previous.NC, Math.max(stats.recurrent, current.NC - newNcs));
+  const actionEffect = stats.noEffect
+    ? "Ação sem efeito suficiente: há planos executados/em andamento sem reflexo claro na nota."
+    : stats.improved
+      ? "Ação com efeito positivo: houve melhora associada aos planos concluídos ou em execução."
+      : "Ação ainda inconclusiva: impacto será confirmado no próximo ciclo.";
+
+  return [
+    ["A nota da área melhorou?", delta > 0.15 ? `Sim. Houve ganho de ${reportDeltaText(delta)} ponto.` : delta < -0.15 ? `Não. Houve queda de ${reportDeltaText(delta)} ponto.` : "A nota permaneceu estável."],
+    ["As NCs anteriores se repetiram?", recurring ? `Sim. ${recurring} NC(s) aparecem como recorrentes e devem ser priorizadas.` : "Não há recorrência relevante no recorte."],
+    ["Houve novas NCs?", newNcs ? `Sim. ${newNcs} nova(s) NC(s) foram registradas no mês atual.` : "Não houve aumento de NCs em relação ao mês anterior."],
+    ["Alguma NC foi resolvida?", resolvedNcs ? `Sim. ${resolvedNcs} NC(s) deixaram de aparecer no mês atual.` : "Não há resolução mensurável de NCs neste comparativo."],
+    ["Os planos de ação surtiram efeito?", actionEffect],
+    ["Qual deve ser a conduta?", delta < 0 || stats.noEffect ? "Revisar responsáveis, prazo e evidência de execução dos planos sem efeito." : "Manter rotina, registrar evidências e sustentar o resultado no próximo mês."]
+  ];
+}
+
+function monthlyReportPage() {
+  const area = reportSelectedArea();
+  const pages = 4;
+  const title = "Relatório Consolidado da Auditoria do Mês";
+
+  return `
+    <div class="technical-report">
+      ${reportPage(title, area, 1, pages, `
+        <h1>${title}</h1>
+        <p class="report-doc-lead">Relatório mensal individual da área auditada, com resultado do mês vigente, blocos do checklist, não conformidades, evidências e planos de ação gerados.</p>
+        ${reportMiniKpis(area)}
+        ${reportLegendBlock()}
+        ${reportSection("1", "Síntese executiva da área", `
+          ${reportDocTable(["Indicador", "Resultado", "Indicador", "Resultado"], reportSummaryRows(area), "is-meta")}
+          ${reportMonthlyInsight(area)}
+        `)}
+        ${reportSection("2", "Escopo e critérios de leitura", `
+          ${reportDocTable(["Critério", "Aplicação no relatório"], [
+            ["Conforme (C)", "Requisito atendido conforme checklist e referência legal aplicada."],
+            ["Não Conforme (NC)", "Requisito não atendido, com necessidade de evidência, plano de ação e acompanhamento."],
+            ["Não Avaliado (X)", "Item não aplicável ou não verificado no ciclo mensal analisado."],
+            ["Meta de desempenho", "Nota mínima de 8,0 para leitura satisfatória da área no mês vigente."]
+          ])}
+        `)}
+      `)}
+      ${reportPage(title, area, 2, pages, `
+        ${reportSection("3", "Resultado por bloco do checklist", `
+          ${reportBlockScoreChart(area)}
+          ${reportDocTable(["Bloco", "Itens", "C", "NC", "X", "Nota", "Class."], reportBlockRows(area), "is-blocks")}
+        `)}
+        ${reportSection("4", "Pontos de atenção do mês", `
+          <p class="report-doc-text">A análise técnica prioriza blocos com menor nota, maior quantidade de NCs e presença de risco alto. Essa leitura direciona o plano de ação do mês sem misturar avaliação histórica.</p>
+        `)}
+      `)}
+      ${reportPage(title, area, 3, pages, `
+        ${reportSection("5", "Não conformidades registradas", `
+          ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
+        `)}
+        ${reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area))}
+      `)}
+      ${reportPage(title, area, 4, pages, `
+        ${reportSection("7", "Planos de ação vigentes", `
+          ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
+          ${reportActionFootnote()}
+        `)}
+        ${reportSection("8", "Conclusão e encaminhamento", reportConclusion(area))}
+      `)}
+    </div>
+  `;
+}
+
+function comparativeReportPage() {
+  const area = reportSelectedArea();
+  const pages = 4;
+  const title = "Relatório Analítico Comparativo - Mês Atual x Mês Anterior";
+  const priority = actionImpactRows()[0];
+
+  return `
+    <div class="technical-report">
+      ${reportPage(title, area, 1, pages, `
+        <h1>${title}</h1>
+        <p class="report-doc-lead">Relatório para avaliar se as ações do ciclo anterior refletiram na auditoria atual e indicar onde atuar primeiro no próximo mês.</p>
+        ${reportMiniKpis(area, "comparison")}
+        ${reportLegendBlock()}
+        ${reportSection("1", "Resumo comparativo da área", `
+          ${reportDocTable(["Indicador", reportShortMonthLabel(reportPreviousMonthId()), "Indicador", reportShortMonthLabel(currentMonthId)], reportComparisonSummaryRows(area), "is-meta")}
+          ${reportComparativeNarrative(area)}
+        `)}
+      `)}
+      ${reportPage(title, area, 2, pages, `
+        ${reportSection("2", "Perguntas analíticas do comparativo", `
+          ${reportDocTable(["Pergunta do auditor", "Resposta analítica do sistema"], reportAnalyticQuestionRows(area))}
+        `)}
+        ${reportSection("3", "Comparativo por bloco do checklist", `
+          ${reportBlockScoreChart(area, true)}
+          ${reportDocTable(["Bloco", "Mês anterior", "Mês atual", "Variação", "Leitura", "Conduta"], reportComparisonBlockRows(area), "is-comparison")}
+        `)}
+      `)}
+      ${reportPage(title, area, 3, pages, `
+        ${reportSection("4", "Efetividade dos planos de ação", `
+          ${reportDocTable(["Origem", "Plano de ação", "Responsável", "Status", "Efeito observado", "Conduta"], reportActionEffectRowsForArea(area), "is-actions")}
+        `)}
+        ${reportSection("5", "Recorrência das não conformidades", reportNcTrendList(area))}
+      `)}
+      ${reportPage(title, area, 4, pages, `
+        ${reportSection("6", "Áreas com maiores oportunidades de melhoria", `
+          ${reportDocTable(["Prioridade", "Área", "Nota", "NCs", "Planos", "Motivo da priorização"], reportPriorityRowsDoc(), "is-priority")}
+          <div class="report-note-box">
+            <strong>Direcionamento do próximo ciclo</strong>
+            <p>A primeira prioridade do sistema é ${escapeHtml(priority.area.name)}. A lógica combina nota abaixo da meta, volume de NCs, recorrência e quantidade de planos ainda abertos. Assim, o relatório indica onde agir primeiro, e não apenas qual nota piorou.</p>
+          </div>
+        `)}
+        <div class="report-signatures">
+          <span>Auditor responsável</span>
+          <span>Responsável pelo plano de ação</span>
+        </div>
+      `)}
+    </div>
+  `;
+}
+
+function reportsPage() {
+  const area = reportSelectedArea();
+  const isComparison = state.reportKind === "comparison";
+  return `
+    <section class="reports-page technical-report-shell">
+      ${reportToolbar(isComparison, area)}
+      ${isComparison ? comparativeReportPage() : monthlyReportPage()}
+    </section>
   `;
 }
 
@@ -1687,6 +3079,16 @@ function answerChip(answer) {
 function riskPill(level) {
   const meta = riskMeta[level] || riskMeta.none;
   return `<span class="risk-pill" style="--risk-color:${meta.color}">${meta.label}</span>`;
+}
+
+function questionRiskChip(question) {
+  const meta = riskMeta[question.riskLevel] || riskMeta.none;
+  return `
+    <span class="question-risk-chip" style="--risk-color:${meta.color}">
+      <i></i>
+      Risco da pergunta: ${escapeHtml(meta.label)}
+    </span>
+  `;
 }
 
 function observationFor(row) {
@@ -1962,13 +3364,17 @@ function checklistPage() {
                 const isNC = selectedAnswer === "NC";
                 const allowed = question.allowedAnswers || ["C", "NC", "X"];
                 const displayNumber = globalQuestionNumbers.get(question.id) || question.number;
+                const risk = riskMeta[question.riskLevel] || riskMeta.none;
                 return `
-                  <section class="question-card surface ${isNC ? "has-nc" : ""}" data-question-card="${question.id}">
+                  <section class="question-card surface ${isNC ? "has-nc" : ""}" data-question-card="${question.id}" style="--question-risk:${risk.color}">
                     <div class="question-head">
                       <span class="question-number">${String(displayNumber).padStart(2, "0")}</span>
                       <div>
                         <h2>${escapeHtml(question.text)}</h2>
-                        <p class="law-ref">${escapeHtml(question.reference)}</p>
+                        <div class="question-meta-row">
+                          ${questionRiskChip(question)}
+                          <span class="law-ref">${escapeHtml(question.reference)}</span>
+                        </div>
                       </div>
                     </div>
                     <div class="answer-row" style="--answer-count:${allowed.length}">
@@ -1981,6 +3387,10 @@ function checklistPage() {
                     </div>
                     <div class="nc-evidence">
                       <div class="evidence-title">${svgIcon("warning")} Evidência da não conformidade</div>
+                      <div class="nc-risk-record" style="--risk-color:${risk.color}">
+                        <i></i>
+                        Não conformidade de risco ${escapeHtml(risk.label)}
+                      </div>
                       <div class="evidence-grid">
                         <button class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small></button>
                         <div class="note-field">
@@ -2170,6 +3580,7 @@ function viewContent() {
   if (state.view === "start") return startAuditPage();
   if (state.view === "checklist") return checklistPage();
   if (state.view === "tables") return foodTablesPage();
+  if (state.view === "reports") return reportsPage();
   const [title, text] = placeholders[state.view] || placeholders.audits;
   return placeholderPage(title, text);
 }
@@ -2251,6 +3662,13 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-toggle-chart-mode]")) {
     state.chartMode = state.chartMode === "actions" ? "scores" : "actions";
+    render();
+    return;
+  }
+
+  const reportKind = event.target.closest("[data-report-kind]");
+  if (reportKind) {
+    state.reportKind = reportKind.dataset.reportKind === "comparison" ? "comparison" : "monthly";
     render();
     return;
   }
@@ -2371,6 +3789,14 @@ document.addEventListener("click", (event) => {
     } else {
       state.view = "home";
     }
+    render();
+  }
+});
+
+document.addEventListener("change", (event) => {
+  const reportArea = event.target.closest("[data-report-area-select]");
+  if (reportArea) {
+    state.selectedArea = reportArea.value;
     render();
   }
 });
