@@ -8090,15 +8090,16 @@ h3 {
   gap: 12px;
 }
 
-.report-doc-idvida {
-  color: #0872c9;
-  font-size: 18px;
-  font-weight: 850;
-  letter-spacing: 0;
+.report-doc-idvida-logo {
+  width: 88px;
+  height: 48px;
+  flex: 0 0 88px;
+  display: block;
+  object-fit: contain;
 }
 
-.report-doc-idvida span {
-  color: #27a665;
+.report-doc-idvida {
+  display: none;
 }
 
 .report-doc-separator {

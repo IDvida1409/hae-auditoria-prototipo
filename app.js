@@ -2383,6 +2383,7 @@ function reportDocHeader(title, area, showMeta = false) {
   return `
     <header class="report-doc-header">
       <div class="report-doc-brand">
+        <img class="report-doc-idvida-logo" src="assets/idvida-logo.png?v=doc-report-1" alt="IDVIDA" />
         <span class="report-doc-idvida">ID<span>VIDA</span></span>
         <span class="report-doc-separator"></span>
         <span class="report-doc-hospital">
@@ -2414,6 +2415,7 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
   return `
     <header class="report-doc-header report-monthly-header">
       <div class="report-doc-brand">
+        <img class="report-doc-idvida-logo" src="assets/idvida-logo.png?v=doc-report-1" alt="IDVIDA" />
         <span class="report-doc-idvida">ID<span>VIDA</span></span>
         <span class="report-doc-separator"></span>
         <span class="report-doc-hospital">
