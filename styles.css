@@ -8720,15 +8720,19 @@ h3 {
 }
 
 .report-doc-chart.is-monthly-chart .report-chart-labels {
-  min-height: 66px;
-  margin: -1px 72px 2px 42px;
+  min-height: 62px;
+  margin: 0 72px 4px 42px;
+  align-items: start;
 }
 
 .report-doc-chart.is-monthly-chart .report-chart-labels span {
-  width: 112px;
+  width: 148px;
   color: #111827;
-  font-size: 7.5px;
-  transform: rotate(-36deg);
+  font-size: 7.35px;
+  line-height: 1.02;
+  text-align: left;
+  transform: translateY(19px) rotate(-34deg);
+  transform-origin: left top;
 }
 
 .report-empty-chart {
@@ -8836,7 +8840,18 @@ h3 {
 
 .report-monthly-page .report-monthly-attention-text {
   max-width: none;
-  font-weight: 560;
+  color: #111827;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.report-monthly-page .report-evidence-photo img {
+  min-height: 91px;
+}
+
+.report-monthly-page .report-evidence-list .report-evidence-card {
+  grid-template-columns: 125px minmax(0, 1fr);
 }
 
 .report-monthly-page .report-doc-table.is-blocks {
