@@ -2605,7 +2605,7 @@ function reportMiniKpis(area, mode = "monthly") {
         { label: "Mês atual", value: formatScore(area.score), note: reportShortMonthLabel(currentMonthId), tone: area.score >= 8 ? "good" : "danger" },
         { label: "Variação", value: reportDeltaText(delta), note: delta >= 0 ? "melhora" : "queda", tone: delta >= 0 ? "good" : "danger" },
         { label: "NCs atuais", value: String(totals.NC), note: `${reportHighRiskCount(area)} de risco alto`, tone: totals.NC ? "medium" : "good" },
-        { label: "Planos avaliados", value: String(stats.total), note: `${stats.improved} com melhora`, tone: stats.noEffect ? "medium" : "neutral" }
+        { label: "Planos avaliados", value: String(stats.total), note: `${actionPlansForArea(area).filter((plan) => plan.status !== "concluido").length} não concluídos`, tone: actionPlansForArea(area).some((plan) => plan.status !== "concluido") ? "danger" : "good" }
       ]
     : [
         { label: "Nota da área", value: formatScore(area.score), note: "/10", tone: area.score >= 8 ? "good" : "danger" },
@@ -2722,7 +2722,7 @@ function reportActionFootnote() {
 function reportComparisonIntroNote() {
   return `
     <p class="report-footnote">
-      Nota: planos de ação gerados no ciclo anterior permanecem em acompanhamento até a auditoria subsequente, quando são verificados conclusão, evidência registrada e impacto no desempenho do bloco relacionado.
+      Nota: planos de ação gerados em ${reportMonthLabel(currentMonthId)} permanecem vigentes e serão avaliados na auditoria de Setembro/2026, mediante conclusão, evidência registrada e ausência de repetição da ocorrência relacionada.
     </p>
   `;
 }
@@ -2863,9 +2863,9 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
             const previous = reportPreviousBlockScore(area, block, index);
             const previousY = yFor(previous);
             const labelsAreClose = Math.abs(currentY - previousY) < 16;
-            const previousLabelX = labelsAreClose ? center - barW / 2 - 5 : center;
+            const previousLabelX = labelsAreClose ? center + barW / 2 + 3 : center;
             const previousLabelY = labelsAreClose ? Math.max(15, previousY + 4) : Math.max(14, previousY - 8);
-            const previousLabelAnchor = labelsAreClose ? "end" : "middle";
+            const previousLabelAnchor = labelsAreClose ? "start" : "middle";
             return `
               <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
               <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="${previousLabelAnchor}" font-size="8.8" font-weight="760" fill="#7b8797">${formatScore(previous)}</text>
@@ -3051,7 +3051,9 @@ function reportComparisonMetrics(area) {
   const newNcs = Math.max(0, current.NC - previous.NC);
   const resolvedNcs = Math.max(0, previous.NC - current.NC);
   const recurring = Math.min(current.NC, previous.NC, Math.max(stats.recurrent, current.NC - newNcs));
-  return { current, previous, delta, stats, newNcs, resolvedNcs, recurring };
+  const recurringX = Math.min(current.X, previous.X);
+  const latePlans = actionPlansForArea(area).filter((plan) => plan.status !== "concluido").length;
+  return { current, previous, delta, stats, newNcs, resolvedNcs, recurring, recurringX, latePlans };
 }
 
 function reportPlainList(items, fallback = "sem destaque no período") {
@@ -3063,12 +3065,13 @@ function reportPlainList(items, fallback = "sem destaque no período") {
 }
 
 function reportComparisonSummaryRows(area) {
-  const { delta, stats, newNcs, resolvedNcs, recurring } = reportComparisonMetrics(area);
+  const { delta, stats, newNcs, resolvedNcs, recurring, recurringX, latePlans } = reportComparisonMetrics(area);
   return [
     ["Nota do mês anterior", `<strong>${formatScore(area.last)}</strong>`, "Nota atual", `<strong>${formatScore(area.score)}</strong>`],
     ["Variação da nota", `<strong>${reportDeltaText(delta)}</strong>`, "Leitura", delta >= 0 ? reportTag("Melhora", "good") : reportTag("Queda", "danger")],
     ["NCs recorrentes", String(recurring), "NCs novas", String(newNcs)],
-    ["NCs resolvidas", String(resolvedNcs), "Planos em aberto", String(reportOpenActions(stats))]
+    ["NCs resolvidas", String(resolvedNcs), "Itens X recorrentes", String(recurringX)],
+    ["Planos vinculados", String(stats.total), "Planos não concluídos", String(latePlans || reportOpenActions(stats))]
   ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
 }
 
@@ -3091,84 +3094,207 @@ function reportComparisonBlockRows(area) {
   });
 }
 
+function reportRowsForBlock(area, blockTitle) {
+  const normalized = reportFullText(blockTitle).toLowerCase();
+  return questionRowsForArea(area).filter((row) => {
+    const block = reportFullText(row.blockTitle).toLowerCase();
+    return block.includes(normalized) || normalized.includes(block);
+  });
+}
+
+function reportNcRowsForBlock(area, blockTitle) {
+  return reportRowsForBlock(area, blockTitle)
+    .filter((row) => row.answer === "NC")
+    .sort((a, b) => reportRiskWeight(b) - reportRiskWeight(a) || a.number - b.number);
+}
+
+function reportXRowsForArea(area) {
+  return questionRowsForArea(area)
+    .filter((row) => row.answer === "X")
+    .sort((a, b) => reportRiskWeight(b) - reportRiskWeight(a) || a.number - b.number);
+}
+
+function reportRecurringNcRows(area) {
+  const { recurring } = reportComparisonMetrics(area);
+  return reportNcRows(area, Math.max(0, recurring));
+}
+
+function reportRecurringXRows(area) {
+  const { recurringX } = reportComparisonMetrics(area);
+  return reportXRowsForArea(area).slice(0, Math.max(0, recurringX));
+}
+
+function reportPlanOriginRow(area, plan) {
+  const rows = reportNcRowsForBlock(area, plan.block);
+  return rows[0] || reportNcRows(area, 1)[0] || null;
+}
+
+function reportComparativePlanStatusTag(plan) {
+  if (plan.status === "concluido" && plan.improved === true) return reportTag("Concluído e efetivo", "good");
+  if (plan.status === "concluido") return reportTag("Concluído sem efetividade", "danger");
+  return reportTag("Não concluído", "danger");
+}
+
+function reportComparativePlanReading(plan, originRow) {
+  if (plan.status === "concluido" && plan.improved === true) return "Ação efetiva no período.";
+  if (plan.status === "concluido") return "Ocorrência repetida após conclusão.";
+  if (originRow) return "Ocorrência repetida; ação não efetiva no período.";
+  return "Sem validação de efetividade no período.";
+}
+
+function reportPlanEvidenceImpact(plan, originRow) {
+  if (plan.status === "concluido" && plan.improved === true) return "Evidência compatível; requisito sem repetição.";
+  if (plan.status === "concluido") return "Evidência registrada, porém sem eliminação da ocorrência.";
+  if (originRow) return "Sem conclusão no prazo; ocorrência voltou no mês atual.";
+  return "Sem conclusão no prazo e sem evidência conclusiva.";
+}
+
 function reportActionEffectRowsForArea(area) {
   return actionPlansForArea(area).map((plan) => {
-    const evidence = plan.status === "concluido"
-      ? "Evidência registrada para validação"
-      : plan.status === "pendente"
-        ? "Aguardando execução e evidência"
-        : "Em acompanhamento até a próxima auditoria";
+    const originRow = reportPlanOriginRow(area, plan);
+    const riskLevel = originRow?.riskLevel || (plan.critical ? "critico" : "medio");
+    const problem = originRow
+      ? `Item ${String(originRow.number).padStart(2, "0")} - ${reportFullText(originRow.text)}`
+      : `Requisito vinculado ao bloco ${plan.block}`;
     return [
-      `<strong>${escapeHtml(reportFullText(plan.title))}</strong>`,
-      escapeHtml(plan.block),
+      `<strong>${escapeHtml(problem)}</strong>`,
+      reportRiskTag(riskLevel),
+      escapeHtml(reportFullText(plan.title)),
       escapeHtml(plan.owner),
-      reportActionStatusTag(plan.status),
-      evidence,
-      reportShortEffectTag(plan)
+      reportComparativePlanStatusTag(plan),
+      escapeHtml(reportPlanEvidenceImpact(plan, originRow)),
+      escapeHtml(reportComparativePlanReading(plan, originRow))
     ];
   });
 }
 
-function reportNcTrendList(area) {
-  const rows = reportNcRows(area, 6);
-  if (!rows.length) return `<p class="report-muted">Sem NCs recorrentes no recorte analisado.</p>`;
+function reportRecurrenceRows(area) {
+  const recurringNc = reportRecurringNcRows(area).map((row) => [
+    String(row.number).padStart(2, "0"),
+    `<strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportFullText(row.text))}`,
+    "NC",
+    "NC",
+    reportRiskTag(row.riskLevel),
+    "NC recorrente"
+  ]);
+  const recurringX = reportRecurringXRows(area).map((row) => [
+    String(row.number).padStart(2, "0"),
+    `<strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportFullText(row.text))}`,
+    "X",
+    "X",
+    reportRiskTag(row.riskLevel),
+    "Item novamente não avaliado"
+  ]);
+  return [...recurringNc, ...recurringX];
+}
+
+function reportRecurrenceNarrative(area) {
+  const recurringNc = reportRecurringNcRows(area);
+  const recurringX = reportRecurringXRows(area);
+  const blocks = [...new Set(recurringNc.map((row) => row.blockTitle))];
+  const blockText = reportPlainList(blocks, "sem concentração por bloco");
+  const xText = recurringX.length
+    ? `${recurringX.length === 1 ? "Também foi identificado" : "Também foram identificados"} ${reportPlural(recurringX.length, "item novamente não avaliado", "itens novamente não avaliados")}, que ${recurringX.length === 1 ? "impede" : "impedem"} confirmar se o requisito está conforme e se o risco da pergunta está controlado.`
+    : "Não foram identificados itens novamente não avaliados no período comparado.";
+  const ncText = recurringNc.length === 0
+    ? "não foram identificadas não conformidades recorrentes"
+    : recurringNc.length === 1
+      ? `foi identificada 1 não conformidade recorrente no bloco ${escapeHtml(blockText)}`
+      : `foram identificadas ${recurringNc.length} não conformidades recorrentes no bloco ${escapeHtml(blockText)}`;
+
   return `
-    <ol class="report-doc-list">
-      ${rows
-        .map((row, index) => {
-          const trend = index % 3 === 0 ? "recorrente" : index % 3 === 1 ? "nova" : "em tratamento";
-          return `<li><strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportFullText(row.text))} (${trend}).</li>`;
-        })
-        .join("")}
-    </ol>
+    <p class="report-doc-text report-comparison-reading-text">
+      Neste comparativo, ${ncText}. ${xText} Quando a recorrência permanece mesmo com plano de ação vinculado, deve-se verificar se houve falha de execução, prazo não cumprido, ação insuficiente ou dependência de apoio externo não resolvida.
+    </p>
   `;
 }
 
-function reportPriorityRowsDoc() {
-  return actionImpactRows()
-    .slice(0, 6)
-    .map((row, index) => {
-      const open = reportOpenActions(row.stats);
-      const reason = row.area.score < 8
-        ? "Nota abaixo da meta, NCs abertas e maior chance de ganho com ação imediata."
-        : "Área dentro da meta, porém com pendências que precisam de sustentação.";
-      return [
-        String(index + 1),
-        `<strong>${escapeHtml(row.area.name)}</strong>`,
-        formatScore(row.area.score),
-        `${row.area.ncs} NCs`,
-        `${open} abertas`,
-        reportCompactText(reason, 82)
-      ];
-    });
+function reportBlockPriorityData(area) {
+  const recurringNcRows = reportRecurringNcRows(area);
+  const recurringXRows = reportRecurringXRows(area);
+  const plans = actionPlansForArea(area);
+  const rows = blockSummaries(area)
+    .map((block) => {
+      const rows = questionRowsForArea(area).filter((row) => row.blockId === block.id);
+      const ncs = rows.filter((row) => row.answer === "NC");
+      const highRiskNc = ncs.filter((row) => row.riskLevel === "critico").length;
+      const recurringNcs = recurringNcRows.filter((row) => row.blockId === block.id).length;
+      const recurringXs = recurringXRows.filter((row) => row.blockId === block.id).length;
+      const linkedLatePlan = plans.some((plan) => {
+        const planBlock = reportFullText(plan.block).toLowerCase();
+        const blockTitle = reportFullText(block.title).toLowerCase();
+        return plan.status !== "concluido" && (planBlock.includes(blockTitle) || blockTitle.includes(planBlock));
+      });
+      const priorityScore = (10 - block.score) * 10 + highRiskNc * 8 + recurringNcs * 7 + recurringXs * 4 + (linkedLatePlan ? 5 : 0);
+      const mainIssue = ncs.sort((a, b) => reportRiskWeight(b) - reportRiskWeight(a) || a.number - b.number)[0] || rows.find((row) => row.answer === "X");
+      const reasonParts = [];
+      if (highRiskNc) reasonParts.push(`${highRiskNc} NC de risco alto`);
+      if (recurringNcs) reasonParts.push(`${recurringNcs} recorrência`);
+      if (recurringXs) reasonParts.push(`${recurringXs} item X recorrente`);
+      if (linkedLatePlan) reasonParts.push("plano não concluído no prazo");
+      if (!reasonParts.length) reasonParts.push(`nota ${formatScore(block.score)}`);
+      const conduct = linkedLatePlan
+        ? "Reavaliar execução, evidência e suficiência da ação corretiva."
+        : highRiskNc
+          ? "Definir ação corretiva e evidência de correção."
+          : recurringXs
+            ? "Garantir avaliação do item no próximo fechamento."
+            : "Manter acompanhamento do desempenho.";
+      return {
+        block,
+        mainIssue,
+        highRiskNc,
+        recurringNcs,
+        recurringXs,
+        linkedLatePlan,
+        priorityScore,
+        reason: reasonParts.join("; "),
+        conduct
+      };
+    })
+    .filter((item) => item.highRiskNc || item.recurringNcs || item.recurringXs || item.linkedLatePlan || item.block.score < 8)
+    .sort((a, b) => b.priorityScore - a.priorityScore);
+  if (rows.length) return rows.slice(0, 5);
+  return blockSummaries(area)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 1)
+    .map((block) => ({
+      block,
+      mainIssue: null,
+      highRiskNc: 0,
+      recurringNcs: 0,
+      recurringXs: 0,
+      linkedLatePlan: false,
+      priorityScore: 0,
+      reason: `menor nota relativa: ${formatScore(block.score)}`,
+      conduct: "Manter acompanhamento do desempenho."
+    }));
+}
+
+function reportBlockPriorityRows(area) {
+  return reportBlockPriorityData(area).map((item, index) => {
+    const issue = item.mainIssue
+      ? `Item ${String(item.mainIssue.number).padStart(2, "0")} - ${reportFullText(item.mainIssue.text)}`
+      : item.block.title;
+    return [
+      String(index + 1),
+      `<strong>${escapeHtml(item.block.title)}</strong><br>${escapeHtml(issue)}`,
+      formatScore(item.block.score),
+      item.mainIssue ? reportRiskTag(item.mainIssue.riskLevel) : reportTag("Sem NC", "neutral"),
+      escapeHtml(item.reason),
+      escapeHtml(item.conduct)
+    ];
+  });
 }
 
 function reportComparativeNarrative(area) {
-  const { delta, stats, newNcs, resolvedNcs, recurring } = reportComparisonMetrics(area);
-  const plans = actionPlansForArea(area);
-  const improvedPlans = plans.filter((plan) => plan.improved === true);
-  const noEffectPlans = plans.filter((plan) => plan.improved === false);
-  const openPlans = plans.filter((plan) => plan.status !== "concluido");
-  const blocks = reportComparisonBlockDeltas(area);
-  const worsened = blocks
-    .filter((item) => item.delta < -0.15)
-    .sort((a, b) => a.delta - b.delta)
-    .slice(0, 2);
-  const improved = blocks
-    .filter((item) => item.delta > 0.15)
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 2);
+  const { delta } = reportComparisonMetrics(area);
   const tendency = delta > 0.15 ? "melhora" : delta < -0.15 ? "queda" : "estabilidade";
-  const improvedPlanText = reportPlainList(improvedPlans.map((plan) => `${plan.title}, no bloco ${plan.block}`), "nenhum plano com melhora comprovada");
-  const noEffectText = reportPlainList(noEffectPlans.map((plan) => `${plan.title}, no bloco ${plan.block}`), "nenhum plano sem efeito comprovado");
-  const openPlanText = reportPlainList(openPlans.map((plan) => `${plan.title} (${plan.status})`), "nenhum plano em aberto");
 
   return `
     <div class="report-analysis-note">
-      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no comparativo mensal, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)} (${reportDeltaText(delta)} ponto).</p>
-      <p>Foram identificadas ${reportPlural(recurring, "NC recorrente", "NCs recorrentes")}, ${reportPlural(newNcs, "NC nova", "NCs novas")} e ${reportPlural(resolvedNcs, "NC resolvida", "NCs resolvidas")}. Essa leitura mostra se o desempenho evoluiu apenas na nota ou se também houve redução real de ocorrências.</p>
-      <p>Planos com melhora observada: ${escapeHtml(improvedPlanText)}. Planos sem efeito comprovado: ${escapeHtml(noEffectText)}. Planos em aberto permanecem em acompanhamento até nova validação: ${escapeHtml(openPlanText)}.</p>
-      <p>${worsened.length ? `Blocos com piora no recorte: ${escapeHtml(reportPlainList(worsened.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`)))}.` : "Não houve bloco com piora expressiva no recorte analisado."} ${improved.length ? `Melhores sinais de recuperação: ${escapeHtml(reportPlainList(improved.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`)))}.` : "Ainda não há melhora expressiva por bloco."}</p>
+      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no desempenho geral, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)}. A evolução da nota é positiva, porém a análise técnica deve considerar se essa melhora foi acompanhada pela redução real das não conformidades, pela correção de ocorrências recorrentes e pelo cumprimento dos planos de ação vigentes no período.</p>
+      <p>Quando há melhora da nota, mas permanecem ocorrências recorrentes ou planos não concluídos no prazo, o resultado deve ser interpretado com cautela, pois ainda pode existir falha de processo ou pendência de execução corretiva.</p>
     </div>
   `;
 }
@@ -3183,29 +3309,42 @@ function reportComparisonBlockNarrative(area) {
     .filter((item) => item.delta < -0.15)
     .sort((a, b) => a.delta - b.delta)
     .slice(0, 3);
-  const stable = rows.filter((item) => Math.abs(item.delta) <= 0.15).length;
+  const priority = reportBlockPriorityData(area)[0];
   const improvedText = reportPlainList(improved.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem melhora expressiva");
   const worsenedText = reportPlainList(worsened.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem queda expressiva");
+  const priorityText = priority ? `O bloco ${priority.block.title} permanece como ponto de atenção por ${priority.reason}.` : "";
 
   return `
     <div class="report-note-box">
       <strong>Leitura das variações por bloco</strong>
-      <p>Maiores evoluções: ${escapeHtml(improvedText)}. Maiores quedas: ${escapeHtml(worsenedText)}. ${stable ? `${stable} bloco(s) permaneceram estáveis e devem seguir em controle de rotina.` : "Não houve bloco estável no recorte analisado."} Blocos com variação negativa, NC recorrente ou plano sem evidência de conclusão devem ser priorizados no próximo ciclo.</p>
+      <p>As maiores evoluções ocorreram em ${escapeHtml(improvedText)}. Maiores quedas: ${escapeHtml(worsenedText)}. ${escapeHtml(priorityText)}</p>
     </div>
   `;
 }
 
 function reportActionEffectNarrative(area) {
   const plans = actionPlansForArea(area);
-  const stats = actionPlanStats(area);
-  const open = reportOpenActions(stats);
-  const openText = open === 1 ? "1 permanece aberto" : `${open} permanecem abertos`;
-  const improvedText = reportPlainList(plans.filter((plan) => plan.improved === true).map((plan) => plan.title), "nenhum plano com melhora comprovada");
-  const noEffectText = reportPlainList(plans.filter((plan) => plan.improved === false).map((plan) => plan.title), "nenhum plano sem efeito comprovado");
+  if (!plans.length) {
+    return `
+      <p class="report-footnote">Não foram identificados planos de ação vigentes com validação de efetividade aplicável neste comparativo.</p>
+    `;
+  }
+
+  const firstPlan = plans[0];
+  const originRow = reportPlanOriginRow(area, firstPlan);
+  const riskLabel = originRow ? (riskMeta[originRow.riskLevel] || riskMeta.none).label.toLowerCase() : (firstPlan.critical ? "alto" : "médio");
+  const problemText = originRow ? `o requisito do item ${String(originRow.number).padStart(2, "0")}` : `o bloco ${firstPlan.block}`;
+  const conclusion = firstPlan.status === "concluido" && firstPlan.improved === true
+    ? "foi concluído no prazo e não apresentou repetição da ocorrência relacionada."
+    : firstPlan.status === "concluido"
+      ? "foi concluído, porém a ocorrência relacionada voltou a aparecer no mês atual."
+      : "não foi concluído até a auditoria atual; por isso, a ação é classificada como não efetiva no período analisado.";
+
   return `
-    <p class="report-footnote">
-      Nota: ${reportPlural(plans.length, "plano foi avaliado", "planos foram avaliados")} neste comparativo; ${openText} para confirmação na próxima auditoria. Com melhora observada: ${escapeHtml(improvedText)}. Sem efeito comprovado: ${escapeHtml(noEffectText)}. Quando a execução depender de apoio externo, a justificativa deve ser registrada pelo responsável do plano antes da validação final.
-    </p>
+    <div class="report-note-box">
+      <strong>Leitura dos planos avaliados</strong>
+      <p>O plano "${escapeHtml(reportFullText(firstPlan.title))}" está relacionado a ${escapeHtml(problemText)}, classificado como risco ${escapeHtml(riskLabel)}, e deveria atuar sobre a ocorrência identificada no bloco ${escapeHtml(firstPlan.block)}. O plano ${conclusion} O requisito deve ser reavaliado quanto à execução da ação, suficiência da medida proposta e necessidade de apoio de áreas envolvidas, quando aplicável.</p>
+    </div>
   `;
 }
 
@@ -3289,18 +3428,18 @@ function monthlyReportPage() {
 function comparativeReportPage() {
   const area = reportSelectedArea();
   const pages = 4;
-  const title = "Relatório Comparativo";
-  const priority = actionImpactRows()[0];
+  const title = "Relatório Comparativo Analítico";
 
   return `
     <div class="technical-report">
       ${reportComparisonPage(area, 1, pages, `
         <h1>${title}</h1>
-        <p class="report-doc-lead">Relatório elaborado para comparar o ciclo atual com o ciclo anterior, verificar se os planos de ação registrados tiveram reflexo no desempenho da área e indicar quais pontos devem permanecer em acompanhamento na próxima auditoria.</p>
+        <p class="report-doc-lead">Este relatório compara o desempenho da área auditada entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}, considerando a nota final, a variação dos blocos do checklist, as não conformidades recorrentes, os itens novamente não avaliados e a efetividade dos planos de ação vigentes no período. A finalidade é verificar se houve evolução real dos requisitos avaliados, identificar falhas de processo, apontar ações não executadas no prazo e orientar os pontos que precisam de correção, acompanhamento ou reavaliação.</p>
         ${reportComparisonIntroNote()}
         ${reportMiniKpis(area, "comparison")}
         ${reportComparisonLegendBlock()}
         ${reportSection("1", "Resumo comparativo da área", `
+          <p class="report-doc-text report-comparison-reading-text">O resumo apresenta os principais indicadores do período comparado, incluindo nota anterior, nota atual, variação da nota, ocorrências recorrentes, novos apontamentos, itens resolvidos e planos de ação vinculados à área auditada.</p>
           ${reportDocTable(["Indicador", reportShortMonthLabel(reportPreviousMonthId()), "Indicador", reportShortMonthLabel(currentMonthId)], reportComparisonSummaryRows(area), "is-meta")}
         `)}
         ${reportSection("2", "Síntese técnica comparativa", `
@@ -3309,6 +3448,7 @@ function comparativeReportPage() {
       `)}
       ${reportComparisonPage(area, 2, pages, `
         ${reportSection("3", "Comparativo por bloco do checklist", `
+          <p class="report-doc-text report-comparison-reading-text">O gráfico e a tabela apresentam a variação de desempenho dos blocos do checklist no período comparado. Essa leitura permite identificar quais blocos contribuíram para a melhora, quais permaneceram estáveis e quais exigem atenção por apresentarem não conformidade, risco elevado, recorrência ou ausência de avaliação.</p>
           ${reportBlockScoreChart(area, true, { variant: "comparison" })}
           ${reportDocTable(["Bloco", reportMonthLabel(reportPreviousMonthId()), reportMonthLabel(currentMonthId), "Variação"], reportComparisonBlockRows(area), "is-comparison")}
           ${reportComparisonBlockNarrative(area)}
@@ -3316,20 +3456,23 @@ function comparativeReportPage() {
       `)}
       ${reportComparisonPage(area, 3, pages, `
         ${reportSection("4", "Efetividade dos planos de ação", `
-          ${reportDocTable(["Plano de ação", "Bloco", "Responsável", "Status", "Evidência de conclusão", "Efeito observado"], reportActionEffectRowsForArea(area), "is-actions")}
+          <p class="report-doc-text report-comparison-reading-text">Esta seção avalia os planos de ação vigentes no período comparado, ou seja, aqueles que deveriam estar concluídos até a auditoria de ${reportMonthLabel(currentMonthId)}. A análise considera o problema que originou o plano, o risco da pergunta, a ação proposta, o responsável, a conclusão no prazo, a evidência registrada e o impacto observado no requisito relacionado.</p>
+          ${reportDocTable(["Problema identificado", "Risco", "Plano de ação", "Responsável", "Status", "Evidência / impacto", "Leitura"], reportActionEffectRowsForArea(area), "is-actions")}
           ${reportActionEffectNarrative(area)}
         `)}
         ${reportSection("5", "Recorrência das não conformidades", `
-          <p class="report-doc-text report-comparison-reading-text">São consideradas recorrentes as NCs identificadas no ciclo anterior que voltam a aparecer na auditoria atual. A recorrência indica que a ação anterior não foi suficiente, não foi concluída ou não teve evidência adequada de efetividade.</p>
-          ${reportNcTrendList(area)}
+          <p class="report-doc-text report-comparison-reading-text">São consideradas recorrentes as ocorrências identificadas no mesmo requisito no mês anterior e no mês atual. A recorrência pode envolver não conformidade repetida, item novamente não avaliado ou requisito que permanece sem evolução mesmo após plano de ação vinculado.</p>
+          ${reportDocTable(["Item", "Requisito", reportMonthLabel(reportPreviousMonthId()), reportMonthLabel(currentMonthId), "Risco", "Leitura"], reportRecurrenceRows(area), "is-recurrence")}
+          ${reportRecurrenceNarrative(area)}
         `)}
       `)}
       ${reportComparisonPage(area, 4, pages, `
-        ${reportSection("6", "Áreas com maiores oportunidades de melhoria", `
-          ${reportDocTable(["Prioridade", "Área", "Nota", "NCs", "Planos", "Motivo da priorização"], reportPriorityRowsDoc(), "is-priority")}
+        ${reportSection("6", "Blocos com maiores oportunidades de melhoria", `
+          <p class="report-doc-text report-comparison-reading-text">A priorização considera blocos com menor desempenho relativo, presença de não conformidades de risco médio ou alto, repetição de ocorrências, itens novamente não avaliados e planos de ação vigentes sem efetividade comprovada.</p>
+          ${reportDocTable(["Nº", "Bloco / requisito", "Nota", "Risco", "Motivo da priorização", "Conduta sugerida"], reportBlockPriorityRows(area), "is-priority")}
           <div class="report-note-box">
-            <strong>Direcionamento do próximo ciclo</strong>
-            <p>A primeira prioridade do sistema é ${escapeHtml(priority.area.name)}. A lógica combina nota abaixo da meta, volume de NCs, recorrência e quantidade de planos ainda abertos. Assim, o relatório indica onde acompanhar primeiro no próximo ciclo, sem atribuir responsabilidade automática antes da justificativa do plano.</p>
+            <strong>Direcionamento das correções</strong>
+            <p>O principal bloco com oportunidade de melhoria é ${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)}, devido à recorrência de não conformidades de risco alto e à existência de plano de ação não concluído no prazo. Esse bloco deve ser tratado como prioridade de correção, com definição clara da ação, responsável, prazo, evidência esperada e validação da efetividade no mês seguinte.</p>
           </div>
         `)}
         <div class="report-signatures">

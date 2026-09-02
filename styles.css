@@ -8959,7 +8959,7 @@ h3 {
 
 .report-comparison-page .report-doc-table.is-actions {
   table-layout: fixed;
-  font-size: 8.55px;
+  font-size: 7.85px;
   line-height: 1.22;
 }
 
@@ -8971,32 +8971,121 @@ h3 {
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(1),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(1) {
-  width: 26%;
+  width: 24%;
 }
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(2),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(2) {
-  width: 17%;
+  width: 7%;
+  text-align: center;
 }
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(3),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(3) {
-  width: 13%;
+  width: 20%;
 }
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(4),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(4) {
-  width: 13%;
+  width: 10%;
 }
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(5),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(5) {
-  width: 18%;
+  width: 13%;
 }
 
 .report-comparison-page .report-doc-table.is-actions th:nth-child(6),
 .report-comparison-page .report-doc-table.is-actions td:nth-child(6) {
-  width: 13%;
+  width: 16%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(7),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(7) {
+  width: 10%;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence {
+  table-layout: fixed;
+  font-size: 8.15px;
+  line-height: 1.24;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th,
+.report-comparison-page .report-doc-table.is-recurrence td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(1),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(1) {
+  width: 6%;
+  text-align: center;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(2),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(2) {
+  width: 44%;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(3),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(3),
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(4),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(4) {
+  width: 9%;
+  text-align: center;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(5),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(5) {
+  width: 10%;
+  text-align: center;
+}
+
+.report-comparison-page .report-doc-table.is-recurrence th:nth-child(6),
+.report-comparison-page .report-doc-table.is-recurrence td:nth-child(6) {
+  width: 22%;
+}
+
+.report-comparison-page .report-doc-table.is-priority {
+  table-layout: fixed;
+  font-size: 8.1px;
+  line-height: 1.24;
+}
+
+.report-comparison-page .report-doc-table.is-priority th,
+.report-comparison-page .report-doc-table.is-priority td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.report-comparison-page .report-doc-table.is-priority th:nth-child(1),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(1) {
+  width: 6%;
+  text-align: center;
+}
+
+.report-comparison-page .report-doc-table.is-priority th:nth-child(2),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(2) {
+  width: 31%;
+}
+
+.report-comparison-page .report-doc-table.is-priority th:nth-child(3),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(3),
+.report-comparison-page .report-doc-table.is-priority th:nth-child(4),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(4) {
+  width: 8%;
+  text-align: center;
+}
+
+.report-comparison-page .report-doc-table.is-priority th:nth-child(5),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(5) {
+  width: 24%;
+}
+
+.report-comparison-page .report-doc-table.is-priority th:nth-child(6),
+.report-comparison-page .report-doc-table.is-priority td:nth-child(6) {
+  width: 23%;
 }
 
 .report-comparison-reading-text {
