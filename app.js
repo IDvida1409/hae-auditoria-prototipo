@@ -2863,12 +2863,11 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
             const previous = reportPreviousBlockScore(area, block, index);
             const previousY = yFor(previous);
             const labelsAreClose = Math.abs(currentY - previousY) < 16;
-            const previousLabelX = labelsAreClose ? center + barW / 2 + 3 : center;
-            const previousLabelY = labelsAreClose ? Math.max(15, previousY + 4) : Math.max(14, previousY - 8);
-            const previousLabelAnchor = labelsAreClose ? "start" : "middle";
+            const previousLabelX = center;
+            const previousLabelY = Math.min(plotBottom - 7, previousY + (labelsAreClose ? 16 : 14));
             return `
               <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
-              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="${previousLabelAnchor}" font-size="8.8" font-weight="760" fill="#7b8797">${formatScore(previous)}</text>
+              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="middle" font-size="8.8" font-weight="760" fill="#526174" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${formatScore(previous)}</text>
             `;
           })
           .join("") : ""}
