@@ -1,4 +1,4 @@
-const CACHE_NAME = "hae-auditoria-v2-pdf-plan-alert";
+const CACHE_NAME = "hae-auditoria-v3-pdf-page-fix";
 const APP_SHELL = [
   "/",
   "/index.html",

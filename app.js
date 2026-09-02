@@ -1994,7 +1994,7 @@ function reportBarChart({ comparison = false } = {}) {
 
   return `
     <div class="report-chart-frame">
-      <svg class="report-bar-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo das notas por área" : "Notas por área no mês"}">
+      <svg class="report-bar-chart" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo das notas por área" : "Notas por área no mês"}">
         ${ticks
           .map(
             (tick) => `
@@ -2614,16 +2614,25 @@ function prepareReportPdfWindow() {
 }
 
 function ensureReportPdfLibrary() {
-  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (window.jspdf?.jsPDF && window.html2canvas) return Promise.resolve();
   if (window.__haePdfLibraryPromise) return window.__haePdfLibraryPromise;
 
-  window.__haePdfLibraryPromise = new Promise((resolve, reject) => {
+  const loadScript = (src) => new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.src = src;
     script.async = true;
-    script.onload = () => resolve(window.html2pdf);
+    script.onload = resolve;
     script.onerror = reject;
     document.head.appendChild(script);
+  });
+
+  window.__haePdfLibraryPromise = Promise.all([
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js")
+  ]).then(() => {
+    if (!window.jspdf?.jsPDF || !window.html2canvas) {
+      throw new Error("Biblioteca de PDF indisponível");
+    }
   });
 
   return window.__haePdfLibraryPromise;
@@ -2667,48 +2676,72 @@ function reportPrintFallback(targetWindow) {
   printWindow.document.close();
 }
 
+function waitForReportImages(root) {
+  const images = Array.from(root.querySelectorAll("img"));
+  return Promise.all(images.map((image) => {
+    if (image.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      image.onload = resolve;
+      image.onerror = resolve;
+    });
+  }));
+}
+
 function openReportPdf(targetWindow = null) {
   const report = document.querySelector(".technical-report");
   if (!report) return;
 
   ensureReportPdfLibrary()
-    .then((html2pdf) => {
-      if (!html2pdf) throw new Error("Biblioteca de PDF indisponível");
+    .then(async () => {
+      if (!window.jspdf?.jsPDF || !window.html2canvas) {
+        throw new Error("Biblioteca de PDF indisponível");
+      }
       const holder = document.createElement("div");
       holder.className = "report-pdf-render-root";
       const clone = report.cloneNode(true);
       holder.appendChild(clone);
       document.body.appendChild(holder);
 
-      const options = {
-        filename: reportPdfFilename(),
-        margin: [6, 6, 6, 6],
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          scrollY: 0
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-        pagebreak: { mode: ["css", "legacy"], before: ".report-doc-page:not(:first-child)" }
-      };
+      try {
+        await waitForReportImages(clone);
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-      html2pdf()
-        .set(options)
-        .from(clone)
-        .toPdf()
-        .get("pdf")
-        .then((pdf) => {
-          const pdfUrl = pdf.output("bloburl");
-          if (targetWindow) {
-            targetWindow.location.href = pdfUrl;
-          } else {
-            window.open(pdfUrl, "_blank");
-          }
-        })
-        .catch(() => reportPrintFallback(targetWindow))
-        .finally(() => holder.remove());
+        const pages = Array.from(clone.querySelectorAll(".report-doc-page"));
+        const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const margin = 6;
+        const availableWidth = pdfWidth - margin * 2;
+        const availableHeight = pdfHeight - margin * 2;
+
+        for (const [index, page] of pages.entries()) {
+          if (index) pdf.addPage("a4", "landscape");
+          const canvas = await window.html2canvas(page, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: holder.scrollWidth,
+            windowHeight: Math.max(holder.scrollHeight, page.scrollHeight)
+          });
+          const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
+          const imageWidth = canvas.width * ratio;
+          const imageHeight = canvas.height * ratio;
+          const imageX = (pdfWidth - imageWidth) / 2;
+          const imageY = (pdfHeight - imageHeight) / 2;
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
+        }
+
+        const pdfUrl = URL.createObjectURL(pdf.output("blob"));
+        if (targetWindow) {
+          targetWindow.location.href = pdfUrl;
+        } else {
+          window.open(pdfUrl, "_blank");
+        }
+      } finally {
+        holder.remove();
+      }
     })
     .catch(() => reportPrintFallback(targetWindow));
 }
@@ -2987,7 +3020,7 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
 
   return `
     <figure class="report-doc-chart ${isMonthly ? "is-monthly-chart" : ""} ${isComparison ? "is-comparison-chart" : ""}">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${isComparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
+      <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${isComparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
         ${ticks
           .map(
             (tick) => `
@@ -3445,11 +3478,19 @@ function reportBlockPriorityRows(area) {
 function reportComparativeNarrative(area) {
   const { delta } = reportComparisonMetrics(area);
   const tendency = delta > 0.15 ? "melhora" : delta < -0.15 ? "queda" : "estabilidade";
+  const subject = area.name.trim().toLowerCase().startsWith("área ")
+    ? `A ${escapeHtml(area.name)}`
+    : `A área ${escapeHtml(area.name)}`;
+  const followUp = delta > 0.15
+    ? "Neste comparativo, a melhora da nota não elimina a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo."
+    : delta < -0.15
+      ? "Neste comparativo, a queda da nota reforça a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo."
+      : "Neste comparativo, a estabilidade da nota ainda exige acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo.";
 
   return `
     <div class="report-analysis-note">
-      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no desempenho geral, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)}. Entretanto, a evolução da nota deve ser interpretada em conjunto com a recorrência das não conformidades e a efetividade dos planos de ação avaliados no período.</p>
-      <p>Neste ciclo, a melhora da nota não elimina a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo.</p>
+      <p>${subject} apresentou ${tendency} no desempenho geral, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)}. Entretanto, a variação da nota deve ser interpretada em conjunto com a recorrência das não conformidades e a efetividade dos planos de ação avaliados no período.</p>
+      <p>${followUp}</p>
     </div>
   `;
 }
