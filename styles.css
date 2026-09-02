@@ -789,16 +789,22 @@ h3 {
 }
 
 .avatar {
+  display: grid;
+  place-items: center;
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
-  background:
-    radial-gradient(circle at 50% 32%, #f7ceb7 0 13px, transparent 14px),
-    radial-gradient(circle at 50% 40%, #5b332b 0 20px, transparent 21px),
-    radial-gradient(ellipse at 50% 84%, #0b2c55 0 30px, transparent 31px),
-    linear-gradient(180deg, #f1b995, #d98867);
+  border: 2px solid rgba(255, 255, 255, 0.96);
+  background: linear-gradient(180deg, #ffffff, #edf5ff);
   box-shadow: var(--soft-shadow);
+  overflow: hidden;
+}
+
+.avatar img {
+  display: block;
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
 }
 
 .content {
@@ -5773,42 +5779,43 @@ h3 {
 .audit-question-list .question-marker {
   display: grid;
   justify-items: center;
-  gap: 7px;
+  gap: 6px;
 }
 
 .audit-question-list .question-plan-bulb {
-  width: 29px;
-  height: 29px;
+  width: 27px;
+  height: 27px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(241, 180, 38, 0.58);
+  border: 1px solid rgba(72, 150, 238, 0.38);
   border-radius: 999px;
-  color: #d89000;
-  background: #fff7df;
-  box-shadow: 0 0 0 0 rgba(241, 180, 38, 0.34);
+  color: #0b69e8;
+  background: #eef6ff;
+  box-shadow: 0 0 0 0 rgba(11, 105, 232, 0.18), 0 8px 18px rgba(8, 46, 96, 0.08);
   cursor: pointer;
-  animation: questionPlanPulse 1.35s ease-in-out infinite;
+  animation: questionPlanPulse 1.55s ease-in-out infinite;
 }
 
 .audit-question-list .question-plan-bulb svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.15;
 }
 
 .audit-question-list .question-plan-bulb:hover {
-  color: #b66b00;
-  border-color: rgba(241, 180, 38, 0.82);
-  background: #fff1c2;
+  color: #074fcb;
+  border-color: rgba(11, 105, 232, 0.58);
+  background: #e5f1ff;
 }
 
 @keyframes questionPlanPulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(241, 180, 38, 0.22);
-    opacity: 0.72;
+    box-shadow: 0 0 0 0 rgba(11, 105, 232, 0.16), 0 8px 18px rgba(8, 46, 96, 0.08);
+    opacity: 0.82;
   }
 
   45% {
-    box-shadow: 0 0 0 7px rgba(241, 180, 38, 0);
+    box-shadow: 0 0 0 6px rgba(11, 105, 232, 0), 0 8px 18px rgba(8, 46, 96, 0.1);
     opacity: 1;
   }
 }

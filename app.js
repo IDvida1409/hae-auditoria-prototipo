@@ -918,7 +918,9 @@ function topbar() {
         <button class="top-pill">${svgIcon("calendar")} Agosto 2026 <span>⌄</span></button>
         <button class="ghost-btn">${svgIcon("filter")} Filtros</button>
         <button class="icon-btn" title="Notificações">${icons.bell}<span class="notification-dot">3</span></button>
-        <div class="avatar" aria-label="Usuária"></div>
+        <div class="avatar" aria-label="IDVIDA">
+          <img src="assets/idvida-boneco.png?v=20260902-icons-1" alt="" />
+        </div>
       </div>
     </header>
   `;
