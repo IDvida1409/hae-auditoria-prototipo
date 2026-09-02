@@ -245,6 +245,23 @@ const actionPlanData = {
   ]
 };
 
+const questionActionPlanData = {
+  "cozinha-catering": {
+    "edificacao-e-instalacao-1": {
+      status: "concluido",
+      previousAudit: "Julho/2026",
+      auditDate: "30/07/2026",
+      closedAt: "29/08/2026",
+      auditor: "Qualidade / Segurança dos Alimentos",
+      owner: "Liderança da área auditada",
+      title: "Reorganizar fluxo da instalação",
+      action: "Adequar a organização física da área para reduzir cruzamento de processo e registrar evidência após a correção.",
+      evidence: "assets/report-evidence-utensilios.png?v=question-plan-1",
+      evidenceAlt: "Evidência do plano de ação finalizado"
+    }
+  }
+};
+
 const navItems = [
   ["home", "Início", "home"],
   ["start", "Iniciar auditoria", "audit"],
@@ -460,6 +477,7 @@ function defaultState() {
     checklistBlock: null,
     checklistPage: 0,
     checklistBlocksOpen: false,
+    actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
     leaveAuditConfirm: false
   };
@@ -501,6 +519,7 @@ function normalizeSavedState(saved = {}) {
     detailActionsOpen: false,
     detailFilter: "all",
     checklistBlocksOpen: false,
+    actionPlanNoticeQuestion: null,
     leaveAuditConfirm: false
   };
 }
@@ -2554,14 +2573,150 @@ function reportToolbar(isComparison, area) {
         <button class="${!isComparison ? "is-active" : ""}" data-report-kind="monthly">Consolidado do mês</button>
         <button class="${isComparison ? "is-active" : ""}" data-report-kind="comparison">Comparativo analítico</button>
       </div>
-      <label class="report-area-picker">
-        <span>Área do relatório</span>
-        <select data-report-area-select>
-          ${reportAreaOptions(area.id)}
-        </select>
-      </label>
+      <div class="report-toolbar-actions">
+        <button class="report-pdf-btn" data-open-report-pdf>${svgIcon("externalLink")} Abrir PDF</button>
+        <label class="report-area-picker">
+          <span>Área do relatório</span>
+          <select data-report-area-select>
+            ${reportAreaOptions(area.id)}
+          </select>
+        </label>
+      </div>
     </div>
   `;
+}
+
+function reportPdfFilename() {
+  const area = reportSelectedArea();
+  const kind = state.reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
+  const areaSlug = area.id.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+  return `hae-${kind}-${areaSlug}-${currentMonthId}.pdf`;
+}
+
+function prepareReportPdfWindow() {
+  const pdfWindow = window.open("", "_blank");
+  if (!pdfWindow) return null;
+  pdfWindow.document.open();
+  pdfWindow.document.write(`
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Gerando PDF</title>
+      </head>
+      <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#10264e;font:700 16px Arial,sans-serif">
+        Gerando PDF do relatório...
+      </body>
+    </html>
+  `);
+  pdfWindow.document.close();
+  return pdfWindow;
+}
+
+function ensureReportPdfLibrary() {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (window.__haePdfLibraryPromise) return window.__haePdfLibraryPromise;
+
+  window.__haePdfLibraryPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    script.async = true;
+    script.onload = () => resolve(window.html2pdf);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+
+  return window.__haePdfLibraryPromise;
+}
+
+function reportPrintFallback(targetWindow) {
+  const report = document.querySelector(".technical-report");
+  if (!report) return;
+  const printWindow = targetWindow || window.open("", "_blank");
+  if (!printWindow) {
+    alert("Não consegui abrir a janela do PDF. Clique novamente em Abrir PDF.");
+    return;
+  }
+
+  const baseHref = location.href.split("#")[0];
+  printWindow.document.open();
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <base href="${baseHref}" />
+        <title>${reportPdfFilename()}</title>
+        <link rel="stylesheet" href="styles.css?v=20260902-pdf-report-1" />
+        <style>
+          body { margin: 0; background: #ffffff; }
+          .technical-report { padding: 0; gap: 0; }
+          .report-doc-page { box-shadow: none !important; border-radius: 0 !important; page-break-after: always; }
+        </style>
+      </head>
+      <body>
+        <div class="technical-report">${report.innerHTML}</div>
+        <script>
+          window.addEventListener("load", function () {
+            setTimeout(function () { window.print(); }, 300);
+          });
+        <\/script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+function openReportPdf(targetWindow = null) {
+  const report = document.querySelector(".technical-report");
+  if (!report) return;
+
+  ensureReportPdfLibrary()
+    .then((html2pdf) => {
+      if (!html2pdf) throw new Error("Biblioteca de PDF indisponível");
+      const holder = document.createElement("div");
+      holder.className = "report-pdf-render-root";
+      const clone = report.cloneNode(true);
+      holder.appendChild(clone);
+      document.body.appendChild(holder);
+
+      const options = {
+        filename: reportPdfFilename(),
+        margin: [6, 6, 6, 6],
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollY: 0
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+        pagebreak: { mode: ["css", "legacy"], before: ".report-doc-page:not(:first-child)" }
+      };
+
+      html2pdf()
+        .set(options)
+        .from(clone)
+        .toPdf()
+        .get("pdf")
+        .then((pdf) => {
+          const pdfUrl = pdf.output("bloburl");
+          if (targetWindow) {
+            targetWindow.location.href = pdfUrl;
+          } else {
+            window.open(pdfUrl, "_blank");
+          }
+        })
+        .catch(() => reportPrintFallback(targetWindow))
+        .finally(() => holder.remove());
+    })
+    .catch(() => reportPrintFallback(targetWindow));
+}
+
+function openReportPdfAfterRender(targetWindow) {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => openReportPdf(targetWindow));
+  });
 }
 
 function reportMetaRows(area, typeLabel) {
@@ -2867,7 +3022,7 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
             const previousLabelY = Math.min(plotBottom - 7, previousY + (labelsAreClose ? 16 : 14));
             return `
               <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
-              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="middle" font-size="8.8" font-weight="760" fill="#526174" stroke="#ffffff" stroke-width="3" stroke-linejoin="round" paint-order="stroke">${formatScore(previous)}</text>
+              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="middle" font-size="9.6" font-weight="780" fill="#8a97a8">${formatScore(previous)}</text>
             `;
           })
           .join("") : ""}
@@ -3540,6 +3695,52 @@ function questionRiskChip(question) {
   `;
 }
 
+function questionActionPlanNotice(area, question) {
+  return questionActionPlanData[area.id]?.[question.id] || null;
+}
+
+function questionActionPlanButton(question) {
+  return `
+    <button class="question-plan-bulb" data-question-plan-notice="${question.id}" title="Ver plano de ação vinculado" aria-label="Ver plano de ação vinculado">
+      ${svgIcon("idea")}
+    </button>
+  `;
+}
+
+function questionActionPlanCard(plan) {
+  const status = actionStatusMeta[plan.status] || actionStatusMeta.andamento;
+  return `
+    <section class="question-plan-alert" style="--plan-status:${status.color}">
+      <div class="question-plan-alert-head">
+        <div>
+          <strong>Plano de ação vinculado</strong>
+          <p>Este item possui um plano de ação finalizado. Verifique a evidência e confirme se a melhoria foi implementada antes de responder.</p>
+        </div>
+        <button class="question-plan-close" data-close-question-plan title="Fechar aviso">${icons.close}</button>
+      </div>
+      <div class="question-plan-alert-grid">
+        <div class="question-plan-alert-copy">
+          <dl>
+            <div><dt>Status</dt><dd><span>${escapeHtml(status.label)}</span></dd></div>
+            <div><dt>Auditoria anterior</dt><dd>${escapeHtml(plan.previousAudit)} · ${escapeHtml(plan.auditDate)}</dd></div>
+            <div><dt>Auditor</dt><dd>${escapeHtml(plan.auditor)}</dd></div>
+            <div><dt>Responsável</dt><dd>${escapeHtml(plan.owner)}</dd></div>
+            <div><dt>Concluído em</dt><dd>${escapeHtml(plan.closedAt)}</dd></div>
+          </dl>
+          <div class="question-plan-alert-action">
+            <span>Plano executado</span>
+            <p>${escapeHtml(plan.action)}</p>
+          </div>
+        </div>
+        <figure class="question-plan-evidence">
+          <img src="${escapeHtml(plan.evidence)}" alt="${escapeHtml(plan.evidenceAlt)}" />
+          <figcaption>Evidência registrada para conferência do auditor.</figcaption>
+        </figure>
+      </div>
+    </section>
+  `;
+}
+
 function observationFor(row) {
   return row.observation || "";
 }
@@ -3814,10 +4015,15 @@ function checklistPage() {
                 const allowed = question.allowedAnswers || ["C", "NC", "X"];
                 const displayNumber = globalQuestionNumbers.get(question.id) || question.number;
                 const risk = riskMeta[question.riskLevel] || riskMeta.none;
+                const planNotice = questionActionPlanNotice(area, question);
+                const isPlanNoticeOpen = planNotice && state.actionPlanNoticeQuestion === question.id;
                 return `
                   <section class="question-card surface ${isNC ? "has-nc" : ""}" data-question-card="${question.id}" style="--question-risk:${risk.color}">
                     <div class="question-head">
-                      <span class="question-number">${String(displayNumber).padStart(2, "0")}</span>
+                      <div class="question-marker">
+                        <span class="question-number">${String(displayNumber).padStart(2, "0")}</span>
+                        ${planNotice ? questionActionPlanButton(question) : ""}
+                      </div>
                       <div>
                         <h2>${escapeHtml(question.text)}</h2>
                         <div class="question-meta-row">
@@ -3826,6 +4032,7 @@ function checklistPage() {
                         </div>
                       </div>
                     </div>
+                    ${isPlanNoticeOpen ? questionActionPlanCard(planNotice) : ""}
                     <div class="answer-row" style="--answer-count:${allowed.length}">
                       ${allowed
                         .map((answer) => {
@@ -4051,7 +4258,9 @@ function render(options = {}) {
 document.addEventListener("click", (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
+    const pdfWindow = nav.dataset.nav === "reports" ? prepareReportPdfWindow() : null;
     setView(nav.dataset.nav);
+    if (pdfWindow) openReportPdfAfterRender(pdfWindow);
     return;
   }
 
@@ -4115,10 +4324,17 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (event.target.closest("[data-open-report-pdf]")) {
+    openReportPdf(prepareReportPdfWindow());
+    return;
+  }
+
   const reportKind = event.target.closest("[data-report-kind]");
   if (reportKind) {
+    const pdfWindow = prepareReportPdfWindow();
     state.reportKind = reportKind.dataset.reportKind === "comparison" ? "comparison" : "monthly";
     render();
+    openReportPdfAfterRender(pdfWindow);
     return;
   }
 
@@ -4172,6 +4388,7 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-checklist-blocks]")) {
     state.checklistBlocksOpen = !state.checklistBlocksOpen;
+    state.actionPlanNoticeQuestion = null;
     render();
     return;
   }
@@ -4199,6 +4416,7 @@ document.addEventListener("click", (event) => {
   if (checklistBlock) {
     state.checklistBlock = checklistBlock.dataset.checklistBlock;
     state.checklistPage = 0;
+    state.actionPlanNoticeQuestion = null;
     render();
     return;
   }
@@ -4206,6 +4424,21 @@ document.addEventListener("click", (event) => {
   const checklistPage = event.target.closest("[data-checklist-page]");
   if (checklistPage) {
     state.checklistPage = Number(checklistPage.dataset.checklistPage) || 0;
+    state.actionPlanNoticeQuestion = null;
+    render();
+    return;
+  }
+
+  const questionPlanNotice = event.target.closest("[data-question-plan-notice]");
+  if (questionPlanNotice) {
+    const questionId = questionPlanNotice.dataset.questionPlanNotice;
+    state.actionPlanNoticeQuestion = state.actionPlanNoticeQuestion === questionId ? null : questionId;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-close-question-plan]")) {
+    state.actionPlanNoticeQuestion = null;
     render();
     return;
   }
@@ -4245,8 +4478,10 @@ document.addEventListener("click", (event) => {
 document.addEventListener("change", (event) => {
   const reportArea = event.target.closest("[data-report-area-select]");
   if (reportArea) {
+    const pdfWindow = prepareReportPdfWindow();
     state.selectedArea = reportArea.value;
     render();
+    openReportPdfAfterRender(pdfWindow);
   }
 });
 
