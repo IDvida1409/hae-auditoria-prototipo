@@ -3745,7 +3745,7 @@ function questionActionPlanNotice(area, question) {
 function questionActionPlanButton(question) {
   return `
     <button class="question-plan-bulb" data-question-plan-notice="${question.id}" title="Ver plano de ação vinculado" aria-label="Ver plano de ação vinculado">
-      ${svgIcon("idea")}
+      <img src="assets/action-plan-bulb.png?v=20260902-bulb-1" alt="" />
     </button>
   `;
 }
