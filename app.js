@@ -2369,6 +2369,12 @@ function reportEffectTag(plan) {
   return reportTag("Em acompanhamento", "neutral");
 }
 
+function reportShortEffectTag(plan) {
+  if (plan.improved === true) return reportTag("Com melhora", "good");
+  if (plan.improved === false) return reportTag("Sem efeito", "danger");
+  return reportTag("Acompanhar", "neutral");
+}
+
 function reportAuditWindow() {
   return {
     date: "30/08/2026",
@@ -2437,6 +2443,37 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
   `;
 }
 
+function reportComparisonPeriodLabel() {
+  return `${reportMonthLabel(currentMonthId)} / ${reportMonthLabel(reportPreviousMonthId())}`;
+}
+
+function reportComparisonDocHeader(area, showMeta = false) {
+  const audit = reportAuditWindow();
+  return `
+    <header class="report-doc-header report-monthly-header report-comparison-header">
+      <div class="report-doc-brand">
+        <img class="report-doc-idvida-logo" src="assets/idvida-logo.png?v=doc-report-1" alt="IDVIDA" />
+        <span class="report-doc-idvida">ID<span>VIDA</span></span>
+        <span class="report-doc-separator"></span>
+        <span class="report-doc-hospital">
+          <img src="assets/einstein-logo-menu.png?v=doc-report-1" alt="" aria-hidden="true" />
+          <span>Hospital Einstein<br />Morumbi</span>
+        </span>
+      </div>
+      <div class="report-doc-heading">
+        <span>AUDITORIA INTERNA - BOAS PRÁTICAS DE MANIPULAÇÃO DE ALIMENTOS</span>
+        <small>${escapeHtml(area.name)} · ${reportComparisonPeriodLabel()}</small>
+        ${showMeta ? `<small class="report-doc-audit-window">Data ${audit.date} · Início ${audit.start} · Término ${audit.end} · Duração ${audit.duration}</small>` : ""}
+      </div>
+      ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
+        <span><strong>Área</strong>${escapeHtml(area.name)}</span>
+        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
+        <span><strong>Responsável</strong>Liderança da área auditada</span>
+      </div>` : ""}
+    </header>
+  `;
+}
+
 function reportDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
@@ -2461,6 +2498,16 @@ function reportMonthlyPage(title, area, page, total, content) {
       ${reportMonthlyDocHeader(title, area, page === 1)}
       <main class="report-doc-body">${content}</main>
       ${reportMonthlyDocFooter(page, total)}
+    </article>
+  `;
+}
+
+function reportComparisonPage(area, page, total, content) {
+  return `
+    <article class="report-doc-page report-comparison-page">
+      ${reportComparisonDocHeader(area, page === 1)}
+      <main class="report-doc-body">${content}</main>
+      ${reportDocFooter(page, total)}
     </article>
   `;
 }
@@ -2638,10 +2685,44 @@ function reportMonthlyLegendBlock() {
   `;
 }
 
+function reportComparisonLegendBlock() {
+  const riskItems = [
+    ["Baixo", "good"],
+    ["Moderado", "moderate"],
+    ["Médio", "medium"],
+    ["Alto", "danger"]
+  ];
+  const answerItems = [
+    ["C", "Conforme", "good"],
+    ["NC", "Não conforme", "danger"],
+    ["X", "Não avaliado", "neutral"]
+  ];
+  return `
+    <div class="report-doc-legend report-comparison-legend" aria-label="Legenda do relatório comparativo">
+      <div>
+        <strong>Risco das NCs</strong>
+        ${riskItems.map(([label, tone]) => `<span class="report-legend-item is-${tone}"><i></i>${label}</span>`).join("")}
+      </div>
+      <div>
+        <strong>Respostas</strong>
+        ${answerItems.map(([code, label, tone]) => `<span class="report-legend-item is-${tone}"><b>${code}</b>${label}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function reportActionFootnote() {
   return `
     <p class="report-footnote">
       Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da área.
+    </p>
+  `;
+}
+
+function reportComparisonIntroNote() {
+  return `
+    <p class="report-footnote">
+      Nota: planos de ação gerados no ciclo anterior permanecem em acompanhamento até a auditoria subsequente, quando são verificados conclusão, evidência registrada e impacto no desempenho do bloco relacionado.
     </p>
   `;
 }
@@ -2714,6 +2795,15 @@ function reportPreviousBlockScore(area, block, index) {
   return clamp(block.score - delta + adjustment, 4.2, 9.8);
 }
 
+function reportSmoothChartPath(points) {
+  if (!points.length) return "";
+  return points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const controlX = (previous.x + point.x) / 2;
+    return `${path} C ${controlX},${previous.y} ${controlX},${point.y} ${point.x},${point.y}`;
+  }, `M ${points[0].x},${points[0].y}`);
+}
+
 function reportBlockScoreChart(area, comparison = false, options = {}) {
   const blocks = blockSummaries(area);
   if (!blocks.length) {
@@ -2721,9 +2811,10 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
   }
 
   const isMonthly = options.variant === "monthly";
+  const isComparison = comparison || options.variant === "comparison";
   const width = 760;
   const height = 238;
-  const pad = { left: 42, right: 72, top: comparison ? 34 : 30, bottom: 30 };
+  const pad = { left: 42, right: 72, top: isComparison ? 34 : 30, bottom: 30 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const plotBottom = pad.top + innerH;
@@ -2733,12 +2824,15 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
   const ticks = [0, 5, 8, 10];
   const previousPoints = blocks.map((block, index) => {
     const center = pad.left + index * slot + slot / 2;
-    return `${center},${yFor(reportPreviousBlockScore(area, block, index))}`;
+    return {
+      x: center,
+      y: yFor(reportPreviousBlockScore(area, block, index))
+    };
   });
 
   return `
-    <figure class="report-doc-chart ${isMonthly ? "is-monthly-chart" : ""}">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${comparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
+    <figure class="report-doc-chart ${isMonthly ? "is-monthly-chart" : ""} ${isComparison ? "is-comparison-chart" : ""}">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${isComparison ? "Comparativo mensal por bloco" : "Notas por bloco do checklist"}">
         ${ticks
           .map(
             (tick) => `
@@ -2748,28 +2842,49 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
           )
           .join("")}
         <text x="${width - pad.right + 6}" y="${yFor(8) - 5}" text-anchor="start" font-size="10" font-weight="760" fill="#2d8a43">Meta 8,0</text>
-        ${comparison ? `
-          <polyline points="${previousPoints.join(" ")}" fill="none" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        ${isComparison ? `
+          <path d="${reportSmoothChartPath(previousPoints)}" fill="none" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
         ` : ""}
         ${blocks
           .map((block, index) => {
             const center = pad.left + index * slot + slot / 2;
             const current = block.score;
-            const previous = reportPreviousBlockScore(area, block, index);
             const currentY = yFor(current);
-            const previousY = yFor(previous);
             const barTone = current < 7 ? "#ee2f36" : "#0a6cff";
             return `
-              ${comparison ? `
-                <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
-                <text x="${center}" y="${previousY - 8}" text-anchor="middle" font-size="8.8" font-weight="760" fill="#7b8797">${formatScore(previous)}</text>
-              ` : ""}
               <rect x="${center - barW / 2}" y="${currentY}" width="${barW}" height="${plotBottom - currentY}" rx="5" fill="${barTone}"></rect>
-              <text x="${center}" y="${currentY - 6}" text-anchor="middle" font-size="9.6" font-weight="780" fill="${barTone}">${formatScore(current)}</text>
             `;
           })
           .join("")}
-        ${comparison ? `
+        ${isComparison ? blocks
+          .map((block, index) => {
+            const center = pad.left + index * slot + slot / 2;
+            const currentY = yFor(block.score);
+            const previous = reportPreviousBlockScore(area, block, index);
+            const previousY = yFor(previous);
+            const labelsAreClose = Math.abs(currentY - previousY) < 16;
+            const previousLabelX = labelsAreClose ? center - barW / 2 - 5 : center;
+            const previousLabelY = labelsAreClose ? Math.max(15, previousY + 4) : Math.max(14, previousY - 8);
+            const previousLabelAnchor = labelsAreClose ? "end" : "middle";
+            return `
+              <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
+              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="${previousLabelAnchor}" font-size="8.8" font-weight="760" fill="#7b8797">${formatScore(previous)}</text>
+            `;
+          })
+          .join("") : ""}
+        ${blocks
+          .map((block, index) => {
+            const center = pad.left + index * slot + slot / 2;
+            const current = block.score;
+            const currentY = yFor(current);
+            const previousY = yFor(reportPreviousBlockScore(area, block, index));
+            const labelsAreClose = isComparison && Math.abs(currentY - previousY) < 16;
+            const currentLabelY = Math.max(14, currentY - (labelsAreClose ? 14 : 6));
+            const barTone = current < 7 ? "#ee2f36" : "#0a6cff";
+            return `<text x="${center}" y="${currentLabelY}" text-anchor="middle" font-size="9.6" font-weight="780" fill="${barTone}">${formatScore(current)}</text>`;
+          })
+          .join("")}
+        ${isComparison ? `
           <line x1="${pad.left}" y1="8" x2="${pad.left + 18}" y2="8" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round"></line>
           <text x="${pad.left + 20}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(reportPreviousMonthId())}</text>
           <rect x="${pad.left + 86}" y="5" width="14" height="6" rx="3" fill="#0a6cff"></rect>
@@ -2777,9 +2892,9 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
         ` : ""}
       </svg>
       <div class="report-chart-labels" style="--items:${blocks.length}">
-        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(isMonthly ? reportFullText(block.title).toUpperCase() : reportBlockLabel(block.title))}</span>`).join("")}
+        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(isMonthly || isComparison ? reportFullText(block.title).toUpperCase() : reportBlockLabel(block.title))}</span>`).join("")}
       </div>
-      <figcaption>${comparison ? "Figura 1 - Comparativo do desempenho por bloco." : "Figura 1 - Desempenho dos blocos no mês vigente."}</figcaption>
+      <figcaption>${isComparison ? "Figura 1 - Comparativo do desempenho por bloco." : "Figura 1 - Desempenho dos blocos no mês vigente."}</figcaption>
     </figure>
   `;
 }
@@ -2928,7 +3043,7 @@ function reportConclusion(area) {
   `;
 }
 
-function reportComparisonSummaryRows(area) {
+function reportComparisonMetrics(area) {
   const current = reportAreaTotals(area);
   const previous = reportPreviousAreaTotals(area);
   const delta = area.score - area.last;
@@ -2936,6 +3051,19 @@ function reportComparisonSummaryRows(area) {
   const newNcs = Math.max(0, current.NC - previous.NC);
   const resolvedNcs = Math.max(0, previous.NC - current.NC);
   const recurring = Math.min(current.NC, previous.NC, Math.max(stats.recurrent, current.NC - newNcs));
+  return { current, previous, delta, stats, newNcs, resolvedNcs, recurring };
+}
+
+function reportPlainList(items, fallback = "sem destaque no período") {
+  const clean = items.map((item) => reportFullText(item)).filter(Boolean);
+  if (!clean.length) return fallback;
+  if (clean.length === 1) return clean[0];
+  if (clean.length === 2) return `${clean[0]} e ${clean[1]}`;
+  return `${clean.slice(0, -1).join(", ")} e ${clean[clean.length - 1]}`;
+}
+
+function reportComparisonSummaryRows(area) {
+  const { delta, stats, newNcs, resolvedNcs, recurring } = reportComparisonMetrics(area);
   return [
     ["Nota do mês anterior", `<strong>${formatScore(area.last)}</strong>`, "Nota atual", `<strong>${formatScore(area.score)}</strong>`],
     ["Variação da nota", `<strong>${reportDeltaText(delta)}</strong>`, "Leitura", delta >= 0 ? reportTag("Melhora", "good") : reportTag("Queda", "danger")],
@@ -2944,36 +3072,39 @@ function reportComparisonSummaryRows(area) {
   ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
 }
 
-function reportComparisonBlockRows(area) {
+function reportComparisonBlockDeltas(area) {
   return blockSummaries(area).map((block, index) => {
     const previous = reportPreviousBlockScore(area, block, index);
     const delta = block.score - previous;
-    const reading = delta >= 0.15 ? "Melhorou" : delta <= -0.15 ? "Piorou" : "Estável";
+    return { block, previous, current: block.score, delta };
+  });
+}
+
+function reportComparisonBlockRows(area) {
+  return reportComparisonBlockDeltas(area).map(({ block, previous, current, delta }) => {
     return [
       `<strong>${escapeHtml(block.title)}</strong>`,
       formatScore(previous),
-      formatScore(block.score),
-      `<strong>${reportDeltaText(delta)}</strong>`,
-      reading,
-      delta < 0 ? "Reavaliar plano" : "Manter controle"
+      formatScore(current),
+      `<strong>${reportDeltaText(delta)}</strong>`
     ];
   });
 }
 
 function reportActionEffectRowsForArea(area) {
   return actionPlansForArea(area).map((plan) => {
-    const conduct = plan.improved === true
-      ? "Manter rotina"
-      : plan.improved === false
-        ? "Replanejar ação"
-        : "Acompanhar próximo ciclo";
+    const evidence = plan.status === "concluido"
+      ? "Evidência registrada para validação"
+      : plan.status === "pendente"
+        ? "Aguardando execução e evidência"
+        : "Em acompanhamento até a próxima auditoria";
     return [
-      `<strong>${escapeHtml(plan.block)}</strong>`,
-      escapeHtml(reportCompactText(plan.title, 54)),
+      `<strong>${escapeHtml(reportFullText(plan.title))}</strong>`,
+      escapeHtml(plan.block),
       escapeHtml(plan.owner),
       reportActionStatusTag(plan.status),
-      reportEffectTag(plan),
-      conduct
+      evidence,
+      reportShortEffectTag(plan)
     ];
   });
 }
@@ -2986,7 +3117,7 @@ function reportNcTrendList(area) {
       ${rows
         .map((row, index) => {
           const trend = index % 3 === 0 ? "recorrente" : index % 3 === 1 ? "nova" : "em tratamento";
-          return `<li><strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportShortChartLabel(row.text))} (${trend}).</li>`;
+          return `<li><strong>${escapeHtml(row.blockTitle)}</strong> - ${escapeHtml(reportFullText(row.text))} (${trend}).</li>`;
         })
         .join("")}
     </ol>
@@ -3013,32 +3144,68 @@ function reportPriorityRowsDoc() {
 }
 
 function reportComparativeNarrative(area) {
-  const delta = area.score - area.last;
-  const stats = actionPlanStats(area);
-  const blocks = blockSummaries(area);
+  const { delta, stats, newNcs, resolvedNcs, recurring } = reportComparisonMetrics(area);
+  const plans = actionPlansForArea(area);
+  const improvedPlans = plans.filter((plan) => plan.improved === true);
+  const noEffectPlans = plans.filter((plan) => plan.improved === false);
+  const openPlans = plans.filter((plan) => plan.status !== "concluido");
+  const blocks = reportComparisonBlockDeltas(area);
   const worsened = blocks
-    .map((block, index) => ({ block, delta: block.score - reportPreviousBlockScore(area, block, index) }))
     .filter((item) => item.delta < -0.15)
     .sort((a, b) => a.delta - b.delta)
     .slice(0, 2);
   const improved = blocks
-    .map((block, index) => ({ block, delta: block.score - reportPreviousBlockScore(area, block, index) }))
     .filter((item) => item.delta > 0.15)
     .sort((a, b) => b.delta - a.delta)
     .slice(0, 2);
   const tendency = delta > 0.15 ? "melhora" : delta < -0.15 ? "queda" : "estabilidade";
-  const actionReading = stats.noEffect
-    ? `Há ${stats.noEffect} plano(s) sem melhora comprovada, o que indica necessidade de replanejamento da ação corretiva.`
-    : stats.improved
-      ? `Há ${stats.improved} plano(s) com melhora observada, sugerindo efeito positivo das ações executadas.`
-      : "Os planos ainda não têm evidência suficiente de impacto e devem permanecer em acompanhamento.";
+  const improvedPlanText = reportPlainList(improvedPlans.map((plan) => `${plan.title}, no bloco ${plan.block}`), "nenhum plano com melhora comprovada");
+  const noEffectText = reportPlainList(noEffectPlans.map((plan) => `${plan.title}, no bloco ${plan.block}`), "nenhum plano sem efeito comprovado");
+  const openPlanText = reportPlainList(openPlans.map((plan) => `${plan.title} (${plan.status})`), "nenhum plano em aberto");
 
   return `
     <div class="report-analysis-note">
-      <strong>Análise do auditor</strong>
-      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no comparativo mensal, passando de ${formatScore(area.last)} para ${formatScore(area.score)} (${reportDeltaText(delta)} ponto). ${actionReading}</p>
-      <p>${worsened.length ? `Os blocos com piora mais relevante foram ${escapeHtml(worsened.map((item) => item.block.title).join(" e "))}.` : "Não houve bloco com piora expressiva no recorte analisado."} ${improved.length ? `Os melhores sinais de recuperação aparecem em ${escapeHtml(improved.map((item) => item.block.title).join(" e "))}.` : "Ainda não há melhora expressiva por bloco."}</p>
+      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no comparativo mensal, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)} (${reportDeltaText(delta)} ponto).</p>
+      <p>Foram identificadas ${reportPlural(recurring, "NC recorrente", "NCs recorrentes")}, ${reportPlural(newNcs, "NC nova", "NCs novas")} e ${reportPlural(resolvedNcs, "NC resolvida", "NCs resolvidas")}. Essa leitura mostra se o desempenho evoluiu apenas na nota ou se também houve redução real de ocorrências.</p>
+      <p>Planos com melhora observada: ${escapeHtml(improvedPlanText)}. Planos sem efeito comprovado: ${escapeHtml(noEffectText)}. Planos em aberto permanecem em acompanhamento até nova validação: ${escapeHtml(openPlanText)}.</p>
+      <p>${worsened.length ? `Blocos com piora no recorte: ${escapeHtml(reportPlainList(worsened.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`)))}.` : "Não houve bloco com piora expressiva no recorte analisado."} ${improved.length ? `Melhores sinais de recuperação: ${escapeHtml(reportPlainList(improved.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`)))}.` : "Ainda não há melhora expressiva por bloco."}</p>
     </div>
+  `;
+}
+
+function reportComparisonBlockNarrative(area) {
+  const rows = reportComparisonBlockDeltas(area);
+  const improved = rows
+    .filter((item) => item.delta > 0.15)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3);
+  const worsened = rows
+    .filter((item) => item.delta < -0.15)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, 3);
+  const stable = rows.filter((item) => Math.abs(item.delta) <= 0.15).length;
+  const improvedText = reportPlainList(improved.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem melhora expressiva");
+  const worsenedText = reportPlainList(worsened.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem queda expressiva");
+
+  return `
+    <div class="report-note-box">
+      <strong>Leitura das variações por bloco</strong>
+      <p>Maiores evoluções: ${escapeHtml(improvedText)}. Maiores quedas: ${escapeHtml(worsenedText)}. ${stable ? `${stable} bloco(s) permaneceram estáveis e devem seguir em controle de rotina.` : "Não houve bloco estável no recorte analisado."} Blocos com variação negativa, NC recorrente ou plano sem evidência de conclusão devem ser priorizados no próximo ciclo.</p>
+    </div>
+  `;
+}
+
+function reportActionEffectNarrative(area) {
+  const plans = actionPlansForArea(area);
+  const stats = actionPlanStats(area);
+  const open = reportOpenActions(stats);
+  const openText = open === 1 ? "1 permanece aberto" : `${open} permanecem abertos`;
+  const improvedText = reportPlainList(plans.filter((plan) => plan.improved === true).map((plan) => plan.title), "nenhum plano com melhora comprovada");
+  const noEffectText = reportPlainList(plans.filter((plan) => plan.improved === false).map((plan) => plan.title), "nenhum plano sem efeito comprovado");
+  return `
+    <p class="report-footnote">
+      Nota: ${reportPlural(plans.length, "plano foi avaliado", "planos foram avaliados")} neste comparativo; ${openText} para confirmação na próxima auditoria. Com melhora observada: ${escapeHtml(improvedText)}. Sem efeito comprovado: ${escapeHtml(noEffectText)}. Quando a execução depender de apoio externo, a justificativa deve ser registrada pelo responsável do plano antes da validação final.
+    </p>
   `;
 }
 
@@ -3122,42 +3289,47 @@ function monthlyReportPage() {
 function comparativeReportPage() {
   const area = reportSelectedArea();
   const pages = 4;
-  const title = "Relatório Analítico Comparativo - Mês Atual x Mês Anterior";
+  const title = "Relatório Comparativo";
   const priority = actionImpactRows()[0];
 
   return `
     <div class="technical-report">
-      ${reportPage(title, area, 1, pages, `
+      ${reportComparisonPage(area, 1, pages, `
         <h1>${title}</h1>
-        <p class="report-doc-lead">Relatório para avaliar se as ações do ciclo anterior refletiram na auditoria atual e indicar onde atuar primeiro no próximo mês.</p>
+        <p class="report-doc-lead">Relatório elaborado para comparar o ciclo atual com o ciclo anterior, verificar se os planos de ação registrados tiveram reflexo no desempenho da área e indicar quais pontos devem permanecer em acompanhamento na próxima auditoria.</p>
+        ${reportComparisonIntroNote()}
         ${reportMiniKpis(area, "comparison")}
-        ${reportLegendBlock()}
+        ${reportComparisonLegendBlock()}
         ${reportSection("1", "Resumo comparativo da área", `
           ${reportDocTable(["Indicador", reportShortMonthLabel(reportPreviousMonthId()), "Indicador", reportShortMonthLabel(currentMonthId)], reportComparisonSummaryRows(area), "is-meta")}
+        `)}
+        ${reportSection("2", "Síntese técnica comparativa", `
           ${reportComparativeNarrative(area)}
         `)}
       `)}
-      ${reportPage(title, area, 2, pages, `
-        ${reportSection("2", "Perguntas analíticas do comparativo", `
-          ${reportDocTable(["Pergunta do auditor", "Resposta analítica do sistema"], reportAnalyticQuestionRows(area))}
-        `)}
+      ${reportComparisonPage(area, 2, pages, `
         ${reportSection("3", "Comparativo por bloco do checklist", `
-          ${reportBlockScoreChart(area, true)}
-          ${reportDocTable(["Bloco", "Mês anterior", "Mês atual", "Variação", "Leitura", "Conduta"], reportComparisonBlockRows(area), "is-comparison")}
+          ${reportBlockScoreChart(area, true, { variant: "comparison" })}
+          ${reportDocTable(["Bloco", reportMonthLabel(reportPreviousMonthId()), reportMonthLabel(currentMonthId), "Variação"], reportComparisonBlockRows(area), "is-comparison")}
+          ${reportComparisonBlockNarrative(area)}
         `)}
       `)}
-      ${reportPage(title, area, 3, pages, `
+      ${reportComparisonPage(area, 3, pages, `
         ${reportSection("4", "Efetividade dos planos de ação", `
-          ${reportDocTable(["Origem", "Plano de ação", "Responsável", "Status", "Efeito observado", "Conduta"], reportActionEffectRowsForArea(area), "is-actions")}
+          ${reportDocTable(["Plano de ação", "Bloco", "Responsável", "Status", "Evidência de conclusão", "Efeito observado"], reportActionEffectRowsForArea(area), "is-actions")}
+          ${reportActionEffectNarrative(area)}
         `)}
-        ${reportSection("5", "Recorrência das não conformidades", reportNcTrendList(area))}
+        ${reportSection("5", "Recorrência das não conformidades", `
+          <p class="report-doc-text report-comparison-reading-text">São consideradas recorrentes as NCs identificadas no ciclo anterior que voltam a aparecer na auditoria atual. A recorrência indica que a ação anterior não foi suficiente, não foi concluída ou não teve evidência adequada de efetividade.</p>
+          ${reportNcTrendList(area)}
+        `)}
       `)}
-      ${reportPage(title, area, 4, pages, `
+      ${reportComparisonPage(area, 4, pages, `
         ${reportSection("6", "Áreas com maiores oportunidades de melhoria", `
           ${reportDocTable(["Prioridade", "Área", "Nota", "NCs", "Planos", "Motivo da priorização"], reportPriorityRowsDoc(), "is-priority")}
           <div class="report-note-box">
             <strong>Direcionamento do próximo ciclo</strong>
-            <p>A primeira prioridade do sistema é ${escapeHtml(priority.area.name)}. A lógica combina nota abaixo da meta, volume de NCs, recorrência e quantidade de planos ainda abertos. Assim, o relatório indica onde agir primeiro, e não apenas qual nota piorou.</p>
+            <p>A primeira prioridade do sistema é ${escapeHtml(priority.area.name)}. A lógica combina nota abaixo da meta, volume de NCs, recorrência e quantidade de planos ainda abertos. Assim, o relatório indica onde acompanhar primeiro no próximo ciclo, sem atribuir responsabilidade automática antes da justificativa do plano.</p>
           </div>
         `)}
         <div class="report-signatures">

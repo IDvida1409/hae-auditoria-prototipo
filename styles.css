@@ -8736,6 +8736,26 @@ h3 {
   transform-origin: left top;
 }
 
+.report-doc-chart.is-comparison-chart {
+  padding-bottom: 6px;
+}
+
+.report-doc-chart.is-comparison-chart .report-chart-labels {
+  min-height: 62px;
+  margin: 0 72px 4px 42px;
+  align-items: start;
+}
+
+.report-doc-chart.is-comparison-chart .report-chart-labels span {
+  width: 148px;
+  color: #111827;
+  font-size: 7.35px;
+  line-height: 1.02;
+  text-align: left;
+  transform: translateY(19px) rotate(-34deg);
+  transform-origin: left top;
+}
+
 .report-empty-chart {
   min-height: 120px;
   display: grid;
@@ -8892,6 +8912,98 @@ h3 {
 .report-monthly-page .report-doc-table.is-ncs td {
   vertical-align: top;
   overflow-wrap: anywhere;
+}
+
+.report-comparison-page {
+  color: #111827;
+}
+
+.report-comparison-page .report-doc-lead,
+.report-comparison-page .report-doc-text,
+.report-comparison-page .report-note-box,
+.report-comparison-page .report-analysis-note,
+.report-comparison-page .report-footnote,
+.report-comparison-page .report-doc-list {
+  color: #111827;
+}
+
+.report-comparison-page .report-doc-body h1 {
+  font-size: 15.8px;
+  line-height: 1.22;
+}
+
+.report-comparison-page .report-doc-lead,
+.report-comparison-page .report-doc-text,
+.report-comparison-page .report-analysis-note p,
+.report-comparison-page .report-note-box p {
+  font-weight: 400;
+}
+
+.report-comparison-page .report-doc-table.is-comparison {
+  table-layout: fixed;
+  font-size: 9.05px;
+}
+
+.report-comparison-page .report-doc-table.is-comparison th:nth-child(1),
+.report-comparison-page .report-doc-table.is-comparison td:nth-child(1) {
+  width: 58%;
+  white-space: nowrap;
+}
+
+.report-comparison-page .report-doc-table.is-comparison th:nth-child(n+2),
+.report-comparison-page .report-doc-table.is-comparison td:nth-child(n+2) {
+  width: 14%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.report-comparison-page .report-doc-table.is-actions {
+  table-layout: fixed;
+  font-size: 8.55px;
+  line-height: 1.22;
+}
+
+.report-comparison-page .report-doc-table.is-actions th,
+.report-comparison-page .report-doc-table.is-actions td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(1),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(1) {
+  width: 26%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(2),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(2) {
+  width: 17%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(3),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(3) {
+  width: 13%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(4),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(4) {
+  width: 13%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(5),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(5) {
+  width: 18%;
+}
+
+.report-comparison-page .report-doc-table.is-actions th:nth-child(6),
+.report-comparison-page .report-doc-table.is-actions td:nth-child(6) {
+  width: 13%;
+}
+
+.report-comparison-reading-text {
+  max-width: none;
+  margin-bottom: 8px;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .report-doc-list {
