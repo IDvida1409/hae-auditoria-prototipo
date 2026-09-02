@@ -3193,18 +3193,19 @@ function reportRecurrenceNarrative(area) {
   const recurringX = reportRecurringXRows(area);
   const blocks = [...new Set(recurringNc.map((row) => row.blockTitle))];
   const blockText = reportPlainList(blocks, "sem concentração por bloco");
-  const xText = recurringX.length
-    ? `${recurringX.length === 1 ? "Também foi identificado" : "Também foram identificados"} ${reportPlural(recurringX.length, "item novamente não avaliado", "itens novamente não avaliados")}, que ${recurringX.length === 1 ? "impede" : "impedem"} confirmar se o requisito está conforme e se o risco da pergunta está controlado.`
-    : "Não foram identificados itens novamente não avaliados no período comparado.";
+  const blockTerm = blocks.length > 1 ? "nos blocos" : "no bloco";
   const ncText = recurringNc.length === 0
     ? "não foram identificadas não conformidades recorrentes"
     : recurringNc.length === 1
-      ? `foi identificada 1 não conformidade recorrente no bloco ${escapeHtml(blockText)}`
-      : `foram identificadas ${recurringNc.length} não conformidades recorrentes no bloco ${escapeHtml(blockText)}`;
+      ? `foi identificada 1 não conformidade recorrente ${blockTerm} ${escapeHtml(blockText)}`
+      : `foram identificadas ${recurringNc.length} não conformidades recorrentes ${blockTerm} ${escapeHtml(blockText)}`;
+  const xText = recurringX.length
+    ? `, além de ${reportPlural(recurringX.length, "item novamente não avaliado", "itens novamente não avaliados")}. A ausência de avaliação ${recurringX.length === 1 ? "desse item impede" : "desses itens impede"} confirmar a conformidade do requisito e o controle do risco associado.`
+    : ". Não foram identificados itens novamente não avaliados no período comparado.";
 
   return `
     <p class="report-doc-text report-comparison-reading-text">
-      Neste comparativo, ${ncText}. ${xText} Quando a recorrência permanece mesmo com plano de ação vinculado, deve-se verificar se houve falha de execução, prazo não cumprido, ação insuficiente ou dependência de apoio externo não resolvida.
+      Neste comparativo, ${ncText}${xText} Nos casos de recorrência com plano de ação vinculado, deve-se verificar a execução da ação, o cumprimento do prazo e a suficiência da medida corretiva.
     </p>
   `;
 }
@@ -3293,8 +3294,8 @@ function reportComparativeNarrative(area) {
 
   return `
     <div class="report-analysis-note">
-      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no desempenho geral, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)}. A evolução da nota é positiva, porém a análise técnica deve considerar se essa melhora foi acompanhada pela redução real das não conformidades, pela correção de ocorrências recorrentes e pelo cumprimento dos planos de ação vigentes no período.</p>
-      <p>Quando há melhora da nota, mas permanecem ocorrências recorrentes ou planos não concluídos no prazo, o resultado deve ser interpretado com cautela, pois ainda pode existir falha de processo ou pendência de execução corretiva.</p>
+      <p>A área ${escapeHtml(area.name)} apresentou ${tendency} no desempenho geral, passando de ${formatScore(area.last)} em ${reportMonthLabel(reportPreviousMonthId())} para ${formatScore(area.score)} em ${reportMonthLabel(currentMonthId)}. Entretanto, a evolução da nota deve ser interpretada em conjunto com a recorrência das não conformidades e a efetividade dos planos de ação avaliados no período.</p>
+      <p>Neste ciclo, a melhora da nota não elimina a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo.</p>
     </div>
   `;
 }
@@ -3312,12 +3313,19 @@ function reportComparisonBlockNarrative(area) {
   const priority = reportBlockPriorityData(area)[0];
   const improvedText = reportPlainList(improved.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem melhora expressiva");
   const worsenedText = reportPlainList(worsened.map((item) => `${item.block.title} (${reportDeltaText(item.delta)})`), "sem queda expressiva");
-  const priorityText = priority ? `O bloco ${priority.block.title} permanece como ponto de atenção por ${priority.reason}.` : "";
+  const priorityReason = [
+    priority?.highRiskNc ? "NC de risco alto" : "",
+    priority?.recurringNcs ? "recorrência" : "",
+    priority?.linkedLatePlan ? "plano de ação não concluído no prazo" : ""
+  ].filter(Boolean);
+  const priorityText = priority && priorityReason.length
+    ? `${priority.block.title} permanece como ponto de atenção devido à presença de ${reportPlainList(priorityReason)}.`
+    : "";
 
   return `
     <div class="report-note-box">
       <strong>Leitura das variações por bloco</strong>
-      <p>As maiores evoluções ocorreram em ${escapeHtml(improvedText)}. Maiores quedas: ${escapeHtml(worsenedText)}. ${escapeHtml(priorityText)}</p>
+      <p>As maiores evoluções ocorreram em ${escapeHtml(improvedText)}. ${worsened.length ? `As maiores quedas ocorreram em ${escapeHtml(worsenedText)}.` : "Não foram observadas quedas relevantes entre os blocos avaliados."} ${escapeHtml(priorityText)}</p>
     </div>
   `;
 }
@@ -3333,17 +3341,20 @@ function reportActionEffectNarrative(area) {
   const firstPlan = plans[0];
   const originRow = reportPlanOriginRow(area, firstPlan);
   const riskLabel = originRow ? (riskMeta[originRow.riskLevel] || riskMeta.none).label.toLowerCase() : (firstPlan.critical ? "alto" : "médio");
-  const problemText = originRow ? `o requisito do item ${String(originRow.number).padStart(2, "0")}` : `o bloco ${firstPlan.block}`;
+  const problemText = originRow ? `ao item ${String(originRow.number).padStart(2, "0")}` : `ao bloco ${firstPlan.block}`;
   const conclusion = firstPlan.status === "concluido" && firstPlan.improved === true
     ? "foi concluído no prazo e não apresentou repetição da ocorrência relacionada."
     : firstPlan.status === "concluido"
       ? "foi concluído, porém a ocorrência relacionada voltou a aparecer no mês atual."
-      : "não foi concluído até a auditoria atual; por isso, a ação é classificada como não efetiva no período analisado.";
+      : "não foi concluído até a auditoria atual.";
+  const effectivenessText = firstPlan.status === "concluido" && firstPlan.improved === true
+    ? "Houve comprovação de efetividade da ação no período."
+    : "Como a ocorrência voltou a ser identificada, não houve comprovação de efetividade da ação no período.";
 
   return `
     <div class="report-note-box">
       <strong>Leitura dos planos avaliados</strong>
-      <p>O plano "${escapeHtml(reportFullText(firstPlan.title))}" está relacionado a ${escapeHtml(problemText)}, classificado como risco ${escapeHtml(riskLabel)}, e deveria atuar sobre a ocorrência identificada no bloco ${escapeHtml(firstPlan.block)}. O plano ${conclusion} O requisito deve ser reavaliado quanto à execução da ação, suficiência da medida proposta e necessidade de apoio de áreas envolvidas, quando aplicável.</p>
+      <p>O plano "${escapeHtml(reportFullText(firstPlan.title))}", vinculado ${escapeHtml(problemText)} e classificado como risco ${escapeHtml(riskLabel)}, ${conclusion} ${effectivenessText} O requisito deverá ser reavaliado no próximo ciclo quanto à execução da ação, à evidência apresentada e à suficiência da medida corretiva.</p>
     </div>
   `;
 }
@@ -3434,7 +3445,7 @@ function comparativeReportPage() {
     <div class="technical-report">
       ${reportComparisonPage(area, 1, pages, `
         <h1>${title}</h1>
-        <p class="report-doc-lead">Este relatório compara o desempenho da área auditada entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}, considerando a nota final, a variação dos blocos do checklist, as não conformidades recorrentes, os itens novamente não avaliados e a efetividade dos planos de ação vigentes no período. A finalidade é verificar se houve evolução real dos requisitos avaliados, identificar falhas de processo, apontar ações não executadas no prazo e orientar os pontos que precisam de correção, acompanhamento ou reavaliação.</p>
+        <p class="report-doc-lead">Este relatório compara o desempenho da área auditada entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}, considerando a nota final, a variação dos blocos do checklist, as não conformidades recorrentes, os itens novamente não avaliados e a efetividade dos planos de ação vigentes. A análise busca verificar se a evolução observada representa melhoria efetiva do processo e identificar os pontos que permanecem sob correção, acompanhamento ou reavaliação.</p>
         ${reportComparisonIntroNote()}
         ${reportMiniKpis(area, "comparison")}
         ${reportComparisonLegendBlock()}
@@ -3448,7 +3459,7 @@ function comparativeReportPage() {
       `)}
       ${reportComparisonPage(area, 2, pages, `
         ${reportSection("3", "Comparativo por bloco do checklist", `
-          <p class="report-doc-text report-comparison-reading-text">O gráfico e a tabela apresentam a variação de desempenho dos blocos do checklist no período comparado. Essa leitura permite identificar quais blocos contribuíram para a melhora, quais permaneceram estáveis e quais exigem atenção por apresentarem não conformidade, risco elevado, recorrência ou ausência de avaliação.</p>
+          <p class="report-doc-text report-comparison-reading-text">O gráfico e a tabela apresentam a variação de desempenho dos blocos do checklist entre os dois ciclos auditados, permitindo identificar evoluções e pontos que permanecem sob atenção.</p>
           ${reportBlockScoreChart(area, true, { variant: "comparison" })}
           ${reportDocTable(["Bloco", reportMonthLabel(reportPreviousMonthId()), reportMonthLabel(currentMonthId), "Variação"], reportComparisonBlockRows(area), "is-comparison")}
           ${reportComparisonBlockNarrative(area)}
@@ -3472,7 +3483,7 @@ function comparativeReportPage() {
           ${reportDocTable(["Nº", "Bloco / requisito", "Nota", "Risco", "Motivo da priorização", "Conduta sugerida"], reportBlockPriorityRows(area), "is-priority")}
           <div class="report-note-box">
             <strong>Direcionamento das correções</strong>
-            <p>O principal bloco com oportunidade de melhoria é ${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)}, devido à recorrência de não conformidades de risco alto e à existência de plano de ação não concluído no prazo. Esse bloco deve ser tratado como prioridade de correção, com definição clara da ação, responsável, prazo, evidência esperada e validação da efetividade no mês seguinte.</p>
+            <p>${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)} constitui a principal prioridade para o próximo ciclo, devido à recorrência de não conformidade de risco alto e à existência de plano de ação não concluído no prazo. O acompanhamento deverá considerar a execução da ação, o cumprimento do prazo, a evidência registrada e a validação de sua efetividade na auditoria subsequente.</p>
           </div>
         `)}
         <div class="report-signatures">
