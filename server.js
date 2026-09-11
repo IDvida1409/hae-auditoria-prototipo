@@ -5,6 +5,7 @@ const path = require("node:path");
 const root = __dirname;
 const dataDir = path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
+const migrationsDir = path.join(root, "migrations");
 const port = Number(process.env.PORT || 3000);
 const databaseUrl = process.env.DATABASE_URL;
 let poolPromise = null;
@@ -50,6 +51,60 @@ function useSslForPostgres() {
   return mode === "require" || mode === "verify-ca" || mode === "verify-full";
 }
 
+function migrationFiles() {
+  if (!fs.existsSync(migrationsDir)) return [];
+  return fs.readdirSync(migrationsDir)
+    .filter((file) => /^\d+_.+\.sql$/i.test(file))
+    .sort();
+}
+
+async function runMigrations(pool) {
+  await pool.query(`
+    create table if not exists schema_migrations (
+      id serial primary key,
+      filename text not null unique,
+      applied_at timestamptz not null default now()
+    )
+  `);
+
+  for (const filename of migrationFiles()) {
+    const applied = await pool.query(
+      "select 1 from schema_migrations where filename = $1",
+      [filename]
+    );
+    if (applied.rows.length) continue;
+
+    const sql = fs.readFileSync(path.join(migrationsDir, filename), "utf8").trim();
+    if (!sql) continue;
+
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(sql);
+      await client.query(
+        "insert into schema_migrations (filename) values ($1)",
+        [filename]
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw new Error(`Falha ao aplicar migracao ${filename}: ${error.message}`);
+    } finally {
+      client.release();
+    }
+  }
+}
+
+async function schemaStatus(pool) {
+  const result = await pool.query(`
+    select
+      count(*)::int as applied_count,
+      max(filename) as latest_migration
+    from schema_migrations
+  `);
+  return result.rows[0] || { applied_count: 0, latest_migration: null };
+}
+
 function toIso(value) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -72,6 +127,7 @@ async function getPool() {
           updated_at timestamptz
         )
       `);
+      await runMigrations(pool);
       return pool;
     })();
   }
@@ -149,7 +205,21 @@ function staticPathFor(urlPath) {
 
 async function handleApi(request, response, url) {
   if (url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true, storage: databaseUrl ? "postgres" : "file" });
+    try {
+      const pool = await getPool();
+      const migrations = pool ? await schemaStatus(pool) : null;
+      sendJson(response, 200, {
+        ok: true,
+        storage: pool ? "postgres" : "file",
+        migrations
+      });
+    } catch (error) {
+      sendJson(response, 500, {
+        ok: false,
+        storage: databaseUrl ? "postgres" : "file",
+        error: error.message || "Erro ao verificar backend"
+      });
+    }
     return true;
   }
 
