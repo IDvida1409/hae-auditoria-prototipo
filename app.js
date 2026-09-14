@@ -276,12 +276,9 @@ const navItems = [
 ];
 
 const settingsSections = [
-  { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, edição e inativação de usuários." },
-  { id: "permissions", label: "Permissões", icon: "shield", description: "Perfis de acesso e limites de ação." },
-  { id: "goals", label: "Metas", icon: "target", description: "Meta mínima e faixas de desempenho." },
-  { id: "scoring", label: "Pontuação", icon: "table", description: "Regras de cálculo para C, NC, X e risco." },
-  { id: "visual-rules", label: "Regras visuais", icon: "chart", description: "Cores, legendas, bordas e alertas do painel." },
-  { id: "privacy", label: "LGPD e evidências", icon: "shield", description: "Avisos e política para fotos de evidência." }
+  { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, perfis e permissões." },
+  { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." },
+  { id: "privacy", label: "LGPD e evidências", icon: "shield", description: "Aviso para fotos de evidência." }
 ];
 
 const settingsUsers = [
@@ -4349,28 +4346,16 @@ function settingsSectionById(id = state.settingsSection) {
   return settingsSections.find((section) => section.id === id) || settingsSections[0];
 }
 
-function settingsModuleButton(section) {
-  return `
-    <button class="settings-module-card surface ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}">
-      <span class="settings-module-icon">${svgIcon(section.icon)}</span>
-      <span>
-        <strong>${escapeHtml(section.label)}</strong>
-        <small>${escapeHtml(section.description)}</small>
-      </span>
-    </button>
-  `;
-}
-
 function settingsUsersPanel() {
   return `
-    <section class="settings-panel surface">
+    <div class="settings-panel">
       <div class="settings-panel-head">
         <div>
           <span class="settings-kicker">Controle de acesso</span>
           <h2>Usuários</h2>
-          <p>Cadastre quem acessa o sistema e defina se a pessoa atua como auditor, qualidade/admin, responsável da área ou visualizador.</p>
+          <p>Cadastre quem acessa o sistema, vincule a área e defina o perfil de permissão de cada usuário.</p>
         </div>
-        <button class="primary-btn" data-toggle-user-form>${state.settingsUserFormOpen ? "Fechar cadastro" : "Novo usuário"}</button>
+        <button class="settings-soft-btn" data-toggle-user-form>${state.settingsUserFormOpen ? "Fechar cadastro" : "Novo usuário"}</button>
       </div>
       ${state.settingsUserFormOpen ? `
         <div class="settings-form-grid">
@@ -4378,7 +4363,7 @@ function settingsUsersPanel() {
           <div class="note-field"><label>E-mail</label><input placeholder="usuario@hospital.com.br" /></div>
           <div class="note-field"><label>Perfil</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
           <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
-          <button class="primary-btn settings-save-btn">Salvar usuário</button>
+          <button class="settings-soft-btn settings-save-btn">Salvar usuário</button>
         </div>
       ` : ""}
       <div class="settings-table-wrap">
@@ -4403,30 +4388,52 @@ function settingsUsersPanel() {
           </tbody>
         </table>
       </div>
-    </section>
+      <section class="settings-subsection">
+        <div class="settings-subsection-head">
+          <div>
+            <span class="settings-kicker">Permissões</span>
+            <h3>Perfis de acesso</h3>
+          </div>
+          <button class="settings-soft-btn">Editar permissões</button>
+        </div>
+        <div class="settings-permission-list">
+          ${settingsPermissionProfiles
+            .map(
+              (item) => `
+                <div class="settings-permission-row">
+                  <strong>${escapeHtml(item.profile)}</strong>
+                  <span>${escapeHtml(item.scope)}</span>
+                  <p>${escapeHtml(item.actions)}</p>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
+    </div>
   `;
 }
 
-function settingsPermissionsPanel() {
+function settingsRulesList(items, title, text) {
   return `
-    <section class="settings-panel surface">
-      <div class="settings-panel-head">
+    <section class="settings-subsection">
+      <div class="settings-subsection-head">
         <div>
-          <span class="settings-kicker">Perfis do sistema</span>
-          <h2>Permissões</h2>
-          <p>Cada perfil limita o que o usuário pode ver, editar, aprovar ou apenas consultar.</p>
+          <span class="settings-kicker">${escapeHtml(title)}</span>
+          <h3>${escapeHtml(text)}</h3>
         </div>
       </div>
-      <div class="settings-profile-grid">
-        ${settingsPermissionProfiles
+      <div class="settings-rules-list">
+        ${items
           .map(
             (item) => `
-              <article class="settings-profile-card">
-                <strong>${escapeHtml(item.profile)}</strong>
-                <span>${escapeHtml(item.scope)}</span>
-                <p>${escapeHtml(item.actions)}</p>
-                <button class="outline-btn">Editar permissões</button>
-              </article>
+              <div class="settings-rule-row">
+                <span>
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <small>${escapeHtml(item.detail)}</small>
+                </span>
+                <b>${escapeHtml(item.value)}</b>
+              </div>
             `
           )
           .join("")}
@@ -4435,77 +4442,27 @@ function settingsPermissionsPanel() {
   `;
 }
 
-function settingsRulesList(items, modifier = "") {
+function settingsRulesPanel() {
   return `
-    <div class="settings-rules-list ${modifier}">
-      ${items
-        .map(
-          (item) => `
-            <article class="settings-rule-row">
-              <span>
-                <strong>${escapeHtml(item.label)}</strong>
-                <small>${escapeHtml(item.detail)}</small>
-              </span>
-              <b>${escapeHtml(item.value)}</b>
-            </article>
-          `
-        )
-        .join("")}
+    <div class="settings-panel">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Regras do sistema</span>
+          <h2>Metas, pontuação e visual</h2>
+          <p>Configure em um único lugar os critérios que calculam a nota e definem como o dashboard sinaliza desempenho, risco e alerta.</p>
+        </div>
+        <button class="settings-soft-btn">Salvar regras</button>
+      </div>
+      ${settingsRulesList(settingsGoalRules, "Metas", "Faixas de desempenho")}
+      ${settingsRulesList(settingsScoringRules, "Pontuação", "Cálculo da auditoria")}
+      ${settingsRulesList(settingsVisualRules, "Regras visuais", "Sinalização do dashboard")}
     </div>
-  `;
-}
-
-function settingsGoalsPanel() {
-  return `
-    <section class="settings-panel surface">
-      <div class="settings-panel-head">
-        <div>
-          <span class="settings-kicker">Metas do dashboard</span>
-          <h2>Redefinir metas</h2>
-          <p>Controle os limites que definem quando uma área está acima da meta, na meta, abaixo da meta ou crítica.</p>
-        </div>
-        <button class="primary-btn">Salvar metas</button>
-      </div>
-      ${settingsRulesList(settingsGoalRules)}
-    </section>
-  `;
-}
-
-function settingsScoringPanel() {
-  return `
-    <section class="settings-panel surface">
-      <div class="settings-panel-head">
-        <div>
-          <span class="settings-kicker">Cálculo da nota</span>
-          <h2>Pontuação</h2>
-          <p>Defina como cada resposta impacta a nota e como o risco da pergunta ajuda na priorização de planos de ação.</p>
-        </div>
-        <button class="primary-btn">Salvar pontuação</button>
-      </div>
-      ${settingsRulesList(settingsScoringRules)}
-    </section>
-  `;
-}
-
-function settingsVisualRulesPanel() {
-  return `
-    <section class="settings-panel surface">
-      <div class="settings-panel-head">
-        <div>
-          <span class="settings-kicker">Padrão visual</span>
-          <h2>Regras visuais</h2>
-          <p>Estas regras controlam as cores, legendas e alertas que aparecem no dashboard, nos cards e nos relatórios.</p>
-        </div>
-        <button class="primary-btn">Salvar regras</button>
-      </div>
-      ${settingsRulesList(settingsVisualRules, "settings-color-rules")}
-    </section>
   `;
 }
 
 function settingsPrivacyPanel() {
   return `
-    <section class="settings-panel surface">
+    <div class="settings-panel">
       <div class="settings-panel-head">
         <div>
           <span class="settings-kicker">Política de evidências</span>
@@ -4518,17 +4475,14 @@ function settingsPrivacyPanel() {
         <p>Antes de tirar ou anexar a foto, enquadre apenas a não conformidade. É proibido registrar pessoas identificáveis, rostos, crachás, prontuários, etiquetas com nomes, telas, documentos ou qualquer dado pessoal/sensível.</p>
         <span>IA/reconhecimento automático fica fora do teste atual.</span>
       </div>
-    </section>
+    </div>
   `;
 }
 
 function settingsActivePanel() {
   const panels = {
     users: settingsUsersPanel,
-    permissions: settingsPermissionsPanel,
-    goals: settingsGoalsPanel,
-    scoring: settingsScoringPanel,
-    "visual-rules": settingsVisualRulesPanel,
+    rules: settingsRulesPanel,
     privacy: settingsPrivacyPanel
   };
   return (panels[state.settingsSection] || settingsUsersPanel)();
@@ -4538,17 +4492,13 @@ function settingsPage() {
   const active = settingsSectionById();
   return `
     <div class="settings-page">
-      <section class="settings-hero surface">
-        <div>
-          <span class="settings-kicker">Configurações do sistema</span>
-          <h2>${escapeHtml(active.label)}</h2>
-          <p>${escapeHtml(active.description)} O módulo de e-mail/no-reply fica para depois da aprovação do projeto.</p>
+      <section class="settings-modal surface" aria-label="Configurações - ${escapeHtml(active.label)}">
+        <div class="settings-modal-head">
+          <span>${escapeHtml(active.label)}</span>
+          <small>${escapeHtml(active.description)}</small>
         </div>
+        ${settingsActivePanel()}
       </section>
-      <section class="settings-module-grid">
-        ${settingsSections.map(settingsModuleButton).join("")}
-      </section>
-      ${settingsActivePanel()}
     </div>
   `;
 }
