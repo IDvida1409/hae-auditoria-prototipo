@@ -2695,10 +2695,10 @@ function prepareReportPdfWindow() {
     <html lang="pt-BR">
       <head>
         <meta charset="UTF-8" />
-        <title>Gerando PDF</title>
+        <title>Abrindo relatório</title>
       </head>
-      <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#10264e;font:700 16px Arial,sans-serif">
-        Gerando PDF do relatório...
+      <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#10264e;font:600 15px Arial,sans-serif">
+        Abrindo relatório...
       </body>
     </html>
   `);
@@ -2790,7 +2790,7 @@ function openReportPdf(targetWindow = null, options = {}) {
         throw new Error("Biblioteca de PDF indisponível");
       }
       const holder = document.createElement("div");
-      holder.className = "report-pdf-render-root";
+      holder.className = "report-pdf-render-root is-portrait";
       const clone = report.cloneNode(true);
       holder.appendChild(clone);
       document.body.appendChild(holder);
@@ -2800,7 +2800,7 @@ function openReportPdf(targetWindow = null, options = {}) {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
         const pages = Array.from(clone.querySelectorAll(".report-doc-page"));
-        const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+        const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
         const margin = 6;
@@ -2808,7 +2808,7 @@ function openReportPdf(targetWindow = null, options = {}) {
         const availableHeight = pdfHeight - margin * 2;
 
         for (const [index, page] of pages.entries()) {
-          if (index) pdf.addPage("a4", "landscape");
+          if (index) pdf.addPage("a4", "portrait");
           const canvas = await window.html2canvas(page, {
             scale: 2,
             useCORS: true,
@@ -2847,6 +2847,19 @@ function openReportPdfAfterRender(targetWindow, options = {}) {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => openReportPdf(targetWindow, options));
   });
+}
+
+function preloadReportPdfLibrary() {
+  if (window.__haeReportPdfPreloaded) return;
+  window.__haeReportPdfPreloaded = true;
+  const run = () => ensureReportPdfLibrary().catch(() => {
+    window.__haeReportPdfPreloaded = false;
+  });
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 1500 });
+  } else {
+    window.setTimeout(run, 250);
+  }
 }
 
 function reportMetaRows(area, typeLabel) {
@@ -3861,31 +3874,33 @@ function reportFolderModal() {
           </div>
           <button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>
         </div>
-        <div class="report-option-list">
-          ${reports.map((report) => `
-            <article class="report-option-row ${report.available ? "" : "is-disabled"}">
-              <div>
-                <h3>${escapeHtml(report.title)}</h3>
-                <p>${escapeHtml(report.note)}</p>
-              </div>
-              <span>${escapeHtml(report.status)}</span>
-              <div class="report-option-actions">
-                <button ${report.available ? `data-report-action="open" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("externalLink")} Abrir PDF</button>
-                <button ${report.available ? `data-report-action="download" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("document")} Baixar</button>
-              </div>
-            </article>
-          `).join("")}
-        </div>
-        <div class="report-history-panel">
-          <div class="report-history-head">
-            <h3>Histórico de relatórios</h3>
-            <p>Auditorias e relatórios já registrados para esta área.</p>
+        <div class="report-library-content">
+          <div class="report-option-list">
+            ${reports.map((report) => `
+              <article class="report-option-row ${report.available ? "" : "is-disabled"}">
+                <div>
+                  <h3>${escapeHtml(report.title)}</h3>
+                  <p>${escapeHtml(report.note)}</p>
+                </div>
+                <span>${escapeHtml(report.status)}</span>
+                <div class="report-option-actions">
+                  <button ${report.available ? `data-report-action="open" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("externalLink")} Abrir PDF</button>
+                  <button ${report.available ? `data-report-action="download" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("document")} Baixar</button>
+                </div>
+              </article>
+            `).join("")}
           </div>
-          <div class="report-history-table-wrap">
-            <table class="report-history-table">
-              <thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead>
-              <tbody>${reportHistoryRows(area)}</tbody>
-            </table>
+          <div class="report-history-panel">
+            <div class="report-history-head">
+              <h3>Histórico de relatórios</h3>
+              <p>Auditorias e relatórios já registrados para esta área.</p>
+            </div>
+            <div class="report-history-table-wrap">
+              <table class="report-history-table">
+                <thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead>
+                <tbody>${reportHistoryRows(area)}</tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -4744,6 +4759,7 @@ function render(options = {}) {
       </section>
     </main>
   `;
+  if (state.view === "reports") preloadReportPdfLibrary();
   if (!options.skipSave) saveState();
 }
 

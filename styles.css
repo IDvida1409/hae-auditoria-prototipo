@@ -8751,7 +8751,7 @@ h3 {
 }
 
 .report-library-modal {
-  width: min(980px, calc(100vw - 48px));
+  width: min(1240px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   padding: 20px 22px 22px;
   display: grid;
@@ -8795,6 +8795,13 @@ h3 {
 .report-option-list {
   display: grid;
   gap: 10px;
+}
+
+.report-library-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, .75fr);
+  align-items: start;
+  gap: 16px;
 }
 
 .report-option-row {
@@ -8883,8 +8890,10 @@ h3 {
 }
 
 .report-history-panel {
-  padding-top: 8px;
-  border-top: 1px solid #dce6f2;
+  padding: 14px;
+  border: 1px solid #d6e1ee;
+  border-radius: 8px;
+  background: #fbfdff;
 }
 
 .report-history-head h3 {
@@ -8909,7 +8918,7 @@ h3 {
 
 .report-history-table {
   width: 100%;
-  min-width: 660px;
+  min-width: 0;
   border-collapse: collapse;
   background: #ffffff;
 }
@@ -8945,9 +8954,20 @@ h3 {
   position: fixed;
   left: -12000px;
   top: 0;
-  width: 1100px;
+  width: 794px;
   background: #ffffff;
   pointer-events: none;
+}
+
+.report-pdf-render-root.is-portrait {
+  width: 794px;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-page {
+  width: 794px;
+  min-height: 1123px;
+  padding: 34px 40px 30px;
+  box-shadow: none;
 }
 
 @media (max-width: 1080px) {
@@ -8958,6 +8978,14 @@ h3 {
   .report-option-row {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
+  }
+
+  .report-library-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .report-history-panel {
+    order: -1;
   }
 
   .report-option-row > span,
@@ -9250,7 +9278,7 @@ h3 {
 .report-doc-body h1 {
   margin: 0 0 8px;
   color: #0a1f44;
-  font-size: 18px;
+  font-size: 16.5px;
   font-weight: 820;
   line-height: 1.18;
 }
@@ -9414,7 +9442,7 @@ h3 {
   align-items: center;
   gap: 8px;
   color: #0b2145;
-  font-size: 13.4px;
+  font-size: 12.6px;
   font-weight: 790;
   line-height: 1.25;
 }
@@ -9922,7 +9950,7 @@ h3 {
 }
 
 .report-monthly-page .report-doc-body h1 {
-  font-size: 15.8px;
+  font-size: 14.8px;
   line-height: 1.22;
 }
 
@@ -9997,7 +10025,7 @@ h3 {
 }
 
 .report-comparison-page .report-doc-body h1 {
-  font-size: 15.8px;
+  font-size: 14.8px;
   line-height: 1.22;
 }
 
