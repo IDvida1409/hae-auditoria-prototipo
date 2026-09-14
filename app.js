@@ -288,6 +288,10 @@ const settingsUsers = [
   { name: "Gestão Morumbi", email: "gestao.morumbi@hospital.local", profile: "Visualizador", area: "Relatórios e indicadores", status: "Ativo" }
 ];
 
+const settingsInactiveUsers = [
+  { name: "Responsável teste inativo", email: "inativo@hospital.local", profile: "Responsável da área", area: "Área exemplo", status: "Inativo" }
+];
+
 const settingsPermissionProfiles = [
   { profile: "Qualidade/Admin", scope: "Acesso total", actions: "Usuários, metas, auditorias, relatórios, planos e aprovações." },
   { profile: "Auditor", scope: "Execução da auditoria", actions: "Iniciar auditoria, responder checklist, anexar evidências, gerar NCs e finalizar relatório." },
@@ -521,7 +525,8 @@ function defaultState() {
     actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
     settingsSection: "users",
-    settingsUserFormOpen: false,
+    settingsUserView: "active",
+    settingsRulesView: "goals",
     leaveAuditConfirm: false
   };
 }
@@ -539,7 +544,9 @@ function persistableState(source = state) {
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
     openTableSection: source.openTableSection,
-    settingsSection: source.settingsSection
+    settingsSection: source.settingsSection,
+    settingsUserView: source.settingsUserView,
+    settingsRulesView: source.settingsRulesView
   };
 }
 
@@ -549,6 +556,8 @@ function normalizeSavedState(saved = {}) {
   const validAreaIds = new Set(areaData.map((area) => area.id));
   const validMonthIds = new Set(months.map(([monthId]) => monthId));
   const validSettingsSections = new Set(settingsSections.map((section) => section.id));
+  const validSettingsUserViews = new Set(["active", "new", "inactive", "permissions"]);
+  const validSettingsRulesViews = new Set(["goals", "scoring", "visual"]);
   const merged = { ...base, ...saved };
   return {
     ...merged,
@@ -566,7 +575,8 @@ function normalizeSavedState(saved = {}) {
     checklistBlocksOpen: false,
     actionPlanNoticeQuestion: null,
     settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
-    settingsUserFormOpen: false,
+    settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
+    settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     leaveAuditConfirm: false
   };
 }
@@ -4346,70 +4356,148 @@ function settingsSectionById(id = state.settingsSection) {
   return settingsSections.find((section) => section.id === id) || settingsSections[0];
 }
 
+function settingsOptionTabs(items, activeId, dataName) {
+  return `
+    <div class="settings-option-tabs" role="tablist">
+      ${items
+        .map(
+          (item) => `
+            <button class="settings-option-btn ${item.id === activeId ? "is-active" : ""}" ${dataName}="${item.id}" type="button">
+              ${escapeHtml(item.label)}
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function settingsUserRows(users, emptyText, inactive = false) {
+  if (!users.length) {
+    return `<div class="settings-empty-state">${escapeHtml(emptyText)}</div>`;
+  }
+
+  return `
+    <div class="settings-table-wrap">
+      <table class="settings-table">
+        <thead>
+          <tr><th>Usuário</th><th>Perfil</th><th>Área/acesso</th><th>Status</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          ${users
+            .map(
+              (user) => `
+                <tr>
+                  <td><strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.email)}</span></td>
+                  <td>${escapeHtml(user.profile)}</td>
+                  <td>${escapeHtml(user.area)}</td>
+                  <td><span class="settings-status ${inactive ? "is-inactive" : "is-active"}">${escapeHtml(user.status)}</span></td>
+                  <td><div class="settings-row-actions"><button>Editar</button><button>${inactive ? "Reativar" : "Inativar"}</button></div></td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function settingsNewUserForm() {
+  return `
+    <section class="settings-inner-panel">
+      <div class="settings-subsection-head">
+        <div>
+          <h3>Cadastrar usuário</h3>
+          <p class="settings-mini-copy">Defina os dados de acesso, a área vinculada e o perfil de permissão antes de salvar.</p>
+        </div>
+      </div>
+      <div class="settings-form-grid">
+        <div class="note-field"><label>Nome</label><input placeholder="Nome completo" /></div>
+        <div class="note-field"><label>E-mail</label><input placeholder="usuario@hospital.com.br" /></div>
+        <div class="note-field"><label>Perfil/permissão</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
+        <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
+        <button class="settings-soft-btn settings-save-btn">Salvar usuário</button>
+      </div>
+    </section>
+  `;
+}
+
+function settingsPermissionsPanel() {
+  return `
+    <section class="settings-inner-panel">
+      <div class="settings-subsection-head">
+        <div>
+          <h3>Permissões</h3>
+          <p class="settings-mini-copy">Cada perfil define o que o usuário pode consultar, executar, aprovar ou alterar no sistema.</p>
+        </div>
+      </div>
+      <div class="settings-permission-list">
+        ${settingsPermissionProfiles
+          .map(
+            (item) => `
+              <div class="settings-permission-row">
+                <strong>${escapeHtml(item.profile)}</strong>
+                <span>${escapeHtml(item.scope)}</span>
+                <p>${escapeHtml(item.actions)}</p>
+                <button class="settings-soft-btn">Editar permissões</button>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function settingsUsersContent() {
+  if (state.settingsUserView === "new") return settingsNewUserForm();
+  if (state.settingsUserView === "inactive") {
+    return `
+      <section class="settings-inner-panel">
+        <div class="settings-subsection-head">
+          <div>
+            <h3>Usuários inativos</h3>
+            <p class="settings-mini-copy">Usuários inativados deixam de acessar o sistema, mas permanecem no histórico.</p>
+          </div>
+        </div>
+        ${settingsUserRows(settingsInactiveUsers, "Nenhum usuário inativo neste ambiente de teste.", true)}
+      </section>
+    `;
+  }
+  if (state.settingsUserView === "permissions") return settingsPermissionsPanel();
+
+  return `
+    <section class="settings-inner-panel">
+      <div class="settings-subsection-head">
+        <div>
+          <h3>Usuários</h3>
+          <p class="settings-mini-copy">Consulte usuários ativos, ajuste permissões pelo perfil e inative acessos quando necessário.</p>
+        </div>
+      </div>
+      ${settingsUserRows(settingsUsers, "Nenhum usuário ativo cadastrado.")}
+    </section>
+  `;
+}
+
 function settingsUsersPanel() {
+  const userTabs = [
+    { id: "active", label: "Usuários" },
+    { id: "new", label: "Cadastrar usuário" },
+    { id: "inactive", label: "Usuários inativos" },
+    { id: "permissions", label: "Permissões" }
+  ];
+
   return `
     <div class="settings-panel">
       <div class="settings-panel-head">
         <div>
-          <span class="settings-kicker">Controle de acesso</span>
           <h2>Usuários</h2>
-          <p>Cadastre quem acessa o sistema, vincule a área e defina o perfil de permissão de cada usuário.</p>
+          <p>Cadastro de usuários, status de acesso e permissões vinculadas aos perfis do sistema.</p>
         </div>
-        <button class="settings-soft-btn" data-toggle-user-form>${state.settingsUserFormOpen ? "Fechar cadastro" : "Novo usuário"}</button>
       </div>
-      ${state.settingsUserFormOpen ? `
-        <div class="settings-form-grid">
-          <div class="note-field"><label>Nome</label><input placeholder="Nome completo" /></div>
-          <div class="note-field"><label>E-mail</label><input placeholder="usuario@hospital.com.br" /></div>
-          <div class="note-field"><label>Perfil</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
-          <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
-          <button class="settings-soft-btn settings-save-btn">Salvar usuário</button>
-        </div>
-      ` : ""}
-      <div class="settings-table-wrap">
-        <table class="settings-table">
-          <thead>
-            <tr><th>Usuário</th><th>Perfil</th><th>Área/acesso</th><th>Status</th><th>Ações</th></tr>
-          </thead>
-          <tbody>
-            ${settingsUsers
-              .map(
-                (user) => `
-                  <tr>
-                    <td><strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.email)}</span></td>
-                    <td>${escapeHtml(user.profile)}</td>
-                    <td>${escapeHtml(user.area)}</td>
-                    <td><span class="settings-status is-active">${escapeHtml(user.status)}</span></td>
-                    <td><div class="settings-row-actions"><button>Editar</button><button>Inativar</button><button>Excluir</button></div></td>
-                  </tr>
-                `
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-      <section class="settings-subsection">
-        <div class="settings-subsection-head">
-          <div>
-            <span class="settings-kicker">Permissões</span>
-            <h3>Perfis de acesso</h3>
-          </div>
-          <button class="settings-soft-btn">Editar permissões</button>
-        </div>
-        <div class="settings-permission-list">
-          ${settingsPermissionProfiles
-            .map(
-              (item) => `
-                <div class="settings-permission-row">
-                  <strong>${escapeHtml(item.profile)}</strong>
-                  <span>${escapeHtml(item.scope)}</span>
-                  <p>${escapeHtml(item.actions)}</p>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </section>
+      ${settingsOptionTabs(userTabs, state.settingsUserView, "data-settings-user-view")}
+      ${settingsUsersContent()}
     </div>
   `;
 }
@@ -4419,8 +4507,8 @@ function settingsRulesList(items, title, text) {
     <section class="settings-subsection">
       <div class="settings-subsection-head">
         <div>
-          <span class="settings-kicker">${escapeHtml(title)}</span>
-          <h3>${escapeHtml(text)}</h3>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="settings-mini-copy">${escapeHtml(text)}</p>
         </div>
       </div>
       <div class="settings-rules-list">
@@ -4443,19 +4531,28 @@ function settingsRulesList(items, title, text) {
 }
 
 function settingsRulesPanel() {
+  const rulesTabs = [
+    { id: "goals", label: "Metas" },
+    { id: "scoring", label: "Pontuação" },
+    { id: "visual", label: "Regras visuais" }
+  ];
+  const content = {
+    goals: settingsRulesList(settingsGoalRules, "Metas", "Faixas de desempenho"),
+    scoring: settingsRulesList(settingsScoringRules, "Pontuação", "Cálculo da auditoria"),
+    visual: settingsRulesList(settingsVisualRules, "Regras visuais", "Sinalização do dashboard")
+  };
+
   return `
     <div class="settings-panel">
       <div class="settings-panel-head">
         <div>
-          <span class="settings-kicker">Regras do sistema</span>
           <h2>Metas, pontuação e visual</h2>
-          <p>Configure em um único lugar os critérios que calculam a nota e definem como o dashboard sinaliza desempenho, risco e alerta.</p>
+          <p>Defina os critérios usados para nota, risco e sinalização visual do painel.</p>
         </div>
         <button class="settings-soft-btn">Salvar regras</button>
       </div>
-      ${settingsRulesList(settingsGoalRules, "Metas", "Faixas de desempenho")}
-      ${settingsRulesList(settingsScoringRules, "Pontuação", "Cálculo da auditoria")}
-      ${settingsRulesList(settingsVisualRules, "Regras visuais", "Sinalização do dashboard")}
+      ${settingsOptionTabs(rulesTabs, state.settingsRulesView, "data-settings-rules-view")}
+      ${content[state.settingsRulesView] || content.goals}
     </div>
   `;
 }
@@ -4465,7 +4562,6 @@ function settingsPrivacyPanel() {
     <div class="settings-panel">
       <div class="settings-panel-head">
         <div>
-          <span class="settings-kicker">Política de evidências</span>
           <h2>LGPD e evidências</h2>
           <p>Regra de teste: antes de registrar foto, o sistema orienta o auditor a enquadrar apenas a não conformidade, sem pessoas, crachás ou dados pessoais/sensíveis.</p>
         </div>
@@ -4632,16 +4728,30 @@ document.addEventListener("click", (event) => {
 
   const settingsSection = event.target.closest("[data-settings-section]");
   if (settingsSection) {
-    state.settingsSection = settingsSection.dataset.settingsSection;
-    state.settingsUserFormOpen = false;
+    const nextSection = settingsSection.dataset.settingsSection;
+    if (state.settingsSection !== nextSection) {
+      state.settingsUserView = "active";
+      state.settingsRulesView = "goals";
+    }
+    state.settingsSection = nextSection;
     state.view = "settings";
     syncHashWithView("settings");
     render();
     return;
   }
 
-  if (event.target.closest("[data-toggle-user-form]")) {
-    state.settingsUserFormOpen = !state.settingsUserFormOpen;
+  const settingsUserView = event.target.closest("[data-settings-user-view]");
+  if (settingsUserView) {
+    state.settingsSection = "users";
+    state.settingsUserView = settingsUserView.dataset.settingsUserView;
+    render();
+    return;
+  }
+
+  const settingsRulesView = event.target.closest("[data-settings-rules-view]");
+  if (settingsRulesView) {
+    state.settingsSection = "rules";
+    state.settingsRulesView = settingsRulesView.dataset.settingsRulesView;
     render();
     return;
   }
