@@ -528,6 +528,7 @@ function defaultState() {
     settingsUserView: "active",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
+    settingsMenuExpanded: false,
     leaveAuditConfirm: false
   };
 }
@@ -548,7 +549,8 @@ function persistableState(source = state) {
     settingsSection: source.settingsSection,
     settingsUserView: source.settingsUserView,
     settingsRulesView: source.settingsRulesView,
-    settingsUsersExpanded: source.settingsUsersExpanded
+    settingsUsersExpanded: source.settingsUsersExpanded,
+    settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
 
@@ -580,6 +582,7 @@ function normalizeSavedState(saved = {}) {
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
+    settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
   };
 }
@@ -606,6 +609,7 @@ function syncHashWithView(view) {
 let state = readSavedState();
 const hashView = viewFromHash();
 if (hashView) state.view = hashView;
+if (state.view === "settings") state.settingsMenuExpanded = true;
 let backendReady = false;
 let backendSaveTimer = null;
 
@@ -890,6 +894,7 @@ function svgIcon(name, className = "tiny-icon", variant = "blue") {
 
 function setView(view) {
   state.view = view;
+  if (view !== "settings") state.settingsMenuExpanded = false;
   syncHashWithView(view);
   render();
 }
@@ -936,7 +941,7 @@ function sidebar() {
       <nav class="nav-list" aria-label="Navegação principal">
         ${navItems
           .map(([id, label, icon]) => {
-            const expanded = id === "settings" && state.view === "settings";
+            const expanded = id === "settings" && state.view === "settings" && state.settingsMenuExpanded;
             return `
               <div class="nav-group ${expanded ? "is-expanded" : ""}">
                 <button class="nav-item ${state.view === id ? "is-active" : ""}" data-nav="${id}" title="${label}">
@@ -4614,8 +4619,16 @@ function render(options = {}) {
 document.addEventListener("click", (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
-    const pdfWindow = nav.dataset.nav === "reports" ? prepareReportPdfWindow() : null;
-    setView(nav.dataset.nav);
+    const nextView = nav.dataset.nav;
+    if (nextView === "settings") {
+      state.settingsMenuExpanded = state.view === "settings" ? !state.settingsMenuExpanded : true;
+      state.view = "settings";
+      syncHashWithView("settings");
+      render();
+      return;
+    }
+    const pdfWindow = nextView === "reports" ? prepareReportPdfWindow() : null;
+    setView(nextView);
     if (pdfWindow) openReportPdfAfterRender(pdfWindow);
     return;
   }
@@ -4711,6 +4724,7 @@ document.addEventListener("click", (event) => {
       state.settingsUsersExpanded = false;
     }
     state.settingsSection = nextSection;
+    state.settingsMenuExpanded = true;
     state.view = "settings";
     syncHashWithView("settings");
     render();
