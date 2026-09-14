@@ -17,6 +17,7 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png",
+  ".pdf": "application/pdf",
   ".svg": "image/svg+xml; charset=utf-8",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -203,6 +204,25 @@ function staticPathFor(urlPath) {
   return resolved;
 }
 
+function readStaticReports() {
+  const reportsDir = path.join(root, "assets", "reports");
+  if (!fs.existsSync(reportsDir)) return [];
+  return fs.readdirSync(reportsDir)
+    .filter((file) => file.toLowerCase().endsWith(".pdf"))
+    .sort()
+    .map((file) => {
+      const match = file.match(/^hae-(consolidado-mes|comparativo-analitico)-(.+)-ago-26\.pdf$/i);
+      return {
+        fileName: file,
+        fileUrl: `/assets/reports/${file}`,
+        reportType: match?.[1] === "comparativo-analitico" ? "comparison" : "monthly",
+        areaSlug: match?.[2] || null,
+        periodLabel: match?.[1] === "comparativo-analitico" ? "Agosto/2026 / Julho/2026" : "Agosto/2026",
+        status: "generated"
+      };
+    });
+}
+
 async function handleApi(request, response, url) {
   if (url.pathname === "/api/health") {
     try {
@@ -240,6 +260,18 @@ async function handleApi(request, response, url) {
     } catch (error) {
       const status = error instanceof SyntaxError ? 400 : 500;
       sendJson(response, status, { error: error.message || "Estado inválido" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/reports" && request.method === "GET") {
+    try {
+      sendJson(response, 200, {
+        reports: readStaticReports(),
+        storage: "static-prototype"
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao consultar relatórios" });
     }
     return true;
   }

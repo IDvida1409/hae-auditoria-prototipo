@@ -662,6 +662,23 @@ function registerServiceWorker() {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
+function reportFileRequest() {
+  const params = new URLSearchParams(location.search);
+  const kind = params.get("reportFile");
+  if (kind !== "monthly" && kind !== "comparison") return null;
+  const area = areaById(params.get("area") || "");
+  if (!area) return null;
+  return { kind, area };
+}
+
+function renderReportFileRequest(request) {
+  state.selectedArea = request.area.id;
+  state.reportKind = request.kind;
+  document.body.classList.add("report-document-body");
+  app.className = "app-shell is-report-document";
+  app.innerHTML = `<main class="stored-report-view">${request.kind === "comparison" ? comparativeReportPage() : monthlyReportPage()}</main>`;
+}
+
 function formatScore(value) {
   return value.toFixed(1).replace(".", ",");
 }
@@ -2678,12 +2695,23 @@ function reportToolbar(isComparison, area) {
   `;
 }
 
-function reportPdfFilename() {
-  const area = reportSelectedArea();
-  const kind = state.reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
+function reportPdfFilename(area = reportSelectedArea(), reportKind = state.reportKind) {
+  const kind = reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
   const areaSlug = area.id.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
   const monthSlug = currentMonthId.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
   return `hae-${kind}-${areaSlug}-${monthSlug}.pdf`;
+}
+
+function reportStoredPdfUrl(area, reportKind) {
+  return `assets/reports/${reportPdfFilename(area, reportKind)}`;
+}
+
+function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
+  const url = reportStoredPdfUrl(area, reportKind);
+  const downloadAttr = mode === "download" ? ` download="${reportPdfFilename(area, reportKind)}"` : "";
+  const targetAttr = mode === "open" ? ` target="_blank" rel="noopener"` : "";
+  const icon = mode === "download" ? svgIcon("document") : svgIcon("externalLink");
+  return `<a class="report-file-action" href="${url}"${targetAttr}${downloadAttr}>${icon} ${escapeHtml(label)}</a>`;
 }
 
 function prepareReportPdfWindow() {
@@ -2778,13 +2806,13 @@ function reportArchiveHtml(reportHtml) {
         <meta charset="UTF-8" />
         <base href="${baseHref}" />
         <title>${reportPdfFilename()}</title>
-        <link rel="stylesheet" href="styles.css?v=20260914-report-library-4" />
+        <link rel="stylesheet" href="styles.css?v=20260914-report-library-7" />
         <style>
+          html, body { min-height: 100%; overflow-y: auto; }
           body { margin: 0; background: #eef3f8; }
-          .stored-report-view { min-height: 100vh; padding: 18px 0 36px; display: grid; justify-items: center; }
-          .stored-report-view .technical-report { width: 794px; max-width: 100%; gap: 0; }
-          .stored-report-view .report-doc-page { width: 794px; min-height: 0; padding: 30px 38px 28px; border-radius: 0; box-shadow: 0 10px 28px rgba(8, 18, 31, .12); }
-          .stored-report-view .report-doc-page + .report-doc-page { border-top: 1px solid #dce4ee; }
+          .stored-report-view { min-height: 100vh; padding: 18px 0 36px; display: flex; justify-content: flex-start; align-items: center; flex-direction: column; }
+          .stored-report-view .technical-report { width: 794px; max-width: calc(100vw - 24px); gap: 14px; }
+          .stored-report-view .report-doc-page { width: 794px; min-height: 1123px; padding: 30px 38px 28px; border-radius: 0; box-shadow: 0 10px 28px rgba(8, 18, 31, .12); }
           @media print {
             body { background: #ffffff; }
             .stored-report-view { padding: 0; }
@@ -3730,7 +3758,7 @@ function reportAnalyticQuestionRows(area) {
 
 function monthlyReportPage() {
   const area = reportSelectedArea();
-  const pages = 4;
+  const pages = 3;
   const title = "Relatório Consolidado da Auditoria do Mês";
   const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
 
@@ -3763,14 +3791,12 @@ function monthlyReportPage() {
         ${reportSection("4", "Pontos de atenção do mês", `
           ${reportMonthlyAttention(area)}
         `)}
-      `)}
-      ${reportMonthlyPage(title, area, 3, pages, `
         ${reportSection("5", "Não conformidades registradas", `
           ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
         `)}
-        ${reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area))}
       `)}
-      ${reportMonthlyPage(title, area, 4, pages, `
+      ${reportMonthlyPage(title, area, 3, pages, `
+        ${reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area))}
         ${reportSection("7", "Planos de ação vigentes", `
           ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
           ${reportActionFootnote()}
@@ -3892,7 +3918,7 @@ function reportHistoryRows(area) {
       <td>${escapeHtml(row.status)}</td>
       <td>
         ${row.kind
-          ? `<button data-report-action="open" data-report-kind="${row.kind}" data-report-area="${area.id}">Abrir</button>`
+          ? reportStoredPdfLink(area, row.kind, "open", "Abrir")
           : `<span>Arquivado</span>`}
       </td>
     </tr>
@@ -3924,8 +3950,8 @@ function reportFolderModal() {
                 </div>
                 <span>${escapeHtml(report.status)}</span>
                 <div class="report-option-actions">
-                  <button ${report.available ? `data-report-action="open" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("externalLink")} Abrir PDF</button>
-                  <button ${report.available ? `data-report-action="download" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("document")} Baixar</button>
+                  ${report.available ? reportStoredPdfLink(area, report.id, "open", "Abrir PDF") : `<button disabled>${svgIcon("externalLink")} Abrir PDF</button>`}
+                  ${report.available ? reportStoredPdfLink(area, report.id, "download", "Baixar") : `<button disabled>${svgIcon("document")} Baixar</button>`}
                 </div>
               </article>
             `).join("")}
@@ -3949,7 +3975,6 @@ function reportFolderModal() {
 }
 
 function reportsPage() {
-  const source = state.reportPdfSource ? (state.reportKind === "comparison" ? comparativeReportPage() : monthlyReportPage()) : "";
   return `
     <section class="reports-page report-library-page">
       <div class="report-library-panel surface">
@@ -3969,7 +3994,6 @@ function reportsPage() {
         </div>
       </div>
       ${reportFolderModal()}
-      ${source ? `<div class="report-generator-source">${source}</div>` : ""}
     </section>
   `;
 }
@@ -5106,6 +5130,11 @@ document.addEventListener("change", (event) => {
   }
 });
 
-render();
-hydrateStateFromBackend();
-registerServiceWorker();
+const reportRequest = reportFileRequest();
+if (reportRequest) {
+  renderReportFileRequest(reportRequest);
+} else {
+  render();
+  hydrateStateFromBackend();
+  registerServiceWorker();
+}
