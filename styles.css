@@ -8954,6 +8954,21 @@ h3 {
   overflow: hidden;
 }
 
+.report-document-body .report-doc-page:last-child .report-doc-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-document-body .report-doc-page:last-child .report-doc-section:last-of-type {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.report-document-body .report-doc-page:last-child .report-signatures {
+  margin-top: auto;
+}
+
 .report-document-body .report-mini-kpis {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
