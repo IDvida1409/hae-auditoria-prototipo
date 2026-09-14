@@ -2703,7 +2703,7 @@ function reportPdfFilename(area = reportSelectedArea(), reportKind = state.repor
 }
 
 function reportStoredPdfUrl(area, reportKind) {
-  return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-evidence-1`;
+  return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-evidence-2`;
 }
 
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
@@ -2806,7 +2806,7 @@ function reportArchiveHtml(reportHtml) {
         <meta charset="UTF-8" />
         <base href="${baseHref}" />
         <title>${reportPdfFilename()}</title>
-        <link rel="stylesheet" href="styles.css?v=20260914-report-library-9" />
+        <link rel="stylesheet" href="styles.css?v=20260914-report-library-10" />
         <style>
           html, body { min-height: 100%; overflow-y: auto; }
           body { margin: 0; background: #eef3f8; }
