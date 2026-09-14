@@ -2703,7 +2703,7 @@ function reportPdfFilename(area = reportSelectedArea(), reportKind = state.repor
 }
 
 function reportStoredPdfUrl(area, reportKind) {
-  return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-signatures-1`;
+  return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-evidence-1`;
 }
 
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
@@ -2806,7 +2806,7 @@ function reportArchiveHtml(reportHtml) {
         <meta charset="UTF-8" />
         <base href="${baseHref}" />
         <title>${reportPdfFilename()}</title>
-        <link rel="stylesheet" href="styles.css?v=20260914-report-library-8" />
+        <link rel="stylesheet" href="styles.css?v=20260914-report-library-9" />
         <style>
           html, body { min-height: 100%; overflow-y: auto; }
           body { margin: 0; background: #eef3f8; }
@@ -3756,11 +3756,27 @@ function reportAnalyticQuestionRows(area) {
   ];
 }
 
+function reportMonthlyNeedsExtraPage(area) {
+  return reportNcRows(area, 4).length > 1 || reportNcRows(area, 10).length > 6 || actionPlansForArea(area).length > 2;
+}
+
 function monthlyReportPage() {
   const area = reportSelectedArea();
-  const pages = 3;
+  const needsExtraPage = reportMonthlyNeedsExtraPage(area);
+  const pages = needsExtraPage ? 4 : 3;
   const title = "Relatório Consolidado da Auditoria do Mês";
   const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
+  const ncSection = reportSection("5", "Não conformidades registradas", `
+    ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
+  `);
+  const evidenceSection = reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area));
+  const plansConclusionSections = `
+    ${reportSection("7", "Planos de ação vigentes", `
+      ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
+      ${reportActionFootnote()}
+    `)}
+    ${reportSection("8", "Conclusão", reportConclusion(area))}
+  `;
 
   return `
     <div class="technical-report">
@@ -3791,18 +3807,12 @@ function monthlyReportPage() {
         ${reportSection("4", "Pontos de atenção do mês", `
           ${reportMonthlyAttention(area)}
         `)}
-        ${reportSection("5", "Não conformidades registradas", `
-          ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
-        `)}
+        ${needsExtraPage ? "" : ncSection}
       `)}
       ${reportMonthlyPage(title, area, 3, pages, `
-        ${reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area))}
-        ${reportSection("7", "Planos de ação vigentes", `
-          ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
-          ${reportActionFootnote()}
-        `)}
-        ${reportSection("8", "Conclusão", reportConclusion(area))}
+        ${needsExtraPage ? `${ncSection}${evidenceSection}` : `${evidenceSection}${plansConclusionSections}`}
       `)}
+      ${needsExtraPage ? reportMonthlyPage(title, area, 4, pages, plansConclusionSections) : ""}
     </div>
   `;
 }

@@ -8977,9 +8977,31 @@ h3 {
   display: flex;
 }
 
-.report-document-body .report-evidence-grid,
+.report-document-body .report-evidence-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .report-document-body .report-signatures {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.report-document-body .report-evidence-grid .report-evidence-photo {
+  min-height: 68px;
+}
+
+.report-document-body .report-evidence-grid .report-evidence-photo img {
+  min-height: 72px;
+}
+
+.report-document-body .report-evidence-grid .report-evidence-card figcaption {
+  min-height: 42px;
+  padding: 6px 7px;
+  font-size: 8.7px;
+  line-height: 1.2;
+}
+
+.report-document-body .report-evidence-grid .report-evidence-card figcaption strong {
+  font-size: 9px;
 }
 
 .report-document-body .report-doc-footer {
