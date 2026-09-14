@@ -530,6 +530,8 @@ function defaultState() {
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
     settingsMenuExpanded: false,
+    reportFolderArea: null,
+    reportPdfSource: false,
     leaveAuditConfirm: false
   };
 }
@@ -579,6 +581,8 @@ function normalizeSavedState(saved = {}) {
     detailFilter: "all",
     checklistBlocksOpen: false,
     actionPlanNoticeQuestion: null,
+    reportFolderArea: null,
+    reportPdfSource: false,
     settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
@@ -2678,7 +2682,8 @@ function reportPdfFilename() {
   const area = reportSelectedArea();
   const kind = state.reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
   const areaSlug = area.id.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-  return `hae-${kind}-${areaSlug}-${currentMonthId}.pdf`;
+  const monthSlug = currentMonthId.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
+  return `hae-${kind}-${areaSlug}-${monthSlug}.pdf`;
 }
 
 function prepareReportPdfWindow() {
@@ -2775,7 +2780,7 @@ function waitForReportImages(root) {
   }));
 }
 
-function openReportPdf(targetWindow = null) {
+function openReportPdf(targetWindow = null, options = {}) {
   const report = document.querySelector(".technical-report");
   if (!report) return;
 
@@ -2821,11 +2826,15 @@ function openReportPdf(targetWindow = null) {
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
         }
 
-        const pdfUrl = URL.createObjectURL(pdf.output("blob"));
-        if (targetWindow) {
-          targetWindow.location.href = pdfUrl;
+        if (options.mode === "download") {
+          pdf.save(reportPdfFilename());
         } else {
-          window.open(pdfUrl, "_blank");
+          const pdfUrl = URL.createObjectURL(pdf.output("blob"));
+          if (targetWindow) {
+            targetWindow.location.href = pdfUrl;
+          } else {
+            window.open(pdfUrl, "_blank");
+          }
         }
       } finally {
         holder.remove();
@@ -2834,9 +2843,9 @@ function openReportPdf(targetWindow = null) {
     .catch(() => reportPrintFallback(targetWindow));
 }
 
-function openReportPdfAfterRender(targetWindow) {
+function openReportPdfAfterRender(targetWindow, options = {}) {
   window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => openReportPdf(targetWindow));
+    window.requestAnimationFrame(() => openReportPdf(targetWindow, options));
   });
 }
 
@@ -3778,13 +3787,134 @@ function comparativeReportPage() {
   `;
 }
 
-function reportsPage() {
-  const area = reportSelectedArea();
-  const isComparison = state.reportKind === "comparison";
+function reportLibraryItems(area) {
+  return [
+    {
+      id: "monthly",
+      title: "Relatório da auditoria mensal",
+      status: "Disponível",
+      note: reportMonthLabel(currentMonthId),
+      available: true
+    },
+    {
+      id: "comparison",
+      title: "Relatório comparativo",
+      status: "Disponível",
+      note: `${reportMonthLabel(currentMonthId)} / ${reportMonthLabel(reportPreviousMonthId())}`,
+      available: true
+    },
+    {
+      id: "quarterly",
+      title: "Relatório trimestral",
+      status: "Disponível após Setembro/2026",
+      note: "Histórico trimestral em formação",
+      available: false
+    },
+    {
+      id: "semiannual",
+      title: "Relatório semestral",
+      status: "Disponível após Dezembro/2026",
+      note: "Histórico semestral em formação",
+      available: false
+    },
+    {
+      id: "annual",
+      title: "Relatório anual",
+      status: "Disponível após Dezembro/2026",
+      note: "Consolidação anual em formação",
+      available: false
+    }
+  ];
+}
+
+function reportHistoryRows(area) {
+  return [
+    { period: reportMonthLabel(currentMonthId), type: "Auditoria mensal", status: "PDF disponível", kind: "monthly" },
+    { period: `${reportMonthLabel(currentMonthId)} / ${reportMonthLabel(reportPreviousMonthId())}`, type: "Comparativo analítico", status: "PDF disponível", kind: "comparison" },
+    { period: reportMonthLabel(reportPreviousMonthId()), type: "Auditoria mensal", status: "Histórico registrado", kind: "" }
+  ].map((row) => `
+    <tr>
+      <td>${escapeHtml(row.period)}</td>
+      <td>${escapeHtml(row.type)}</td>
+      <td>${escapeHtml(row.status)}</td>
+      <td>
+        ${row.kind
+          ? `<button data-report-action="open" data-report-kind="${row.kind}" data-report-area="${area.id}">Abrir</button>`
+          : `<span>Arquivado</span>`}
+      </td>
+    </tr>
+  `).join("");
+}
+
+function reportFolderModal() {
+  const area = state.reportFolderArea ? areaById(state.reportFolderArea) : null;
+  if (!area) return "";
+  const reports = reportLibraryItems(area);
   return `
-    <section class="reports-page technical-report-shell">
-      ${reportToolbar(isComparison, area)}
-      ${isComparison ? comparativeReportPage() : monthlyReportPage()}
+    <div class="report-library-backdrop" data-close-report-folder>
+      <section class="report-library-modal surface" role="dialog" aria-modal="true" aria-label="Relatórios da área ${escapeHtml(area.name)}" data-report-folder-modal>
+        <div class="report-library-modal-head">
+          <div>
+            <span>Relatórios da área</span>
+            <h2>${escapeHtml(area.name)}</h2>
+            <p>Escolha o tipo de relatório disponível para abrir em PDF ou baixar o arquivo.</p>
+          </div>
+          <button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>
+        </div>
+        <div class="report-option-list">
+          ${reports.map((report) => `
+            <article class="report-option-row ${report.available ? "" : "is-disabled"}">
+              <div>
+                <h3>${escapeHtml(report.title)}</h3>
+                <p>${escapeHtml(report.note)}</p>
+              </div>
+              <span>${escapeHtml(report.status)}</span>
+              <div class="report-option-actions">
+                <button ${report.available ? `data-report-action="open" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("externalLink")} Abrir PDF</button>
+                <button ${report.available ? `data-report-action="download" data-report-kind="${report.id}" data-report-area="${area.id}"` : "disabled"}>${svgIcon("document")} Baixar</button>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+        <div class="report-history-panel">
+          <div class="report-history-head">
+            <h3>Histórico de relatórios</h3>
+            <p>Auditorias e relatórios já registrados para esta área.</p>
+          </div>
+          <div class="report-history-table-wrap">
+            <table class="report-history-table">
+              <thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead>
+              <tbody>${reportHistoryRows(area)}</tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function reportsPage() {
+  const source = state.reportPdfSource ? (state.reportKind === "comparison" ? comparativeReportPage() : monthlyReportPage()) : "";
+  return `
+    <section class="reports-page report-library-page">
+      <div class="report-library-panel surface">
+        <div class="report-library-head">
+          <div>
+            <h2>Relatórios por área auditada</h2>
+            <p>Selecione uma pasta para consultar os relatórios disponíveis e o histórico da área.</p>
+          </div>
+        </div>
+        <div class="report-folder-grid">
+          ${areaData.map((area) => `
+            <button class="report-folder-tile" data-report-folder-area="${area.id}" aria-label="Abrir relatórios de ${escapeHtml(area.name)}">
+              <span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span>
+              <span>${escapeHtml(area.name)}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+      ${reportFolderModal()}
+      ${source ? `<div class="report-generator-source">${source}</div>` : ""}
     </section>
   `;
 }
@@ -4628,9 +4758,7 @@ document.addEventListener("click", (event) => {
       render();
       return;
     }
-    const pdfWindow = nextView === "reports" ? prepareReportPdfWindow() : null;
     setView(nextView);
-    if (pdfWindow) openReportPdfAfterRender(pdfWindow);
     return;
   }
 
@@ -4694,6 +4822,35 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const reportFolder = event.target.closest("[data-report-folder-area]");
+  if (reportFolder) {
+    state.reportFolderArea = reportFolder.dataset.reportFolderArea;
+    state.selectedArea = reportFolder.dataset.reportFolderArea;
+    state.reportPdfSource = false;
+    render();
+    return;
+  }
+
+  if (event.target.matches("[data-close-report-folder]") || event.target.closest(".panel-close[data-close-report-folder]")) {
+    state.reportFolderArea = null;
+    state.reportPdfSource = false;
+    render();
+    return;
+  }
+
+  const reportAction = event.target.closest("[data-report-action]");
+  if (reportAction) {
+    const reportKindValue = reportAction.dataset.reportKind === "comparison" ? "comparison" : "monthly";
+    const actionMode = reportAction.dataset.reportAction === "download" ? "download" : "open";
+    const pdfWindow = actionMode === "open" ? prepareReportPdfWindow() : null;
+    state.selectedArea = reportAction.dataset.reportArea;
+    state.reportKind = reportKindValue;
+    state.reportPdfSource = true;
+    render({ skipSave: true });
+    openReportPdfAfterRender(pdfWindow, { mode: actionMode });
+    return;
+  }
+
   if (event.target.closest("[data-open-report-pdf]")) {
     openReportPdf(prepareReportPdfWindow());
     return;
@@ -4701,10 +4858,8 @@ document.addEventListener("click", (event) => {
 
   const reportKind = event.target.closest("[data-report-kind]");
   if (reportKind) {
-    const pdfWindow = prepareReportPdfWindow();
     state.reportKind = reportKind.dataset.reportKind === "comparison" ? "comparison" : "monthly";
     render();
-    openReportPdfAfterRender(pdfWindow);
     return;
   }
 
@@ -4887,10 +5042,8 @@ document.addEventListener("click", (event) => {
 document.addEventListener("change", (event) => {
   const reportArea = event.target.closest("[data-report-area-select]");
   if (reportArea) {
-    const pdfWindow = prepareReportPdfWindow();
     state.selectedArea = reportArea.value;
     render();
-    openReportPdfAfterRender(pdfWindow);
   }
 });
 
