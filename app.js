@@ -13,6 +13,7 @@ const icons = {
   web: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.3"/><path d="M3.7 12h16.6"/><path d="M12 3.7c2 2.1 3 4.8 3 8.3s-1 6.2-3 8.3"/><path class="accent-teal" d="M12 3.7c-2 2.1-3 4.8-3 8.3s1 6.2 3 8.3"/></svg>`,
   settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.2 13.6c.1-.5.1-1.1.1-1.6s0-1.1-.1-1.6l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.7-1.6L13.8 2h-3.6L9.8 4.9a8 8 0 0 0-2.7 1.6l-2.4-1-2 3.4 2 1.5a9 9 0 0 0 0 3.2l-2 1.5 2 3.4 2.4-1a8 8 0 0 0 2.7 1.6l.4 2.9h3.6l.4-2.9a8 8 0 0 0 2.7-1.6l2.4 1 2-3.4z"/></svg>`,
   calendar: `<svg viewBox="0 0 24 24"><path d="M7 3.5v3.2M17 3.5v3.2"/><rect x="4" y="5.8" width="16" height="14.2" rx="2"/><path d="M4 10h16"/><path d="M8 13.6h2.2M13.8 13.6H16M8 17h2.2"/></svg>`,
+  search: `<svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.4 15.4 4.2 4.2"/></svg>`,
   filter: `<svg viewBox="0 0 24 24"><path d="M4.2 5.2h15.6l-6.1 7.1v5.1l-3.4 1.6v-6.7z"/></svg>`,
   bell: `<svg viewBox="0 0 24 24"><path d="M18 9.6a6 6 0 0 0-12 0c0 5.7-2.2 6.5-2.2 8h16.4c0-1.5-2.2-2.3-2.2-8z"/><path d="M10 20.3h4"/></svg>`,
   chevron: `<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>`,
@@ -277,8 +278,7 @@ const navItems = [
 
 const settingsSections = [
   { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, perfis e permissões." },
-  { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." },
-  { id: "privacy", label: "LGPD e evidências", icon: "shield", description: "Aviso para fotos de evidência." }
+  { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." }
 ];
 
 const settingsUsers = [
@@ -527,6 +527,7 @@ function defaultState() {
     settingsSection: "users",
     settingsUserView: "active",
     settingsRulesView: "goals",
+    settingsUsersExpanded: false,
     leaveAuditConfirm: false
   };
 }
@@ -546,7 +547,8 @@ function persistableState(source = state) {
     openTableSection: source.openTableSection,
     settingsSection: source.settingsSection,
     settingsUserView: source.settingsUserView,
-    settingsRulesView: source.settingsRulesView
+    settingsRulesView: source.settingsRulesView,
+    settingsUsersExpanded: source.settingsUsersExpanded
   };
 }
 
@@ -556,7 +558,7 @@ function normalizeSavedState(saved = {}) {
   const validAreaIds = new Set(areaData.map((area) => area.id));
   const validMonthIds = new Set(months.map(([monthId]) => monthId));
   const validSettingsSections = new Set(settingsSections.map((section) => section.id));
-  const validSettingsUserViews = new Set(["active", "new", "inactive", "permissions"]);
+  const validSettingsUserViews = new Set(["active", "new", "inactive"]);
   const validSettingsRulesViews = new Set(["goals", "scoring", "visual"]);
   const merged = { ...base, ...saved };
   return {
@@ -577,6 +579,7 @@ function normalizeSavedState(saved = {}) {
     settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
+    settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
     leaveAuditConfirm: false
   };
 }
@@ -3861,18 +3864,6 @@ function questionActionPlanCard(plan) {
   `;
 }
 
-function photoPrivacyNotice() {
-  return `
-    <div class="photo-privacy-notice" role="note" aria-label="Alerta LGPD para evidencia fotografica">
-      <span class="privacy-notice-icon">${icons.shield}</span>
-      <div>
-        <strong>Alerta LGPD - registro fotográfico</strong>
-        <p>Antes de tirar ou anexar a foto, enquadre apenas a não conformidade. É proibido registrar pessoas identificáveis, rostos, crachás, prontuários, etiquetas com nomes, telas, documentos ou qualquer dado pessoal/sensível. Mãos apontando ou segurando o objeto são permitidas somente quando não identificarem a pessoa.</p>
-      </div>
-    </div>
-  `;
-}
-
 function observationFor(row) {
   return row.observation || "";
 }
@@ -4179,7 +4170,6 @@ function checklistPage() {
                         <i></i>
                         Não conformidade de risco ${escapeHtml(risk.label)}
                       </div>
-                      ${photoPrivacyNotice()}
                       <div class="evidence-grid">
                         <button class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small></button>
                         <div class="note-field">
@@ -4388,7 +4378,7 @@ function settingsUserRows(users, emptyText, inactive = false) {
             .map(
               (user) => `
                 <tr>
-                  <td><strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.email)}</span></td>
+                  <td><span class="settings-primary">${escapeHtml(user.name)}</span><span>${escapeHtml(user.email)}</span></td>
                   <td>${escapeHtml(user.profile)}</td>
                   <td>${escapeHtml(user.area)}</td>
                   <td><span class="settings-status ${inactive ? "is-inactive" : "is-active"}">${escapeHtml(user.status)}</span></td>
@@ -4409,38 +4399,73 @@ function settingsNewUserForm() {
       <div class="settings-subsection-head">
         <div>
           <h3>Cadastrar usuário</h3>
-          <p class="settings-mini-copy">Defina os dados de acesso, a área vinculada e o perfil de permissão antes de salvar.</p>
+          <p class="settings-mini-copy">Preencha os dados principais; o sistema sugere o login e a senha provisória pode ser alterada antes do envio.</p>
         </div>
       </div>
-      <div class="settings-form-grid">
+      <div class="settings-form-grid settings-user-form-grid">
         <div class="note-field"><label>Nome</label><input placeholder="Nome completo" /></div>
         <div class="note-field"><label>E-mail</label><input placeholder="usuario@hospital.com.br" /></div>
-        <div class="note-field"><label>Perfil/permissão</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
+        <div class="note-field"><label>Login de acesso</label><input value="david.souza" /></div>
+        <div class="note-field"><label>Senha provisória</label><input value="Idvida@2026" /></div>
         <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
+        <div class="note-field"><label>Perfil/permissão</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
+        <div class="settings-login-suggestions">
+          <span>Logins disponíveis:</span>
+          <button type="button">david.souza</button>
+          <button type="button">david.souza2</button>
+          <button type="button">d.souza</button>
+        </div>
         <button class="settings-soft-btn settings-save-btn">Salvar usuário</button>
       </div>
     </section>
   `;
 }
 
-function settingsPermissionsPanel() {
+function settingsUsersToolbar(inactive = false) {
   return `
-    <section class="settings-inner-panel">
+    <div class="settings-list-toolbar">
+      <label class="settings-search-field">
+        ${svgIcon("search", "settings-search-icon")}
+        <input placeholder="Pesquisar usuário" />
+      </label>
+      <button class="settings-soft-btn" data-toggle-users-list>
+        ${state.settingsUsersExpanded ? "Ocultar lista" : `Expandir ${inactive ? "inativos" : "usuários"}`}
+      </button>
+    </div>
+  `;
+}
+
+function settingsUsersListPanel(users, emptyText, inactive = false) {
+  return `
+    ${settingsUsersToolbar(inactive)}
+    ${state.settingsUsersExpanded ? settingsUserRows(users, emptyText, inactive) : `
+      <div class="settings-empty-state">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>
+    `}
+  `;
+}
+
+function settingsRuleEditor(items, title, text, addLabel, mode = "default") {
+  return `
+    <section class="settings-subsection">
       <div class="settings-subsection-head">
         <div>
-          <h3>Permissões</h3>
-          <p class="settings-mini-copy">Cada perfil define o que o usuário pode consultar, executar, aprovar ou alterar no sistema.</p>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="settings-mini-copy">${escapeHtml(text)}</p>
         </div>
+        <button class="settings-soft-btn">${escapeHtml(addLabel)}</button>
       </div>
-      <div class="settings-permission-list">
-        ${settingsPermissionProfiles
+      <div class="settings-rules-list">
+        ${items
           .map(
-            (item) => `
-              <div class="settings-permission-row">
-                <strong>${escapeHtml(item.profile)}</strong>
-                <span>${escapeHtml(item.scope)}</span>
-                <p>${escapeHtml(item.actions)}</p>
-                <button class="settings-soft-btn">Editar permissões</button>
+            (item, index) => `
+              <div class="settings-rule-row ${mode === "visual" ? "settings-rule-row-visual" : ""}">
+                <span>
+                  <span class="settings-primary">${escapeHtml(item.label)}</span>
+                  <small>${escapeHtml(item.detail)}</small>
+                </span>
+                ${mode === "visual" ? `<input class="settings-color-input" type="color" value="${["#31aa42", "#f0b232", "#f28b30", "#d34a5a"][index] || "#0b69e8"}" />` : ""}
+                <input value="${escapeHtml(item.value)}" />
+                <button class="settings-soft-btn">Editar</button>
               </div>
             `
           )
@@ -4461,21 +4486,20 @@ function settingsUsersContent() {
             <p class="settings-mini-copy">Usuários inativados deixam de acessar o sistema, mas permanecem no histórico.</p>
           </div>
         </div>
-        ${settingsUserRows(settingsInactiveUsers, "Nenhum usuário inativo neste ambiente de teste.", true)}
+        ${settingsUsersListPanel(settingsInactiveUsers, "Nenhum usuário inativo neste ambiente de teste.", true)}
       </section>
     `;
   }
-  if (state.settingsUserView === "permissions") return settingsPermissionsPanel();
 
   return `
     <section class="settings-inner-panel">
       <div class="settings-subsection-head">
         <div>
           <h3>Usuários</h3>
-          <p class="settings-mini-copy">Consulte usuários ativos, ajuste permissões pelo perfil e inative acessos quando necessário.</p>
+          <p class="settings-mini-copy">Consulte usuários ativos, edite cadastro e inative acessos quando necessário.</p>
         </div>
       </div>
-      ${settingsUserRows(settingsUsers, "Nenhum usuário ativo cadastrado.")}
+      ${settingsUsersListPanel(settingsUsers, "Nenhum usuário ativo cadastrado.")}
     </section>
   `;
 }
@@ -4484,8 +4508,7 @@ function settingsUsersPanel() {
   const userTabs = [
     { id: "active", label: "Usuários" },
     { id: "new", label: "Cadastrar usuário" },
-    { id: "inactive", label: "Usuários inativos" },
-    { id: "permissions", label: "Permissões" }
+    { id: "inactive", label: "Usuários inativos" }
   ];
 
   return `
@@ -4493,40 +4516,12 @@ function settingsUsersPanel() {
       <div class="settings-panel-head">
         <div>
           <h2>Usuários</h2>
-          <p>Cadastro de usuários, status de acesso e permissões vinculadas aos perfis do sistema.</p>
+          <p>Cadastro, login, senha provisória, status e perfil de permissão do usuário.</p>
         </div>
       </div>
       ${settingsOptionTabs(userTabs, state.settingsUserView, "data-settings-user-view")}
       ${settingsUsersContent()}
     </div>
-  `;
-}
-
-function settingsRulesList(items, title, text) {
-  return `
-    <section class="settings-subsection">
-      <div class="settings-subsection-head">
-        <div>
-          <h3>${escapeHtml(title)}</h3>
-          <p class="settings-mini-copy">${escapeHtml(text)}</p>
-        </div>
-      </div>
-      <div class="settings-rules-list">
-        ${items
-          .map(
-            (item) => `
-              <div class="settings-rule-row">
-                <span>
-                  <strong>${escapeHtml(item.label)}</strong>
-                  <small>${escapeHtml(item.detail)}</small>
-                </span>
-                <b>${escapeHtml(item.value)}</b>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
-    </section>
   `;
 }
 
@@ -4537,9 +4532,9 @@ function settingsRulesPanel() {
     { id: "visual", label: "Regras visuais" }
   ];
   const content = {
-    goals: settingsRulesList(settingsGoalRules, "Metas", "Faixas de desempenho"),
-    scoring: settingsRulesList(settingsScoringRules, "Pontuação", "Cálculo da auditoria"),
-    visual: settingsRulesList(settingsVisualRules, "Regras visuais", "Sinalização do dashboard")
+    goals: settingsRuleEditor(settingsGoalRules, "Metas", "Defina meta mínima e faixas de desempenho do relatório e do painel.", "Nova faixa"),
+    scoring: settingsRuleEditor(settingsScoringRules, "Pontuação", "Defina como C, NC, X e risco entram no cálculo da auditoria.", "Nova regra"),
+    visual: settingsRuleEditor(settingsVisualRules, "Regras visuais", "Defina cores de legenda, alertas e sinalizações usadas no dashboard.", "Nova cor/legenda", "visual")
   };
 
   return `
@@ -4557,29 +4552,10 @@ function settingsRulesPanel() {
   `;
 }
 
-function settingsPrivacyPanel() {
-  return `
-    <div class="settings-panel">
-      <div class="settings-panel-head">
-        <div>
-          <h2>LGPD e evidências</h2>
-          <p>Regra de teste: antes de registrar foto, o sistema orienta o auditor a enquadrar apenas a não conformidade, sem pessoas, crachás ou dados pessoais/sensíveis.</p>
-        </div>
-      </div>
-      <div class="settings-privacy-card">
-        <strong>Mensagem exibida antes da foto</strong>
-        <p>Antes de tirar ou anexar a foto, enquadre apenas a não conformidade. É proibido registrar pessoas identificáveis, rostos, crachás, prontuários, etiquetas com nomes, telas, documentos ou qualquer dado pessoal/sensível.</p>
-        <span>IA/reconhecimento automático fica fora do teste atual.</span>
-      </div>
-    </div>
-  `;
-}
-
 function settingsActivePanel() {
   const panels = {
     users: settingsUsersPanel,
-    rules: settingsRulesPanel,
-    privacy: settingsPrivacyPanel
+    rules: settingsRulesPanel
   };
   return (panels[state.settingsSection] || settingsUsersPanel)();
 }
@@ -4732,6 +4708,7 @@ document.addEventListener("click", (event) => {
     if (state.settingsSection !== nextSection) {
       state.settingsUserView = "active";
       state.settingsRulesView = "goals";
+      state.settingsUsersExpanded = false;
     }
     state.settingsSection = nextSection;
     state.view = "settings";
@@ -4744,6 +4721,13 @@ document.addEventListener("click", (event) => {
   if (settingsUserView) {
     state.settingsSection = "users";
     state.settingsUserView = settingsUserView.dataset.settingsUserView;
+    state.settingsUsersExpanded = false;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-toggle-users-list]")) {
+    state.settingsUsersExpanded = !state.settingsUsersExpanded;
     render();
     return;
   }
