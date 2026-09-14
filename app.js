@@ -2769,6 +2769,48 @@ function reportPrintFallback(targetWindow) {
   printWindow.document.close();
 }
 
+function reportArchiveHtml(reportHtml) {
+  const baseHref = location.href.split("#")[0];
+  return `
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <base href="${baseHref}" />
+        <title>${reportPdfFilename()}</title>
+        <link rel="stylesheet" href="styles.css?v=20260914-report-library-4" />
+        <style>
+          body { margin: 0; background: #eef3f8; }
+          .stored-report-view { min-height: 100vh; padding: 18px 0 36px; display: grid; justify-items: center; }
+          .stored-report-view .technical-report { width: 794px; max-width: 100%; gap: 0; }
+          .stored-report-view .report-doc-page { width: 794px; min-height: 0; padding: 30px 38px 28px; border-radius: 0; box-shadow: 0 10px 28px rgba(8, 18, 31, .12); }
+          .stored-report-view .report-doc-page + .report-doc-page { border-top: 1px solid #dce4ee; }
+          @media print {
+            body { background: #ffffff; }
+            .stored-report-view { padding: 0; }
+            .stored-report-view .report-doc-page { box-shadow: none; border-radius: 0; page-break-after: always; }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="stored-report-view">${reportHtml}</main>
+      </body>
+    </html>
+  `;
+}
+
+function openStoredReportView(targetWindow = null) {
+  const reportWindow = targetWindow || window.open("", "_blank");
+  if (!reportWindow) {
+    alert("Não consegui abrir o relatório. Verifique se o navegador bloqueou a nova aba.");
+    return;
+  }
+  const reportHtml = state.reportKind === "comparison" ? comparativeReportPage() : monthlyReportPage();
+  reportWindow.document.open();
+  reportWindow.document.write(reportArchiveHtml(reportHtml));
+  reportWindow.document.close();
+}
+
 function waitForReportImages(root) {
   const images = Array.from(root.querySelectorAll("img"));
   return Promise.all(images.map((image) => {
@@ -2805,26 +2847,23 @@ function openReportPdf(targetWindow = null, options = {}) {
         const margin = 6;
         const availableWidth = pdfWidth - margin * 2;
         const availableHeight = pdfHeight - margin * 2;
-        const canvas = await window.html2canvas(clone, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          windowWidth: holder.scrollWidth,
-          windowHeight: Math.max(holder.scrollHeight, clone.scrollHeight)
-        });
-        const imageData = canvas.toDataURL("image/jpeg", 0.98);
-        const imageWidth = availableWidth;
-        const imageHeight = (canvas.height * imageWidth) / canvas.width;
-        let usedHeight = 0;
-        let pageIndex = 0;
-
-        while (usedHeight < imageHeight) {
-          if (pageIndex) pdf.addPage("a4", "portrait");
-          pdf.addImage(imageData, "JPEG", margin, margin - usedHeight, imageWidth, imageHeight, undefined, "FAST");
-          usedHeight += availableHeight;
-          pageIndex += 1;
+        const pages = Array.from(clone.querySelectorAll(".report-doc-page"));
+        for (const [index, page] of pages.entries()) {
+          if (index) pdf.addPage("a4", "portrait");
+          const canvas = await window.html2canvas(page, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: holder.scrollWidth,
+            windowHeight: Math.max(holder.scrollHeight, page.scrollHeight)
+          });
+          const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
+          const imageWidth = canvas.width * ratio;
+          const imageHeight = canvas.height * ratio;
+          const imageX = (pdfWidth - imageWidth) / 2;
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", imageX, margin, imageWidth, imageHeight, undefined, "FAST");
         }
 
         if (options.mode === "download") {
@@ -4760,7 +4799,6 @@ function render(options = {}) {
       </section>
     </main>
   `;
-  if (state.view === "reports") preloadReportPdfLibrary();
   if (!options.skipSave) saveState();
 }
 
@@ -4859,12 +4897,16 @@ document.addEventListener("click", (event) => {
   if (reportAction) {
     const reportKindValue = reportAction.dataset.reportKind === "comparison" ? "comparison" : "monthly";
     const actionMode = reportAction.dataset.reportAction === "download" ? "download" : "open";
-    const pdfWindow = actionMode === "open" ? prepareReportPdfWindow() : null;
+    const pdfWindow = actionMode === "open" ? window.open("", "_blank") : null;
     state.selectedArea = reportAction.dataset.reportArea;
     state.reportKind = reportKindValue;
-    state.reportPdfSource = true;
-    render({ skipSave: true });
-    openReportPdfAfterRender(pdfWindow, { mode: actionMode });
+    if (actionMode === "open") {
+      openStoredReportView(pdfWindow);
+    } else {
+      state.reportPdfSource = true;
+      render({ skipSave: true });
+      openReportPdfAfterRender(null, { mode: actionMode });
+    }
     return;
   }
 
