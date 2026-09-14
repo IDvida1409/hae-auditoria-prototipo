@@ -2799,31 +2799,32 @@ function openReportPdf(targetWindow = null, options = {}) {
         await waitForReportImages(clone);
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-        const pages = Array.from(clone.querySelectorAll(".report-doc-page"));
         const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
         const margin = 6;
         const availableWidth = pdfWidth - margin * 2;
         const availableHeight = pdfHeight - margin * 2;
+        const canvas = await window.html2canvas(clone, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: holder.scrollWidth,
+          windowHeight: Math.max(holder.scrollHeight, clone.scrollHeight)
+        });
+        const imageData = canvas.toDataURL("image/jpeg", 0.98);
+        const imageWidth = availableWidth;
+        const imageHeight = (canvas.height * imageWidth) / canvas.width;
+        let usedHeight = 0;
+        let pageIndex = 0;
 
-        for (const [index, page] of pages.entries()) {
-          if (index) pdf.addPage("a4", "portrait");
-          const canvas = await window.html2canvas(page, {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            scrollX: 0,
-            scrollY: 0,
-            windowWidth: holder.scrollWidth,
-            windowHeight: Math.max(holder.scrollHeight, page.scrollHeight)
-          });
-          const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
-          const imageWidth = canvas.width * ratio;
-          const imageHeight = canvas.height * ratio;
-          const imageX = (pdfWidth - imageWidth) / 2;
-          const imageY = (pdfHeight - imageHeight) / 2;
-          pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
+        while (usedHeight < imageHeight) {
+          if (pageIndex) pdf.addPage("a4", "portrait");
+          pdf.addImage(imageData, "JPEG", margin, margin - usedHeight, imageWidth, imageHeight, undefined, "FAST");
+          usedHeight += availableHeight;
+          pageIndex += 1;
         }
 
         if (options.mode === "download") {

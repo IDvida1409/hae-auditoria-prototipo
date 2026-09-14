@@ -8963,11 +8963,21 @@ h3 {
   width: 794px;
 }
 
+.report-pdf-render-root.is-portrait .technical-report {
+  gap: 0;
+}
+
 .report-pdf-render-root.is-portrait .report-doc-page {
   width: 794px;
-  min-height: 1123px;
-  padding: 34px 40px 30px;
+  min-height: 0;
+  padding: 30px 38px 28px;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-page + .report-doc-page {
+  border-top: 1px solid #dce4ee;
 }
 
 @media (max-width: 1080px) {
