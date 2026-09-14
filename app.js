@@ -275,6 +275,50 @@ const navItems = [
   ["settings", "Configurações", "settings"]
 ];
 
+const settingsSections = [
+  { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, edição e inativação de usuários." },
+  { id: "permissions", label: "Permissões", icon: "shield", description: "Perfis de acesso e limites de ação." },
+  { id: "goals", label: "Metas", icon: "target", description: "Meta mínima e faixas de desempenho." },
+  { id: "scoring", label: "Pontuação", icon: "table", description: "Regras de cálculo para C, NC, X e risco." },
+  { id: "visual-rules", label: "Regras visuais", icon: "chart", description: "Cores, legendas, bordas e alertas do painel." },
+  { id: "privacy", label: "LGPD e evidências", icon: "shield", description: "Avisos e política para fotos de evidência." }
+];
+
+const settingsUsers = [
+  { name: "Qualidade / Segurança dos Alimentos", email: "qualidade@hospital.local", profile: "Qualidade/Admin", area: "Todas as áreas", status: "Ativo" },
+  { name: "Auditor HAE", email: "auditor@hospital.local", profile: "Auditor", area: "Auditorias mensais", status: "Ativo" },
+  { name: "Liderança Cozinha Catering", email: "cozinha.catering@hospital.local", profile: "Responsável da área", area: "Cozinha Catering", status: "Ativo" },
+  { name: "Gestão Morumbi", email: "gestao.morumbi@hospital.local", profile: "Visualizador", area: "Relatórios e indicadores", status: "Ativo" }
+];
+
+const settingsPermissionProfiles = [
+  { profile: "Qualidade/Admin", scope: "Acesso total", actions: "Usuários, metas, auditorias, relatórios, planos e aprovações." },
+  { profile: "Auditor", scope: "Execução da auditoria", actions: "Iniciar auditoria, responder checklist, anexar evidências, gerar NCs e finalizar relatório." },
+  { profile: "Responsável da área", scope: "Área vinculada", actions: "Visualizar relatório, responder plano de ação, anexar evidência e acompanhar retorno." },
+  { profile: "Visualizador", scope: "Somente consulta", actions: "Consultar indicadores, relatórios e histórico sem alterar registros." }
+];
+
+const settingsGoalRules = [
+  { label: "Meta mínima da área", value: "8,0", detail: "Área dentro da meta a partir desta nota." },
+  { label: "Acima da meta", value: "9,0 a 10", detail: "Desempenho destacado em verde." },
+  { label: "Abaixo da meta", value: "7,0 a 7,9", detail: "Requer atenção e acompanhamento." },
+  { label: "Crítico", value: "Abaixo de 7,0", detail: "Prioridade de correção e gestão." }
+];
+
+const settingsScoringRules = [
+  { label: "C - Conforme", value: "Atende", detail: "Requisito validado sem plano de ação." },
+  { label: "NC - Não Conforme", value: "Não atende", detail: "Exige evidência, observação e plano de ação." },
+  { label: "X - Não avaliado", value: "Sem nota", detail: "Item não entra no cálculo, mas fica rastreado." },
+  { label: "Risco da pergunta", value: "Peso técnico", detail: "Ajuda a priorizar NCs e relatórios." }
+];
+
+const settingsVisualRules = [
+  { label: "Borda dos cards", value: "Cor da legenda", detail: "Mostra rapidamente o desempenho da área." },
+  { label: "Legenda de nota", value: "Verde, amarelo, laranja e vermelho", detail: "Mantém padrão visual do dashboard e relatórios." },
+  { label: "Legenda de risco", value: "Baixo, Moderado, Médio e Alto", detail: "Usada para classificar NCs e priorizar ações." },
+  { label: "Alertas", value: "Badges e avisos", detail: "Sinalizam pendências, devolutivas, atrasos e evidências." }
+];
+
 const uiIconFiles = {
   home: "home",
   dashboard: "dashboard",
@@ -479,6 +523,8 @@ function defaultState() {
     checklistBlocksOpen: false,
     actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
+    settingsSection: "users",
+    settingsUserFormOpen: false,
     leaveAuditConfirm: false
   };
 }
@@ -495,7 +541,8 @@ function persistableState(source = state) {
     answers: source.answers,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
-    openTableSection: source.openTableSection
+    openTableSection: source.openTableSection,
+    settingsSection: source.settingsSection
   };
 }
 
@@ -504,6 +551,7 @@ function normalizeSavedState(saved = {}) {
   const validViews = new Set([...navItems.map(([id]) => id), "area", "checklist"]);
   const validAreaIds = new Set(areaData.map((area) => area.id));
   const validMonthIds = new Set(months.map(([monthId]) => monthId));
+  const validSettingsSections = new Set(settingsSections.map((section) => section.id));
   const merged = { ...base, ...saved };
   return {
     ...merged,
@@ -520,6 +568,8 @@ function normalizeSavedState(saved = {}) {
     detailFilter: "all",
     checklistBlocksOpen: false,
     actionPlanNoticeQuestion: null,
+    settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
+    settingsUserFormOpen: false,
     leaveAuditConfirm: false
   };
 }
@@ -848,6 +898,22 @@ function goAreaDetail(id = state.selectedArea) {
   render();
 }
 
+function settingsSidebarNav() {
+  return `
+    <div class="nav-sublist" aria-label="Opções de configurações">
+      ${settingsSections
+        .map(
+          (section) => `
+            <button class="nav-subitem ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}">
+              ${escapeHtml(section.label)}
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function sidebar() {
   return `
     <aside class="sidebar">
@@ -859,14 +925,18 @@ function sidebar() {
       </div>
       <nav class="nav-list" aria-label="Navegação principal">
         ${navItems
-          .map(
-            ([id, label, icon]) => `
-              <button class="nav-item ${state.view === id ? "is-active" : ""}" data-nav="${id}" title="${label}">
-                <span class="nav-icon">${assetIcon(icon, "white")}</span>
-                <span class="nav-label">${label}</span>
-              </button>
-            `
-          )
+          .map(([id, label, icon]) => {
+            const expanded = id === "settings" && state.view === "settings";
+            return `
+              <div class="nav-group ${expanded ? "is-expanded" : ""}">
+                <button class="nav-item ${state.view === id ? "is-active" : ""}" data-nav="${id}" title="${label}">
+                  <span class="nav-icon">${assetIcon(icon, "white")}</span>
+                  <span class="nav-label">${label}</span>
+                </button>
+                ${expanded ? settingsSidebarNav() : ""}
+              </div>
+            `;
+          })
           .join("")}
       </nav>
       <img class="sidebar-hospital-art" src="assets/morumbi-hospital-lineart.png?v=sidebar-art-3" alt="" aria-hidden="true" />
@@ -3784,6 +3854,18 @@ function questionActionPlanCard(plan) {
   `;
 }
 
+function photoPrivacyNotice() {
+  return `
+    <div class="photo-privacy-notice" role="note" aria-label="Alerta LGPD para evidencia fotografica">
+      <span class="privacy-notice-icon">${icons.shield}</span>
+      <div>
+        <strong>Alerta LGPD - registro fotográfico</strong>
+        <p>Antes de tirar ou anexar a foto, enquadre apenas a não conformidade. É proibido registrar pessoas identificáveis, rostos, crachás, prontuários, etiquetas com nomes, telas, documentos ou qualquer dado pessoal/sensível. Mãos apontando ou segurando o objeto são permitidas somente quando não identificarem a pessoa.</p>
+      </div>
+    </div>
+  `;
+}
+
 function observationFor(row) {
   return row.observation || "";
 }
@@ -4090,6 +4172,7 @@ function checklistPage() {
                         <i></i>
                         Não conformidade de risco ${escapeHtml(risk.label)}
                       </div>
+                      ${photoPrivacyNotice()}
                       <div class="evidence-grid">
                         <button class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small></button>
                         <div class="note-field">
@@ -4262,6 +4345,214 @@ function foodTablesPage() {
   `;
 }
 
+function settingsSectionById(id = state.settingsSection) {
+  return settingsSections.find((section) => section.id === id) || settingsSections[0];
+}
+
+function settingsModuleButton(section) {
+  return `
+    <button class="settings-module-card surface ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}">
+      <span class="settings-module-icon">${svgIcon(section.icon)}</span>
+      <span>
+        <strong>${escapeHtml(section.label)}</strong>
+        <small>${escapeHtml(section.description)}</small>
+      </span>
+    </button>
+  `;
+}
+
+function settingsUsersPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Controle de acesso</span>
+          <h2>Usuários</h2>
+          <p>Cadastre quem acessa o sistema e defina se a pessoa atua como auditor, qualidade/admin, responsável da área ou visualizador.</p>
+        </div>
+        <button class="primary-btn" data-toggle-user-form>${state.settingsUserFormOpen ? "Fechar cadastro" : "Novo usuário"}</button>
+      </div>
+      ${state.settingsUserFormOpen ? `
+        <div class="settings-form-grid">
+          <div class="note-field"><label>Nome</label><input placeholder="Nome completo" /></div>
+          <div class="note-field"><label>E-mail</label><input placeholder="usuario@hospital.com.br" /></div>
+          <div class="note-field"><label>Perfil</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
+          <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
+          <button class="primary-btn settings-save-btn">Salvar usuário</button>
+        </div>
+      ` : ""}
+      <div class="settings-table-wrap">
+        <table class="settings-table">
+          <thead>
+            <tr><th>Usuário</th><th>Perfil</th><th>Área/acesso</th><th>Status</th><th>Ações</th></tr>
+          </thead>
+          <tbody>
+            ${settingsUsers
+              .map(
+                (user) => `
+                  <tr>
+                    <td><strong>${escapeHtml(user.name)}</strong><span>${escapeHtml(user.email)}</span></td>
+                    <td>${escapeHtml(user.profile)}</td>
+                    <td>${escapeHtml(user.area)}</td>
+                    <td><span class="settings-status is-active">${escapeHtml(user.status)}</span></td>
+                    <td><div class="settings-row-actions"><button>Editar</button><button>Inativar</button><button>Excluir</button></div></td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function settingsPermissionsPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Perfis do sistema</span>
+          <h2>Permissões</h2>
+          <p>Cada perfil limita o que o usuário pode ver, editar, aprovar ou apenas consultar.</p>
+        </div>
+      </div>
+      <div class="settings-profile-grid">
+        ${settingsPermissionProfiles
+          .map(
+            (item) => `
+              <article class="settings-profile-card">
+                <strong>${escapeHtml(item.profile)}</strong>
+                <span>${escapeHtml(item.scope)}</span>
+                <p>${escapeHtml(item.actions)}</p>
+                <button class="outline-btn">Editar permissões</button>
+              </article>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function settingsRulesList(items, modifier = "") {
+  return `
+    <div class="settings-rules-list ${modifier}">
+      ${items
+        .map(
+          (item) => `
+            <article class="settings-rule-row">
+              <span>
+                <strong>${escapeHtml(item.label)}</strong>
+                <small>${escapeHtml(item.detail)}</small>
+              </span>
+              <b>${escapeHtml(item.value)}</b>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function settingsGoalsPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Metas do dashboard</span>
+          <h2>Redefinir metas</h2>
+          <p>Controle os limites que definem quando uma área está acima da meta, na meta, abaixo da meta ou crítica.</p>
+        </div>
+        <button class="primary-btn">Salvar metas</button>
+      </div>
+      ${settingsRulesList(settingsGoalRules)}
+    </section>
+  `;
+}
+
+function settingsScoringPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Cálculo da nota</span>
+          <h2>Pontuação</h2>
+          <p>Defina como cada resposta impacta a nota e como o risco da pergunta ajuda na priorização de planos de ação.</p>
+        </div>
+        <button class="primary-btn">Salvar pontuação</button>
+      </div>
+      ${settingsRulesList(settingsScoringRules)}
+    </section>
+  `;
+}
+
+function settingsVisualRulesPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Padrão visual</span>
+          <h2>Regras visuais</h2>
+          <p>Estas regras controlam as cores, legendas e alertas que aparecem no dashboard, nos cards e nos relatórios.</p>
+        </div>
+        <button class="primary-btn">Salvar regras</button>
+      </div>
+      ${settingsRulesList(settingsVisualRules, "settings-color-rules")}
+    </section>
+  `;
+}
+
+function settingsPrivacyPanel() {
+  return `
+    <section class="settings-panel surface">
+      <div class="settings-panel-head">
+        <div>
+          <span class="settings-kicker">Política de evidências</span>
+          <h2>LGPD e evidências</h2>
+          <p>Regra de teste: antes de registrar foto, o sistema orienta o auditor a enquadrar apenas a não conformidade, sem pessoas, crachás ou dados pessoais/sensíveis.</p>
+        </div>
+      </div>
+      <div class="settings-privacy-card">
+        <strong>Mensagem exibida antes da foto</strong>
+        <p>Antes de tirar ou anexar a foto, enquadre apenas a não conformidade. É proibido registrar pessoas identificáveis, rostos, crachás, prontuários, etiquetas com nomes, telas, documentos ou qualquer dado pessoal/sensível.</p>
+        <span>IA/reconhecimento automático fica fora do teste atual.</span>
+      </div>
+    </section>
+  `;
+}
+
+function settingsActivePanel() {
+  const panels = {
+    users: settingsUsersPanel,
+    permissions: settingsPermissionsPanel,
+    goals: settingsGoalsPanel,
+    scoring: settingsScoringPanel,
+    "visual-rules": settingsVisualRulesPanel,
+    privacy: settingsPrivacyPanel
+  };
+  return (panels[state.settingsSection] || settingsUsersPanel)();
+}
+
+function settingsPage() {
+  const active = settingsSectionById();
+  return `
+    <div class="settings-page">
+      <section class="settings-hero surface">
+        <div>
+          <span class="settings-kicker">Configurações do sistema</span>
+          <h2>${escapeHtml(active.label)}</h2>
+          <p>${escapeHtml(active.description)} O módulo de e-mail/no-reply fica para depois da aprovação do projeto.</p>
+        </div>
+      </section>
+      <section class="settings-module-grid">
+        ${settingsSections.map(settingsModuleButton).join("")}
+      </section>
+      ${settingsActivePanel()}
+    </div>
+  `;
+}
+
 function viewContent() {
   const placeholders = {
     audits: ["Auditorias", "Aqui ficará o histórico das auditorias passadas, com filtros por mês, área, responsável e status."],
@@ -4269,8 +4560,7 @@ function viewContent() {
     docs: ["Documentos", "Aqui ficará o controle documental separado da área de resíduos: upload, validade, status, alerta e histórico."],
     reports: ["Relatórios", "Aqui ficarão os relatórios consolidados por área auditada, com nota final, evidências, planos e histórico."],
     web: ["Painel web", "Este módulo será pensado para gestão administrativa, envio de documentos e consulta completa sem depender do tablet."],
-    hands: ["Higiene das mãos", "Aqui será desenhado o painel de controle de rotina e evidências de higienização conforme o fluxo que você vai detalhar depois."],
-    settings: ["Configurações", "Aqui ficarão metas, usuários, permissões, parâmetros de pontuação e regras visuais do dashboard."]
+    hands: ["Higiene das mãos", "Aqui será desenhado o painel de controle de rotina e evidências de higienização conforme o fluxo que você vai detalhar depois."]
   };
 
   if (state.view === "home") return dashboardHome();
@@ -4280,6 +4570,7 @@ function viewContent() {
   if (state.view === "checklist") return checklistPage();
   if (state.view === "tables") return foodTablesPage();
   if (state.view === "reports") return reportsPage();
+  if (state.view === "settings") return settingsPage();
   const [title, text] = placeholders[state.view] || placeholders.audits;
   return placeholderPage(title, text);
 }
@@ -4385,6 +4676,22 @@ document.addEventListener("click", (event) => {
   if (tableSection) {
     const id = tableSection.dataset.tableSection;
     state.openTableSection = state.openTableSection === id ? null : id;
+    render();
+    return;
+  }
+
+  const settingsSection = event.target.closest("[data-settings-section]");
+  if (settingsSection) {
+    state.settingsSection = settingsSection.dataset.settingsSection;
+    state.settingsUserFormOpen = false;
+    state.view = "settings";
+    syncHashWithView("settings");
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-toggle-user-form]")) {
+    state.settingsUserFormOpen = !state.settingsUserFormOpen;
     render();
     return;
   }
