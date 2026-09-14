@@ -331,6 +331,7 @@ const uiIconFiles = {
   plans: "action-plan",
   document: "documents",
   report: "reports",
+  reportFolder: "report-folder",
   table: "tables",
   fileWarning: "ncs",
   warning: "critical",
@@ -882,7 +883,7 @@ function assetIcon(name, variant = "blue", className = "asset-img") {
   const isApproved = approvedUiIconFiles.has(file);
   const folder = isApproved ? "ui-icons-approved" : "ui-icons";
   const ext = isApproved ? "png" : "svg";
-  return `<img class="${className} ui-icon-${file}" src="assets/${folder}/${variant}/${file}.${ext}?v=density-2" alt="" aria-hidden="true" />`;
+  return `<img class="${className} ui-icon-${file}" src="assets/${folder}/${variant}/${file}.${ext}?v=density-3" alt="" aria-hidden="true" />`;
 }
 
 function svgIcon(name, className = "tiny-icon", variant = "blue") {
