@@ -320,6 +320,22 @@ const settingsVisualRules = [
   { label: "Alertas", value: "Badges e avisos", detail: "Sinalizam pendências, devolutivas, atrasos e evidências." }
 ];
 
+const planningTabs = [
+  ["overview", "Visão geral"],
+  ["plans", "Planos de ação"],
+  ["feedback", "Devolutivas"],
+  ["history", "Histórico"],
+  ["rules", "Configurações"]
+];
+
+const planningSettings = [
+  ["Prazo padrão", "30 dias", "Conta a partir do envio do relatório ou da ciência do responsável."],
+  ["Nova tentativa", "Permitida", "Quando o auditor reprova dentro do prazo, o mesmo plano pode ser reaberto."],
+  ["Fora do prazo", "Somente com justificativa", "Responsável precisa justificar atraso antes de enviar nova evidência."],
+  ["Evidência", "Foto obrigatória", "O plano exige foto ou arquivo para concluir a devolutiva."],
+  ["Ciência", "Ativa", "Responsável registra ciência ao abrir o plano no painel."]
+];
+
 const uiIconFiles = {
   home: "home",
   dashboard: "dashboard",
@@ -530,6 +546,7 @@ function defaultState() {
     settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
+    planningView: "overview",
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
@@ -555,6 +572,7 @@ function persistableState(source = state) {
     settingsUserView: source.settingsUserView,
     settingsRulesView: source.settingsRulesView,
     settingsUsersExpanded: source.settingsUsersExpanded,
+    planningView: source.planningView,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -567,6 +585,7 @@ function normalizeSavedState(saved = {}) {
   const validSettingsSections = new Set(settingsSections.map((section) => section.id));
   const validSettingsUserViews = new Set(["active", "new", "inactive"]);
   const validSettingsRulesViews = new Set(["goals", "scoring", "visual", "docs", "tables"]);
+  const validPlanningViews = new Set(planningTabs.map(([id]) => id));
   const merged = { ...base, ...saved };
   return {
     ...merged,
@@ -590,6 +609,7 @@ function normalizeSavedState(saved = {}) {
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
+    planningView: validPlanningViews.has(merged.planningView) ? merged.planningView : base.planningView,
     feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
@@ -4933,10 +4953,255 @@ function usersPage() {
   `;
 }
 
+function planningActionRows() {
+  const fallbackPlans = areaData
+    .filter((area) => area.pending > 0)
+    .map((area, index) => ({
+      id: `${area.id}-auto`,
+      area,
+      title: area.critical ? "Corrigir NCs de alto risco" : "Regularizar pendências da área",
+      block: subareaData[area.id]?.[0]?.label || "Checklist mensal",
+      owner: area.name,
+      status: area.score < 7 ? "rejected" : area.pending > 2 ? "pending_review" : "in_progress",
+      due: `${18 + index}/09/2026`,
+      ncs: area.ncs,
+      attempts: area.score < 7 ? 2 : 1,
+      source: "Relatório Agosto/2026"
+    }));
+
+  const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
+    const area = areaData.find((item) => item.id === areaId);
+    if (!area) return [];
+    return plans.map((plan, index) => ({
+      id: `${areaId}-${index}`,
+      area,
+      title: plan.title,
+      block: plan.block,
+      owner: plan.owner,
+      status: plan.status === "concluido" ? "approved" : plan.status === "atrasado" ? "overdue" : plan.status === "pendente" ? "sent_to_responsible" : "in_progress",
+      due: `${21 + index}/09/2026`,
+      ncs: plan.critical ? 2 : 1,
+      attempts: plan.status === "concluido" ? 1 : 0,
+      source: "Relatório Agosto/2026"
+    }));
+  });
+
+  return [...configuredPlans, ...fallbackPlans].slice(0, 18);
+}
+
+function planningStatusMeta(status) {
+  return {
+    approved: ["Aprovado", "good"],
+    rejected: ["Reprovado", "danger"],
+    pending_review: ["Aguardando auditor", "warning"],
+    sent_to_responsible: ["Enviado", "blue"],
+    in_progress: ["Em andamento", "blue"],
+    reopened: ["Reaberto", "warning"],
+    overdue: ["Vencido", "danger"]
+  }[status] || ["Pendente", "neutral"];
+}
+
+function planningTotals(rows = planningActionRows()) {
+  const approved = rows.filter((row) => row.status === "approved").length;
+  const rejected = rows.filter((row) => row.status === "rejected").length;
+  const waiting = rows.filter((row) => row.status === "pending_review").length;
+  const overdue = rows.filter((row) => row.status === "overdue").length;
+  const active = rows.filter((row) => ["sent_to_responsible", "in_progress", "reopened"].includes(row.status)).length;
+  return { total: rows.length, approved, rejected, waiting, overdue, active };
+}
+
+function planningKpi(label, value, detail, tone = "blue") {
+  return `
+    <div class="planning-kpi is-${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+      <small>${escapeHtml(detail)}</small>
+    </div>
+  `;
+}
+
+function planningStatusChart(totals) {
+  const total = Math.max(totals.total, 1);
+  const approved = Math.round((totals.approved / total) * 100);
+  const rejected = Math.round((totals.rejected / total) * 100);
+  const waiting = Math.round((totals.waiting / total) * 100);
+  return `
+    <div class="planning-chart-card">
+      <div class="planning-donut" style="--approved:${approved}; --rejected:${rejected}; --waiting:${waiting}">
+        <strong>${totals.total}</strong>
+        <span>planos</span>
+      </div>
+      <div class="planning-chart-legend">
+        <span><i class="good"></i>${totals.approved} aprovados</span>
+        <span><i class="danger"></i>${totals.rejected} reprovados</span>
+        <span><i class="warning"></i>${totals.waiting} aguardando auditor</span>
+        <span><i class="blue"></i>${totals.active} em andamento</span>
+      </div>
+    </div>
+  `;
+}
+
+function planningAreaRanking(rows) {
+  return areaData
+    .map((area) => {
+      const areaRows = rows.filter((row) => row.area.id === area.id);
+      return {
+        area,
+        total: areaRows.length,
+        rejected: areaRows.filter((row) => row.status === "rejected").length,
+        overdue: areaRows.filter((row) => row.status === "overdue").length
+      };
+    })
+    .filter((row) => row.total)
+    .sort((a, b) => (b.rejected + b.overdue) - (a.rejected + a.overdue) || b.total - a.total)
+    .slice(0, 5);
+}
+
+function planningOverview() {
+  const rows = planningActionRows();
+  const totals = planningTotals(rows);
+  const ranking = planningAreaRanking(rows);
+  return `
+    <div class="fichario-sub-panel">
+      <div class="planning-kpi-grid">
+        ${planningKpi("Total de planos", totals.total, "gerados no histórico", "blue")}
+        ${planningKpi("Em andamento", totals.active, "com prazo vigente", "blue")}
+        ${planningKpi("Aguardando aprovação", totals.waiting, "devolutivas recebidas", "warning")}
+        ${planningKpi("Aprovados", totals.approved, "concluídos pelo auditor", "good")}
+        ${planningKpi("Reprovados", totals.rejected, "exigem nova ação", "danger")}
+      </div>
+      <div class="planning-overview-grid">
+        ${planningStatusChart(totals)}
+        <div class="planning-rank-card">
+          <div class="planning-card-head"><h2>Áreas com maior atenção</h2><p>Ranking por reprovação, vencimento e volume de planos.</p></div>
+          <div class="planning-rank-list">
+            ${ranking.map((item, index) => `
+              <div class="planning-rank-row">
+                <b>${index + 1}</b>
+                <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos · ${item.rejected} reprovados · ${item.overdue} vencidos</span></div>
+                <em>${String(item.area.score).replace(".", ",")}</em>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function planningPlansTable(rows = planningActionRows()) {
+  return `
+    <div class="planning-table-wrap">
+      <table class="planning-table">
+        <thead><tr><th>Plano</th><th>Área</th><th>Responsável</th><th>NCs</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map((row) => {
+            const [label, tone] = planningStatusMeta(row.status);
+            return `
+              <tr>
+                <td><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.block)} · ${escapeHtml(row.source)}</span></td>
+                <td>${escapeHtml(row.area.name)}</td>
+                <td>${escapeHtml(row.owner)}</td>
+                <td>${row.ncs}</td>
+                <td><span class="planning-status is-${tone}">${escapeHtml(label)}</span></td>
+                <td>${escapeHtml(row.due)}</td>
+                <td><button class="fichario-sub-action" type="button">Abrir</button></td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function planningPlansContent() {
+  return `
+    <div class="fichario-sub-panel">
+      <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Gestão dos planos gerados pelas NCs, com responsável, prazo, tentativa e status.</p></div><button class="fichario-sub-action is-primary" type="button">Novo plano manual</button></div>
+      <div class="planning-filter-line"><label><span>${icons.search}</span><input placeholder="Pesquisar por área, responsável ou plano..." /></label><button class="fichario-sub-action" type="button">Status</button><button class="fichario-sub-action" type="button">Área</button><button class="fichario-sub-action" type="button">Mês</button></div>
+      ${planningPlansTable()}
+    </div>
+  `;
+}
+
+function planningFeedbackContent() {
+  const rows = planningActionRows().filter((row) => ["pending_review", "rejected", "overdue"].includes(row.status)).slice(0, 8);
+  return `
+    <div class="fichario-sub-panel">
+      <div class="fichario-sub-head"><div><h2>Devolutivas</h2><p>Fila do auditor para revisar evidências, justificar reprovação e reabrir o plano quando a regra permitir.</p></div><button class="fichario-sub-action is-primary" type="button">Ver todas</button></div>
+      <div class="planning-feedback-list">
+        ${rows.map((row) => {
+          const [label, tone] = planningStatusMeta(row.status);
+          return `
+            <div class="planning-feedback-row">
+              <div class="planning-feedback-icon">${assetIcon("action", "blue", "planning-icon")}</div>
+              <div><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.area.name)} · ${escapeHtml(row.owner)} · ${row.attempts} tentativa(s)</span></div>
+              <span class="planning-status is-${tone}">${escapeHtml(label)}</span>
+              <button class="fichario-sub-action" type="button">Analisar</button>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function planningHistoryContent() {
+  const rows = planningAreaRanking(planningActionRows()).concat(
+    areaData.filter((area) => !planningAreaRanking(planningActionRows()).some((row) => row.area.id === area.id)).slice(0, 3).map((area) => ({ area, total: area.pending + area.ncs, rejected: area.critical, overdue: Math.max(0, area.pending - 2) }))
+  ).slice(0, 8);
+  return `
+    <div class="fichario-sub-panel">
+      <div class="fichario-sub-head"><div><h2>Histórico por área</h2><p>Resumo acumulado para identificar recorrência, volume de planos e impacto na nota.</p></div><button class="fichario-sub-action" type="button">Exportar histórico</button></div>
+      <div class="planning-history-grid">
+        ${rows.map((row) => `
+          <div class="planning-history-card">
+            <strong>${escapeHtml(row.area.name)}</strong>
+            <div><b>${row.total}</b><span>planos no período</span></div>
+            <small>${row.rejected} reprovados · ${row.overdue} vencidos · nota ${String(row.area.score).replace(".", ",")}</small>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function planningRulesContent() {
+  return `
+    <div class="fichario-sub-panel">
+      <div class="fichario-sub-head"><div><h2>Configurações do plano</h2><p>Regras operacionais do plano de ação ficam aqui, dentro do Planejamento.</p></div><button class="fichario-sub-action is-primary" type="button">Salvar regras</button></div>
+      <div class="fichario-settings-lines">
+        ${planningSettings.map(([label, value, detail]) => `<div class="fichario-setting-line"><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b>${escapeHtml(value)}</b><button class="fichario-sub-action" type="button">Editar</button></div>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function planningContent() {
+  const panels = {
+    overview: planningOverview,
+    plans: planningPlansContent,
+    feedback: planningFeedbackContent,
+    history: planningHistoryContent,
+    rules: planningRulesContent
+  };
+  return (panels[state.planningView] || planningOverview)();
+}
+
+function planningPage() {
+  return `
+    <section class="fichario-module planning-module">
+      <div class="fichario-module-head"><span class="eyebrow">Planejamento</span><h1 class="panel-title">Planos de ação</h1><p class="panel-subtitle">Gestão dos planos vigentes, devolutivas, aprovações, reprovações e regras de prazo. A visão conversa com o painel inicial, relatórios e notas por área.</p></div>
+      <div class="fichario-sub-tabs" role="tablist">${planningTabs.map(([id, label]) => `<button class="fichario-sub-tab ${state.planningView === id ? "is-active" : ""}" data-planning-view="${id}" type="button">${label}</button>`).join("")}</div>
+      ${planningContent()}
+    </section>
+  `;
+}
+
 function viewContent() {
   const placeholders = {
     audits: ["Auditorias", "Aqui ficará o histórico das auditorias passadas, com filtros por mês, área, responsável e status."],
-    actions: ["Planos de Ação", "Aqui entram os planos gerados a partir das NCs, com correção necessária, responsável, prazo, andamento e evidências."],
     docs: ["Documentos", "Aqui ficará o controle documental separado da área de resíduos: upload, validade, status, alerta e histórico."],
     reports: ["Relatórios", "Aqui ficarão os relatórios consolidados por área auditada, com nota final, evidências, planos e histórico."],
     web: ["Painel web", "Este módulo será pensado para gestão administrativa, envio de documentos e consulta completa sem depender do tablet."],
@@ -4951,6 +5216,7 @@ function viewContent() {
   if (state.view === "checklist") return checklistPage();
   if (state.view === "tables") return foodTablesPage();
   if (state.view === "reports") return reportsPage();
+  if (state.view === "actions") return planningPage();
   if (state.view === "settings") return settingsPage();
   if (state.view === "users") return usersPage();
   const [title, text] = placeholders[state.view] || placeholders.audits;
@@ -5149,6 +5415,15 @@ document.addEventListener("click", (event) => {
   if (settingsRulesView) {
     state.settingsSection = "rules";
     state.settingsRulesView = settingsRulesView.dataset.settingsRulesView;
+    render();
+    return;
+  }
+
+  const planningView = event.target.closest("[data-planning-view]");
+  if (planningView) {
+    state.planningView = planningView.dataset.planningView;
+    state.view = "actions";
+    syncHashWithView("actions");
     render();
     return;
   }
