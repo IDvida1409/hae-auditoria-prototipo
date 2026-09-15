@@ -4965,7 +4965,7 @@ function planningActionRows() {
       title: area.critical ? "Corrigir NCs de alto risco" : "Regularizar pendências da área",
       block: subareaData[area.id]?.[0]?.label || "Checklist mensal",
       owner: area.name,
-      status: area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "sent_to_responsible",
+      status: area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "awaiting_send",
       due: `${18 + index}/09/2026`,
       ncs: area.ncs,
       attempts: area.score < 7 ? 2 : 1,
@@ -4981,7 +4981,7 @@ function planningActionRows() {
       title: plan.title,
       block: plan.block,
       owner: plan.owner,
-      status: plan.status === "concluido" ? "approved" : plan.status === "atrasado" ? "overdue" : plan.status === "pendente" ? "sent_to_responsible" : "in_progress",
+      status: plan.status === "concluido" ? "approved" : plan.status === "atrasado" ? "overdue" : plan.status === "pendente" ? "awaiting_send" : "in_progress",
       due: `${21 + index}/09/2026`,
       ncs: plan.critical ? 2 : 1,
       attempts: plan.status === "concluido" ? 1 : 0,
@@ -5015,7 +5015,7 @@ function planningActionRows() {
 }
 
 function planningActiveRows(rows = planningActionRows()) {
-  return rows.filter((row) => ["sent_to_responsible", "in_progress", "reopened", "overdue"].includes(row.status));
+  return rows.filter((row) => ["awaiting_send", "in_progress", "reopened", "overdue"].includes(row.status));
 }
 
 function planningFeedbackRows(rows = planningActionRows()) {
@@ -5030,8 +5030,8 @@ function planningStatusMeta(status) {
   return {
     approved: ["Aprovado", "good"],
     rejected: ["Reprovado", "danger"],
-    pending_review: ["Aguardando auditor", "warning"],
-    sent_to_responsible: ["Enviado", "blue"],
+    pending_review: ["Devolutiva recebida", "warning"],
+    awaiting_send: ["Aguardando envio", "warning"],
     in_progress: ["Em andamento", "blue"],
     reopened: ["Reaberto", "warning"],
     overdue: ["Vencido", "danger"]
@@ -5043,8 +5043,9 @@ function planningTotals(rows = planningActionRows()) {
   const rejected = rows.filter((row) => row.status === "rejected").length;
   const waiting = rows.filter((row) => row.status === "pending_review").length;
   const overdue = rows.filter((row) => row.status === "overdue").length;
-  const active = rows.filter((row) => ["sent_to_responsible", "in_progress", "reopened"].includes(row.status)).length;
-  return { total: rows.length, approved, rejected, waiting, overdue, active };
+  const awaiting = rows.filter((row) => row.status === "awaiting_send").length;
+  const active = rows.filter((row) => ["in_progress", "reopened"].includes(row.status)).length;
+  return { total: rows.length, approved, rejected, waiting, overdue, active, awaiting };
 }
 
 function planningKpi(label, value, detail, tone = "blue") {
@@ -5059,20 +5060,21 @@ function planningKpi(label, value, detail, tone = "blue") {
 
 function planningStatusChart(totals) {
   const total = Math.max(totals.total, 1);
-  const approved = Math.round((totals.approved / total) * 100);
-  const rejected = Math.round((totals.rejected / total) * 100);
+  const awaiting = Math.round((totals.awaiting / total) * 100);
+  const active = Math.round((totals.active / total) * 100);
+  const overdue = Math.round((totals.overdue / total) * 100);
   const waiting = Math.round((totals.waiting / total) * 100);
   return `
     <div class="planning-chart-card">
-      <div class="planning-donut" style="--approved:${approved}; --rejected:${rejected}; --waiting:${waiting}">
+      <div class="planning-donut" style="--approved:${active}; --rejected:${overdue}; --waiting:${waiting + awaiting}">
         <strong>${totals.total}</strong>
         <span>planos</span>
       </div>
       <div class="planning-chart-legend">
-        <span><i class="good"></i>${totals.approved} aprovados</span>
-        <span><i class="danger"></i>${totals.rejected} reprovados</span>
-        <span><i class="warning"></i>${totals.waiting} aguardando auditor</span>
+        <span><i class="warning"></i>${totals.awaiting} aguardando envio</span>
         <span><i class="blue"></i>${totals.active} em andamento</span>
+        <span><i class="danger"></i>${totals.overdue} vencidos</span>
+        <span><i class="warning"></i>${totals.waiting} devolutivas recebidas</span>
       </div>
     </div>
   `;
@@ -5106,7 +5108,8 @@ function planningAreaSummaries(rows = planningActionRows()) {
         approved: areaRows.filter((row) => row.status === "approved").length,
         rejected: areaRows.filter((row) => row.status === "rejected").length,
         waiting: areaRows.filter((row) => row.status === "pending_review").length,
-        active: areaRows.filter((row) => ["sent_to_responsible", "in_progress", "reopened"].includes(row.status)).length,
+        awaiting: areaRows.filter((row) => row.status === "awaiting_send").length,
+        active: areaRows.filter((row) => ["in_progress", "reopened"].includes(row.status)).length,
         overdue: areaRows.filter((row) => row.status === "overdue").length
       };
     })
@@ -5122,19 +5125,17 @@ function planningSelectedAreaSummary(rows = planningActionRows()) {
 function planningOverview() {
   const activeRows = planningActiveRows();
   const feedbackRows = planningFeedbackRows();
-  const historyRows = planningHistoryRows();
   const cycleRows = [...activeRows, ...feedbackRows];
   const totals = planningTotals(cycleRows);
-  const historyTotals = planningTotals(historyRows);
   const ranking = planningAreaRanking(cycleRows);
   return `
     <div class="fichario-sub-panel">
       <div class="planning-kpi-grid">
         ${planningKpi("Planos vigentes", totals.total, "auditoria atual", "neutral")}
-        ${planningKpi("Em andamento", totals.active, "com prazo vigente", "blue")}
-        ${planningKpi("Aguardando auditor", feedbackRows.length, "devolutivas recebidas", "warning")}
-        ${planningKpi("Aprovados", historyTotals.approved, "fechados no histórico", "good")}
-        ${planningKpi("Reprovados", historyTotals.rejected, "fechados no histórico", "danger")}
+        ${planningKpi("Aguardando envio", totals.awaiting, "auditor optou por editar", "warning")}
+        ${planningKpi("Em andamento", totals.active, "já enviados ao responsável", "blue")}
+        ${planningKpi("Vencidos", totals.overdue, "passaram do prazo", "danger")}
+        ${planningKpi("Devolutivas", feedbackRows.length, "aguardando auditor", "warning")}
       </div>
       <div class="planning-overview-grid">
         ${planningStatusChart(totals)}
@@ -5144,7 +5145,7 @@ function planningOverview() {
             ${ranking.map((item, index) => `
               <button class="planning-rank-row" data-planning-area="${item.area.id}" type="button">
                 <b>${index + 1}</b>
-                <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos vigentes · ${item.overdue} vencidos · ${item.waiting || 0} aguardando auditor</span></div>
+                <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos vigentes · ${item.overdue} vencidos · ${item.waiting || 0} devolutivas</span></div>
                 <em>${String(item.area.score).replace(".", ",")}</em>
               </button>
             `).join("")}
@@ -5160,19 +5161,19 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
   return `
     <div class="planning-table-wrap">
       <table class="planning-table">
-        <thead><tr><th>Plano</th>${compact ? "" : "<th>Área</th>"}<th>Responsável</th><th>NCs</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
+        <thead><tr><th>Plano</th>${compact ? "" : "<th>Área</th><th>Responsável</th>"}<th>NCs</th><th>Status</th><th>Prazo</th><th></th></tr></thead>
         <tbody>
           ${rows.map((row) => {
             const [label, tone] = planningStatusMeta(row.status);
+            const actionLabel = row.status === "awaiting_send" ? "Editar" : "Abrir";
             return `
               <tr>
                 <td><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.block)} · ${escapeHtml(row.source)}</span></td>
-                ${compact ? "" : `<td>${escapeHtml(row.area.name)}</td>`}
-                <td>${escapeHtml(row.owner)}</td>
+                ${compact ? "" : `<td>${escapeHtml(row.area.name)}</td><td>${escapeHtml(row.owner)}</td>`}
                 <td>${row.ncs}</td>
                 <td><span class="planning-status is-${tone}">${escapeHtml(label)}</span></td>
                 <td>${escapeHtml(row.due)}</td>
-                <td><button class="fichario-sub-action" type="button">Abrir</button></td>
+                <td><button class="fichario-sub-action" type="button">${actionLabel}</button></td>
               </tr>
             `;
           }).join("")}
@@ -5188,13 +5189,13 @@ function planningPlansContent() {
   const selected = planningSelectedAreaSummary(rows);
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Aqui entram somente os planos vigentes da auditoria atual. Devolutivas enviadas pelo responsável vão para a fila do auditor.</p></div><button class="fichario-sub-action is-primary" type="button">Novo plano manual</button></div>
+      <div class="fichario-sub-head"><div><h2>Planos de ação vigentes</h2><p>Aqui entram apenas planos abertos: aguardando envio, em andamento ou vencidos. Aprovados e reprovados ficam no histórico.</p></div><button class="fichario-sub-action is-primary" type="button">Revisar aguardando envio</button></div>
       <div class="planning-filter-line"><label><span>${icons.search}</span><input placeholder="Pesquisar área, responsável ou plano..." /></label><button class="fichario-sub-action" type="button">Status</button><button class="fichario-sub-action" type="button">Mês</button></div>
       <div class="planning-area-layout">
         <div class="planning-area-list">
           ${summaries.map((item) => `
             <button class="planning-area-row ${selected?.area.id === item.area.id ? "is-active" : ""}" data-planning-area="${item.area.id}" type="button">
-              <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos · ${item.active} em andamento · ${item.waiting} aguardando auditor</span></div>
+              <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} vigentes · ${item.awaiting} aguardando envio · ${item.active} em andamento</span></div>
               <b>${item.total}</b>
             </button>
           `).join("")}
