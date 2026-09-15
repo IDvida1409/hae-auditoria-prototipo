@@ -11755,18 +11755,18 @@ h3 {
 .planning-kpi-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .planning-kpi {
-  min-height: 82px;
-  padding: 11px 14px;
+  min-height: 62px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-left: 5px solid var(--planning-tone, var(--blue-700));
+  border-left: 4px solid var(--planning-tone, var(--blue-700));
   border-radius: 8px;
   background: #fff;
-  box-shadow: 0 12px 24px rgba(7, 26, 61, .05);
+  box-shadow: 0 8px 18px rgba(7, 26, 61, .04);
 }
 
 .planning-kpi span,
@@ -11777,23 +11777,23 @@ h3 {
 
 .planning-kpi span {
   color: var(--ink-600);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 620;
 }
 
 .planning-kpi strong {
-  margin-top: 5px;
+  margin-top: 3px;
   color: var(--ink-950);
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
   font-weight: 680;
 }
 
 .planning-kpi small {
-  margin-top: 5px;
+  margin-top: 3px;
   color: var(--ink-500);
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 10.8px;
+  line-height: 1.2;
 }
 
 .planning-kpi.is-good { --planning-tone: var(--green); }
@@ -11804,8 +11804,8 @@ h3 {
 
 .planning-overview-grid {
   display: grid;
-  grid-template-columns: minmax(280px, .7fr) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(250px, .62fr) minmax(0, 1fr);
+  gap: 10px;
 }
 
 .planning-chart-card,
@@ -11820,19 +11820,19 @@ h3 {
 
 .planning-chart-card {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
+  grid-template-columns: 94px minmax(0, 1fr);
   align-items: center;
-  min-height: 168px;
-  gap: 14px;
-  padding: 14px;
+  min-height: 126px;
+  gap: 10px;
+  padding: 10px;
 }
 
 .planning-donut {
   display: grid;
   place-items: center;
   align-content: center;
-  width: 112px;
-  height: 112px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background:
     radial-gradient(circle at center, #fff 0 48%, transparent 49%),
@@ -11842,20 +11842,20 @@ h3 {
 
 .planning-donut strong {
   color: var(--ink-950);
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .planning-donut span {
   color: var(--ink-500);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .planning-chart-legend {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   color: var(--ink-700);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .planning-chart-legend span {
@@ -11876,35 +11876,35 @@ h3 {
 .planning-chart-legend .blue { background: var(--blue-700); }
 
 .planning-rank-card {
-  padding: 14px;
+  padding: 10px;
 }
 
 .planning-card-head h2 {
   margin: 0;
   color: var(--ink-950);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 650;
 }
 
 .planning-card-head p {
-  margin: 4px 0 14px;
+  margin: 3px 0 9px;
   color: var(--ink-500);
-  font-size: 12.5px;
+  font-size: 11.8px;
 }
 
 .planning-rank-list {
   display: grid;
-  gap: 9px;
+  gap: 6px;
 }
 
 .planning-rank-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
   width: 100%;
-  min-height: 52px;
-  padding: 0 12px;
+  min-height: 42px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdff;
@@ -11919,8 +11919,8 @@ h3 {
 .planning-rank-row b {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   color: var(--blue-700);
   background: #edf5ff;
@@ -11934,13 +11934,13 @@ h3 {
 
 .planning-rank-row strong {
   color: var(--ink-950);
-  font-size: 13.5px;
+  font-size: 12.5px;
 }
 
 .planning-rank-row span {
   margin-top: 2px;
   color: var(--ink-500);
-  font-size: 12px;
+  font-size: 11.2px;
 }
 
 .planning-rank-row em {
@@ -11952,20 +11952,20 @@ h3 {
 .planning-filter-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .planning-area-layout {
   display: grid;
-  grid-template-columns: minmax(260px, .36fr) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(240px, .32fr) minmax(0, 1fr);
+  gap: 10px;
 }
 
 .planning-area-list {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .planning-area-row {
@@ -11973,8 +11973,8 @@ h3 {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  min-height: 58px;
-  padding: 10px 12px;
+  min-height: 46px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink-700);
@@ -11996,26 +11996,26 @@ h3 {
 
 .planning-area-row strong {
   color: var(--ink-950);
-  font-size: 13px;
+  font-size: 12.4px;
   font-weight: 640;
 }
 
 .planning-area-row span {
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--ink-500);
-  font-size: 11.8px;
-  line-height: 1.3;
+  font-size: 10.8px;
+  line-height: 1.2;
 }
 
 .planning-area-row b {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 8px;
   color: var(--blue-700);
   background: #eaf3ff;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .planning-area-detail {
@@ -12029,9 +12029,9 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  min-height: 78px;
-  padding: 14px 16px;
+  gap: 10px;
+  min-height: 62px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -12049,24 +12049,24 @@ h3 {
 }
 
 .planning-area-detail-head h3 {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--ink-950);
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 660;
 }
 
 .planning-area-detail-head p {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--ink-500);
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 
 .planning-filter-line label {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: 38px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink-500);
@@ -12099,11 +12099,11 @@ h3 {
 
 .planning-table th,
 .planning-table td {
-  padding: 13px 14px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
-  font-size: 13px;
+  font-size: 12.2px;
 }
 
 .planning-table th {
@@ -12124,24 +12124,24 @@ h3 {
 
 .planning-table td strong {
   color: var(--ink-950);
-  font-size: 13px;
+  font-size: 12.3px;
   font-weight: 620;
 }
 
 .planning-table td span {
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--ink-500);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .planning-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 26px;
-  padding: 0 11px;
+  min-height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11.2px;
   font-weight: 640;
   white-space: nowrap;
 }
@@ -12159,11 +12159,11 @@ h3 {
 
 .planning-feedback-row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 12px;
-  min-height: 74px;
-  padding: 12px 16px;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -12178,27 +12178,27 @@ h3 {
 
 .planning-feedback-row strong {
   color: var(--ink-950);
-  font-size: 13.5px;
+  font-size: 12.8px;
 }
 
 .planning-feedback-row span {
-  margin-top: 3px;
+  margin-top: 2px;
   color: var(--ink-500);
-  font-size: 12px;
+  font-size: 11.2px;
 }
 
 .planning-feedback-icon {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   background: #f1f7ff;
 }
 
 .planning-feedback-icon img {
-  width: 24px;
-  height: 24px;
+  width: 21px;
+  height: 21px;
 }
 
 .planning-history-list {

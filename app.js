@@ -4965,11 +4965,11 @@ function planningActionRows() {
       title: area.critical ? "Corrigir NCs de alto risco" : "Regularizar pendências da área",
       block: subareaData[area.id]?.[0]?.label || "Checklist mensal",
       owner: area.name,
-      status: area.score < 7 ? "rejected" : area.pending > 2 ? "pending_review" : "in_progress",
+      status: area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "sent_to_responsible",
       due: `${18 + index}/09/2026`,
       ncs: area.ncs,
       attempts: area.score < 7 ? 2 : 1,
-      source: "Relatório Agosto/2026"
+      source: "Auditoria atual"
     }));
 
   const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
@@ -4985,11 +4985,45 @@ function planningActionRows() {
       due: `${21 + index}/09/2026`,
       ncs: plan.critical ? 2 : 1,
       attempts: plan.status === "concluido" ? 1 : 0,
-      source: "Relatório Agosto/2026"
+      source: plan.status === "concluido" ? "Histórico Agosto/2026" : "Auditoria atual"
     }));
   });
 
-  return [...configuredPlans, ...fallbackPlans].slice(0, 18);
+  const historicalPlans = [
+    ["hist-residuos-ago", "area-residuos", "Adequar segregação de resíduos", "Agosto/2026", "Carlos Lima", "approved", "28/08/2026", 3, 1],
+    ["hist-residuos-jul", "area-residuos", "Revisar identificação de contentores", "Julho/2026", "Carlos Lima", "rejected", "30/07/2026", 2, 2],
+    ["hist-documentacao-ago", "documentacao", "Atualizar POP de higienização", "Agosto/2026", "Marina Costa", "approved", "26/08/2026", 1, 1],
+    ["hist-dml-jul", "dml-produto-quimico", "Regularizar armazenamento químico", "Julho/2026", "Paulo Nunes", "approved", "24/07/2026", 2, 1]
+  ].map(([id, areaId, title, block, owner, status, due, ncs, attempts]) => {
+    const area = areaData.find((item) => item.id === areaId);
+    if (!area) return null;
+    return {
+      id,
+      area,
+      title,
+      block,
+      owner,
+      status,
+      due,
+      ncs,
+      attempts,
+      source: "Histórico"
+    };
+  }).filter(Boolean);
+
+  return [...configuredPlans, ...fallbackPlans, ...historicalPlans];
+}
+
+function planningActiveRows(rows = planningActionRows()) {
+  return rows.filter((row) => ["sent_to_responsible", "in_progress", "reopened", "overdue"].includes(row.status));
+}
+
+function planningFeedbackRows(rows = planningActionRows()) {
+  return rows.filter((row) => row.status === "pending_review");
+}
+
+function planningHistoryRows(rows = planningActionRows()) {
+  return rows.filter((row) => ["approved", "rejected"].includes(row.status));
 }
 
 function planningStatusMeta(status) {
@@ -5052,6 +5086,7 @@ function planningAreaRanking(rows) {
         area,
         total: areaRows.length,
         rejected: areaRows.filter((row) => row.status === "rejected").length,
+        waiting: areaRows.filter((row) => row.status === "pending_review").length,
         overdue: areaRows.filter((row) => row.status === "overdue").length
       };
     })
@@ -5085,17 +5120,21 @@ function planningSelectedAreaSummary(rows = planningActionRows()) {
 }
 
 function planningOverview() {
-  const rows = planningActionRows();
-  const totals = planningTotals(rows);
-  const ranking = planningAreaRanking(rows);
+  const activeRows = planningActiveRows();
+  const feedbackRows = planningFeedbackRows();
+  const historyRows = planningHistoryRows();
+  const cycleRows = [...activeRows, ...feedbackRows];
+  const totals = planningTotals(cycleRows);
+  const historyTotals = planningTotals(historyRows);
+  const ranking = planningAreaRanking(cycleRows);
   return `
     <div class="fichario-sub-panel">
       <div class="planning-kpi-grid">
-        ${planningKpi("Total de planos", totals.total, "gerados no histórico", "neutral")}
+        ${planningKpi("Planos vigentes", totals.total, "auditoria atual", "neutral")}
         ${planningKpi("Em andamento", totals.active, "com prazo vigente", "blue")}
-        ${planningKpi("Aguardando aprovação", totals.waiting, "devolutivas recebidas", "warning")}
-        ${planningKpi("Aprovados", totals.approved, "concluídos pelo auditor", "good")}
-        ${planningKpi("Reprovados", totals.rejected, "exigem nova ação", "danger")}
+        ${planningKpi("Aguardando auditor", feedbackRows.length, "devolutivas recebidas", "warning")}
+        ${planningKpi("Aprovados", historyTotals.approved, "fechados no histórico", "good")}
+        ${planningKpi("Reprovados", historyTotals.rejected, "fechados no histórico", "danger")}
       </div>
       <div class="planning-overview-grid">
         ${planningStatusChart(totals)}
@@ -5105,7 +5144,7 @@ function planningOverview() {
             ${ranking.map((item, index) => `
               <button class="planning-rank-row" data-planning-area="${item.area.id}" type="button">
                 <b>${index + 1}</b>
-                <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos · ${item.rejected} reprovados · ${item.overdue} vencidos</span></div>
+                <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos vigentes · ${item.overdue} vencidos · ${item.waiting || 0} aguardando auditor</span></div>
                 <em>${String(item.area.score).replace(".", ",")}</em>
               </button>
             `).join("")}
@@ -5144,12 +5183,12 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
 }
 
 function planningPlansContent() {
-  const rows = planningActionRows();
+  const rows = planningActiveRows();
   const summaries = planningAreaSummaries(rows);
   const selected = planningSelectedAreaSummary(rows);
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Comece pela área. Ao selecionar uma área, aparecem os planos, responsáveis, prazos e devolutivas daquela área.</p></div><button class="fichario-sub-action is-primary" type="button">Novo plano manual</button></div>
+      <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Aqui entram somente os planos vigentes da auditoria atual. Devolutivas enviadas pelo responsável vão para a fila do auditor.</p></div><button class="fichario-sub-action is-primary" type="button">Novo plano manual</button></div>
       <div class="planning-filter-line"><label><span>${icons.search}</span><input placeholder="Pesquisar área, responsável ou plano..." /></label><button class="fichario-sub-action" type="button">Status</button><button class="fichario-sub-action" type="button">Mês</button></div>
       <div class="planning-area-layout">
         <div class="planning-area-list">
@@ -5162,7 +5201,7 @@ function planningPlansContent() {
         </div>
         <div class="planning-area-detail">
           <div class="planning-area-detail-head">
-            <div><span>Área selecionada</span><h3>${escapeHtml(selected?.area.name || "Área")}</h3><p>${selected?.total || 0} planos vinculados · nota ${String(selected?.area.score || 0).replace(".", ",")}</p></div>
+            <div><span>Área selecionada</span><h3>${escapeHtml(selected?.area.name || "Área")}</h3><p>${selected?.total || 0} planos vigentes · nota ${String(selected?.area.score || 0).replace(".", ",")}</p></div>
             <button class="fichario-sub-action" data-area-detail="${selected?.area.id || ""}" type="button">Abrir área</button>
           </div>
           ${planningPlansTable(selected?.rows || [], { compact: true })}
@@ -5173,7 +5212,7 @@ function planningPlansContent() {
 }
 
 function planningFeedbackContent() {
-  const rows = planningActionRows().filter((row) => ["pending_review", "rejected", "overdue"].includes(row.status)).slice(0, 8);
+  const rows = planningFeedbackRows();
   return `
     <div class="fichario-sub-panel">
       <div class="fichario-sub-head"><div><h2>Devolutivas</h2><p>Fila do auditor para revisar evidências, justificar reprovação e reabrir o plano quando a regra permitir.</p></div><button class="fichario-sub-action is-primary" type="button">Ver todas</button></div>
@@ -5195,20 +5234,28 @@ function planningFeedbackContent() {
 }
 
 function planningHistoryContent() {
-  const rows = planningAreaSummaries(planningActionRows()).slice(0, 10);
+  const rows = planningHistoryRows();
+  const summaries = planningAreaSummaries(rows);
+  const selected = planningSelectedAreaSummary(rows);
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>Histórico por área</h2><p>Resumo acumulado para identificar recorrência, volume de planos e impacto na nota.</p></div><button class="fichario-sub-action" type="button">Exportar histórico</button></div>
-      <div class="planning-history-list">
-        ${rows.map((row) => `
-          <button class="planning-history-card" data-planning-area="${row.area.id}" type="button">
-            <div><strong>${escapeHtml(row.area.name)}</strong><small>${row.total} planos no período · nota ${String(row.area.score).replace(".", ",")}</small></div>
-            <span>${row.approved} aprovados</span>
-            <span>${row.rejected} reprovados</span>
-            <span>${row.overdue} vencidos</span>
-            <b>Ver planos</b>
-          </button>
-        `).join("")}
+      <div class="fichario-sub-head"><div><h2>Histórico por área</h2><p>Aprovados e reprovados ficam fechados aqui. Selecione uma área para ver o histórico completo daquela área.</p></div><button class="fichario-sub-action" type="button">Exportar histórico</button></div>
+      <div class="planning-area-layout">
+        <div class="planning-area-list">
+          ${summaries.map((item) => `
+            <button class="planning-area-row ${selected?.area.id === item.area.id ? "is-active" : ""}" data-planning-history-area="${item.area.id}" type="button">
+              <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.approved} aprovados · ${item.rejected} reprovados</span></div>
+              <b>${item.total}</b>
+            </button>
+          `).join("")}
+        </div>
+        <div class="planning-area-detail">
+          <div class="planning-area-detail-head">
+            <div><span>Histórico selecionado</span><h3>${escapeHtml(selected?.area.name || "Área")}</h3><p>${selected?.total || 0} planos fechados · disponíveis para consulta e download.</p></div>
+            <button class="fichario-sub-action" type="button">Baixar histórico</button>
+          </div>
+          ${planningPlansTable(selected?.rows || [], { compact: true })}
+        </div>
       </div>
     </div>
   `;
@@ -5479,6 +5526,16 @@ document.addEventListener("click", (event) => {
   if (planningArea) {
     state.planningAreaId = planningArea.dataset.planningArea;
     state.planningView = "plans";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningHistoryArea = event.target.closest("[data-planning-history-area]");
+  if (planningHistoryArea) {
+    state.planningAreaId = planningHistoryArea.dataset.planningHistoryArea;
+    state.planningView = "history";
     state.view = "actions";
     syncHashWithView("actions");
     render();
