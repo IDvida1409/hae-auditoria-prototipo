@@ -523,12 +523,14 @@ function defaultState() {
     checklistBlock: null,
     checklistPage: 0,
     checklistBlocksOpen: false,
+    auditInstructionsOpen: false,
     actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
     settingsSection: "users",
-    settingsUserView: "active",
+    settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
+    feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
     reportPdfSource: false,
@@ -559,12 +561,12 @@ function persistableState(source = state) {
 
 function normalizeSavedState(saved = {}) {
   const base = defaultState();
-  const validViews = new Set([...navItems.map(([id]) => id), "area", "checklist"]);
+  const validViews = new Set([...navItems.map(([id]) => id), "users", "area", "checklist"]);
   const validAreaIds = new Set(areaData.map((area) => area.id));
   const validMonthIds = new Set(months.map(([monthId]) => monthId));
   const validSettingsSections = new Set(settingsSections.map((section) => section.id));
   const validSettingsUserViews = new Set(["active", "new", "inactive"]);
-  const validSettingsRulesViews = new Set(["goals", "scoring", "visual"]);
+  const validSettingsRulesViews = new Set(["goals", "scoring", "visual", "docs", "tables"]);
   const merged = { ...base, ...saved };
   return {
     ...merged,
@@ -583,10 +585,12 @@ function normalizeSavedState(saved = {}) {
     actionPlanNoticeQuestion: null,
     reportFolderArea: null,
     reportPdfSource: false,
+    auditInstructionsOpen: false,
     settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
+    feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
   };
@@ -602,11 +606,11 @@ function readSavedState() {
 
 function viewFromHash() {
   const view = location.hash.replace(/^#\/?/, "");
-  return navItems.some(([id]) => id === view) ? view : null;
+  return new Set([...navItems.map(([id]) => id), "users"]).has(view) ? view : null;
 }
 
 function syncHashWithView(view) {
-  if (!navItems.some(([id]) => id === view) || location.protocol === "file:") return;
+  if (!new Set([...navItems.map(([id]) => id), "users"]).has(view) || location.protocol === "file:") return;
   const nextHash = `#${view}`;
   if (location.hash !== nextHash) history.replaceState(null, "", nextHash);
 }
@@ -1006,30 +1010,57 @@ function topbarMeta() {
 }
 
 function topbar() {
-  const [title, kicker, icon] = topbarMeta();
-  const showBack = state.view === "area" || state.view === "checklist";
-  const hideTitle = state.view === "tables";
   return `
-    <header class="topbar ${hideTitle ? "is-title-hidden" : ""}">
-      ${hideTitle ? `<div class="title-group title-group-empty" aria-hidden="true"></div>` : `
-        <div class="title-group">
-          ${showBack ? `<button class="back-btn" data-back>${icons.chevron.replace('m9 18 6-6-6-6', 'm15 18-6-6 6-6')}</button>` : `<div class="screen-icon">${assetIcon(icon, "white")}</div>`}
-          <div>
-            ${state.view === "area" || state.view === "checklist" ? `<div class="breadcrumb">Dashboard de auditoria <span>›</span> ${state.view === "checklist" ? "Iniciar auditoria" : "Áreas"} <span>›</span> ${title}</div>` : ""}
-            <h1>${title}</h1>
-            <span class="screen-kicker">${kicker}</span>
-          </div>
-        </div>
-      `}
-      <div class="top-actions">
-        <button class="top-pill">${svgIcon("calendar")} Agosto 2026 <span>⌄</span></button>
-        <button class="ghost-btn">${svgIcon("filter")} Filtros</button>
-        <button class="icon-btn" title="Notificações">${icons.bell}<span class="notification-dot">3</span></button>
-        <div class="avatar" aria-label="IDVIDA">
-          <img src="assets/idvida-boneco.png?v=20260902-icons-1" alt="" />
+    <header class="topbar fichario-topbar">
+      <div class="brand-row">
+        <img class="idauditor-mark" src="assets/idauditor-logo.png?v=fichario-shell-1" alt="IDAuditor" />
+      </div>
+      <div class="unit-copy">
+        <img class="hospital-mark" src="assets/einstein-logo-menu.png?v=fichario-shell-1" alt="" />
+        <span>Hospital Einstein · Unidade Morumbi</span>
+      </div>
+      <label class="top-search">
+        ${icons.search}
+        <input type="search" placeholder="Buscar área ou relatório..." aria-label="Buscar área ou relatório" />
+      </label>
+      <button class="message-btn" type="button" aria-label="Mensagens">
+        <img src="assets/fichario-icons/message.png?v=fichario-shell-1" alt="" />
+      </button>
+      <div class="user-mini" data-user-menu>
+        <button class="user-menu-trigger" type="button" data-user-menu-trigger aria-expanded="false">
+          <span class="user-avatar">JS</span>
+          <span class="user-name-block"><strong>João Silva</strong><span>Administrativo</span></span>
+          ${icons.chevron}
+        </button>
+        <div class="user-menu hidden" data-user-menu-panel>
+          <button type="button" data-nav="users">Perfil</button>
+          <button type="button" data-nav="settings">Alterar senha</button>
+          <button type="button" data-nav="home">Sair</button>
         </div>
       </div>
     </header>
+  `;
+}
+
+function ficharioTabs() {
+  const tabs = [
+    ["home", "Início", "home"],
+    ["audits", "Auditorias", "audits"],
+    ["charts", "Gráficos", "charts"],
+    ["actions", "Planejamento", "audit-planning"],
+    ["reports", "Relatórios", "reports"],
+    ["settings", "Configuração", "settings"],
+    ["users", "Usuários", "users"]
+  ];
+  return `
+    <nav class="fichario-tabs" aria-label="Navegação principal">
+      ${tabs.map(([id, label, icon]) => `
+        <button class="fichario-tab ${state.view === id ? "is-active" : ""}" data-nav="${id}" type="button">
+          <img src="assets/fichario-icons/${icon}.png?v=fichario-shell-1" alt="" aria-hidden="true" />
+          <span>${label}</span>
+        </button>
+      `).join("")}
+    </nav>
   `;
 }
 
@@ -1226,13 +1257,45 @@ function areaEvolutionChart(area) {
 }
 
 function dashboardEvolution(area = null) {
-  const chartMonths = months.slice(5, 8).map(([id]) => id);
-  const monthsLabel = ["Jun", "Jul", "Ago"];
-  const areaIndex = area ? areaData.findIndex((item) => item.id === area.id) : -1;
-  const points = chartMonths.map((monthId) => {
-    if (area) return monthLines[monthId]?.[areaIndex] ?? area.score;
-    return monthAverage(monthId) ?? generalScore();
-  });
+  if (!area) {
+    return `
+      <div class="dash-evolution" aria-label="Prévia da evolução da nota">
+        <svg viewBox="0 0 360 104" role="img" aria-label="Evolução das notas nos últimos seis meses">
+          <line x1="14" y1="79" x2="346" y2="79" stroke="#e4e9f0" stroke-width="1" />
+          <line x1="14" y1="50" x2="346" y2="50" stroke="#dfeee2" stroke-width="1.1" />
+          <path d="M14,65 L80,58 L146,60 L213,51 L279,39 L346,30" fill="none" stroke="#2f8f46" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+          <g fill="#2f8f46" stroke="#fff" stroke-width="2">
+            <circle cx="14" cy="65" r="4.4"></circle>
+            <circle cx="80" cy="58" r="4.4"></circle>
+            <circle cx="146" cy="60" r="4.4"></circle>
+            <circle cx="213" cy="51" r="4.4"></circle>
+            <circle cx="279" cy="39" r="4.4"></circle>
+            <circle cx="346" cy="30" r="4.4"></circle>
+          </g>
+          <g fill="#2f8f46" font-size="11.2" font-weight="650" text-anchor="middle">
+            <text x="14" y="52">7,3</text>
+            <text x="80" y="45">7,4</text>
+            <text x="146" y="47">7,3</text>
+            <text x="213" y="38">7,5</text>
+            <text x="279" y="26">7,8</text>
+            <text x="346" y="17">8,2</text>
+          </g>
+          <g fill="#425474" font-size="11.2" font-weight="560" text-anchor="middle">
+            <text x="14" y="100">Mar</text>
+            <text x="80" y="100">Abr</text>
+            <text x="146" y="100">Mai</text>
+            <text x="213" y="100">Jun</text>
+            <text x="279" y="100">Jul</text>
+            <text x="346" y="100">Ago</text>
+          </g>
+        </svg>
+      </div>
+    `;
+  }
+  const chartMonths = months.slice(2, 8).map(([id]) => id);
+  const monthsLabel = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago"];
+  const areaIndex = areaData.findIndex((item) => item.id === area.id);
+  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex] ?? area.score);
   const latest = points[points.length - 1];
   const previous = points[points.length - 2] ?? latest;
   const color = latest < previous ? "#ee2f36" : "#2f8f46";
@@ -1251,7 +1314,6 @@ function dashboardEvolution(area = null) {
     const x = pad.left + index * xStep;
     const y = yFor(value) - 15;
     return `
-      <rect x="${x - 17}" y="${y - 10}" width="34" height="18" rx="9" fill="#fff" stroke="#d7e4d9" stroke-width="1"></rect>
       <text x="${x}" y="${y + 3}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="730">${formatScore(value)}</text>
     `;
   };
@@ -1417,56 +1479,54 @@ function dashboardHome() {
   const hasSelection = Boolean(state.selectedArea);
   const selectedArea = hasSelection ? areaById(state.selectedArea) : null;
   return `
-    <div class="dashboard-grid ${hasSelection ? "has-selection" : "no-selection"}">
-      <div class="dashboard-main">
-        <section class="areas-panel">
-          <div class="section-head">
-            <div class="section-title">
-              <div>
-                <h2>Painel das áreas</h2>
-                <p class="section-subtitle">Clique em uma área para ver os detalhes rápidos</p>
+    <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
+      <div class="fichario-panel-head">
+        <div class="home-intro">
+          <span class="eyebrow home-eyebrow"><img src="assets/idvida-boneco.png?v=fichario-shell-1" alt="" aria-hidden="true" />PAINEL INICIAL</span>
+          <h1>Olá, João</h1>
+          <p>Resumo operacional. Veja as notas das áreas auditadas no último fechamento.</p>
+        </div>
+        <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>Terça-feira, 15 de setembro de 2026</span></div>
+      </div>
+      ${dashboardLegend()}
+      <div class="fichario-main-layout">
+        <div class="fichario-main-left">
+          <div class="fichario-summary-grid">
+            <section class="fichario-summary-card">
+              <h2>Pendências gerais</h2>
+              <div class="pending-compact-grid">
+                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>12</b><small>planos pendentes</small></span>
+                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>8</b><small>NCs de alto risco</small></span>
+                <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>1</b><small>documento vencido</small></span>
+                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>2</b><small>áreas atrasadas</small></span>
               </div>
-            </div>
-            ${dashboardLegend()}
+            </section>
+            <section class="fichario-summary-card">
+              <h2>Evolução da nota</h2>
+              <p>Visão geral dos últimos meses.</p>
+              ${dashboardEvolution(selectedArea)}
+            </section>
+            <section class="fichario-summary-card feedback-summary-card ${state.feedbackExpanded ? "is-expanded" : ""}">
+              <h2>Últimas devolutivas</h2>
+              <p>Retornos recentes dos responsáveis.</p>
+              <div class="feedback-compact-row">
+                <div class="feedback-count"><strong>4</strong><span>retornos recentes</span></div>
+                <button class="feedback-toggle" type="button" data-toggle-feedback>${state.feedbackExpanded ? "Ocultar devolutivas" : "Ver devolutivas"}</button>
+              </div>
+              <div class="feedback-list ${state.feedbackExpanded ? "" : "hidden"}">
+                <div class="feedback-item"><strong>Cozinha Catering</strong><span class="feedback-status" style="--status-color: var(--green)">Aprovado</span></div>
+                <div class="feedback-item"><strong>Área de Resíduos</strong><span class="feedback-status" style="--status-color: var(--yellow)">Em análise</span></div>
+                <div class="feedback-item"><strong>Higienização de Louça</strong><span class="feedback-status" style="--status-color: var(--orange)">Pendente</span></div>
+                <div class="feedback-item"><strong>DML - Produto Químico</strong><span class="feedback-status" style="--status-color: var(--red)">Reprovado</span></div>
+              </div>
+            </section>
           </div>
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
             ${areaData.map((area) => areaTile(area)).join("")}
           </div>
-        </section>
-        <div class="summary-row">
-          <section class="mini-panel surface">
-            <div class="mini-panel-head">${svgIcon("plans")} Pendências gerais</div>
-            <div class="metric-strip visual">
-              <div class="metric"><span class="metric-icon orange">${assetIcon("plans", "blue")}</span><b>12</b><span>planos pendentes</span></div>
-              <div class="metric"><span class="metric-icon red">${assetIcon("warning", "blue")}</span><b>3</b><span>ações críticas</span></div>
-              <div class="metric"><span class="metric-icon red">${assetIcon("fileWarning", "blue")}</span><b>1</b><span>documento vencido</span></div>
-              <div class="metric"><span class="metric-icon orange">${assetIcon("clock", "blue")}</span><b>2</b><span>áreas atrasadas</span></div>
-            </div>
-          </section>
-          <section class="mini-panel surface">
-            <div class="mini-panel-head mini-panel-head-stacked">
-              ${svgIcon("chart")}
-              <span class="mini-panel-title-copy">
-                <strong>Evolução da nota</strong>
-                <small>${selectedArea ? escapeHtml(selectedArea.name) : "Geral"}</small>
-              </span>
-            </div>
-            ${dashboardEvolution(selectedArea)}
-          </section>
-          <section class="mini-panel surface">
-            <div class="mini-panel-head">${svgIcon("audit")} Auditorias realizadas</div>
-            <div class="donut-wrap">
-              <div class="donut" style="--a:67%;--b:8%"><div class="donut-label">12<small>meses</small></div></div>
-              <div class="donut-legend">
-                <span><i class="dot" style="--dot:var(--green)"></i>8 realizadas</span>
-                <span><i class="dot" style="--dot:var(--orange)"></i>1 atrasada</span>
-                <span><i class="dot" style="--dot:#c8d0dc"></i>3 não realizadas</span>
-              </div>
-            </div>
-          </section>
         </div>
+        ${hasSelection ? selectedPanel() : ""}
       </div>
-      ${hasSelection ? selectedPanel() : ""}
     </div>
   `;
 }
@@ -4785,18 +4845,91 @@ function settingsActivePanel() {
   return (panels[state.settingsSection] || settingsUsersPanel)();
 }
 
-function settingsPage() {
-  const active = settingsSectionById();
-  return `
-    <div class="settings-page">
-      <section class="settings-modal surface" aria-label="Configurações - ${escapeHtml(active.label)}">
-        <div class="settings-modal-head">
-          <span>${escapeHtml(active.label)}</span>
-          <small>${escapeHtml(active.description)}</small>
+function ficharioUsersContent() {
+  if (state.settingsUserView === "new") {
+    return `
+      <div class="fichario-sub-panel">
+        <div class="fichario-sub-head"><div><h2>Cadastrar usuário</h2><p>Ao informar o nome, o sistema sugere um login. A permissão já é definida no próprio cadastro.</p></div><button class="fichario-sub-action is-primary" type="button">Salvar usuário</button></div>
+        <div class="fichario-form-grid">
+          <label><span>Nome completo</span><input value="David Souza" /></label>
+          <label><span>Login sugerido</span><input value="david.souza" /></label>
+          <label><span>Senha provisória</span><input value="HAE@2026" /></label>
+          <label><span>Perfil</span><select><option>Qualidade/Admin</option><option>Auditor</option><option>Responsável da área</option><option>Visualizador</option></select></label>
+          <label><span>Área vinculada</span><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></label>
+          <label><span>Status</span><select><option>Ativo</option><option>Inativo</option></select></label>
+          <div class="fichario-hint">Sugestões disponíveis: david.souza, david.souza2, d.souza</div>
         </div>
-        ${settingsActivePanel()}
-      </section>
+      </div>
+    `;
+  }
+
+  const users = state.settingsUserView === "inactive" ? settingsInactiveUsers : settingsUsers;
+  const inactive = state.settingsUserView === "inactive";
+  return `
+    <div class="fichario-sub-panel">
+      <div class="fichario-sub-head"><div><h2>${inactive ? "Usuários inativos" : "Logins cadastrados"}</h2><p>${inactive ? "Histórico de acessos bloqueados, com possibilidade de reativação quando autorizado." : "A lista abre fechada, com busca e expansão para edição, inativação ou troca de permissões."}</p></div><button class="fichario-sub-action${inactive ? "" : " is-primary"}" type="button">${inactive ? "Reativar usuário" : "Novo usuário"}</button></div>
+      <div class="fichario-search-line"><label><span>${icons.search}</span><input placeholder="Pesquisar usuário ou login..." /></label><button class="fichario-sub-action" data-toggle-users-list type="button">${state.settingsUsersExpanded ? "Ocultar lista" : "Expandir lista"}</button></div>
+      <div class="fichario-user-accordion"><div class="fichario-accordion-title"><strong>${inactive ? "Usuários inativos" : "Usuários ativos"}</strong><small>${users.length} registros</small></div>${state.settingsUsersExpanded ? `<div class="fichario-user-list">${users.map((user) => `<div class="fichario-user-line"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small></div><span>${escapeHtml(user.profile)}</span><span>${escapeHtml(user.area)}</span><span class="fichario-status-pill ${inactive ? "is-inactive" : ""}">${escapeHtml(user.status)}</span><div class="fichario-line-actions"><button type="button">Editar</button><button type="button">${inactive ? "Reativar" : "Inativar"}</button></div></div>`).join("")}</div>` : `<div class="fichario-collapsed-copy">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>`}</div>
     </div>
+  `;
+}
+
+function ficharioSettingsContent() {
+  if (state.settingsRulesView === "tables") {
+    const activeSection = foodTableSections.find((section) => section.id === state.openTableSection) || foodTableSections[0];
+    return `
+      <div class="fichario-sub-panel">
+        <div class="fichario-sub-head">
+          <div>
+            <h2>Tabelas técnicas</h2>
+            <p>Referências de recebimento, armazenamento, pré-preparo e distribuição.</p>
+          </div>
+          <button class="fichario-sub-action is-primary" type="button">Editar tabelas</button>
+        </div>
+        <div class="table-category-grid">
+          ${foodTableSections.map((section) => `
+            <button class="table-category-card surface ${section.id === activeSection.id ? "is-active" : ""}" data-table-section="${section.id}" style="--table-accent:${section.accent}" aria-expanded="${section.id === activeSection.id}">
+              <img class="table-category-icon" src="assets/icons/${section.icon}?v=tables-icons-1" alt="" aria-hidden="true" />
+              <span class="table-category-copy">
+                <strong>${escapeHtml(section.title)}</strong>
+                <small>${escapeHtml(section.subtitle)}</small>
+              </span>
+              <span class="table-category-count">${section.items.length} itens</span>
+            </button>
+          `).join("")}
+        </div>
+        ${tableSectionDetails(activeSection)}
+      </div>
+    `;
+  }
+
+  const content = {
+    goals: ["Metas", "Definição da meta mínima, faixas de desempenho e alertas por resultado.", settingsGoalRules.map((item) => [item.label, item.detail, item.value])],
+    scoring: ["Pontuação", "Regras de cálculo para C, NC, X e peso do risco da pergunta.", settingsScoringRules.map((item) => [item.label, item.detail, item.value])],
+    visual: ["Regras visuais", "Cores, legendas, bordas e alertas exibidos no dashboard, checklist e relatório.", settingsVisualRules.map((item) => [item.label, item.detail, item.value])],
+    docs: ["Documentação", "Documentos, certificados e licenças usados durante a auditoria.", [["Licença sanitária", "Arquivo, validade e alerta de vencimento.", "Obrigatório"]]]
+  };
+  const [title, description, rows] = content[state.settingsRulesView] || content.goals;
+  return `<div class="fichario-sub-panel"><div class="fichario-sub-head"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div><button class="fichario-sub-action is-primary" type="button">${title === "Metas" ? "Editar metas" : `Editar ${title.toLowerCase()}`}</button></div><div class="fichario-settings-lines">${rows.map(([label, detail, value]) => `<div class="fichario-setting-line"><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b>${escapeHtml(value)}</b><button class="fichario-sub-action" type="button">Editar</button></div>`).join("")}</div></div>`;
+}
+
+function settingsPage() {
+  return `
+    <section class="fichario-module">
+      <div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Aqui ficam regras de meta, pontuação, documentação obrigatória, tabelas técnicas e ajustes visuais usados nos painéis e relatórios.</p></div>
+      <div class="fichario-sub-tabs" role="tablist">${[["goals", "Metas"], ["scoring", "Pontuação"], ["visual", "Regras visuais"], ["docs", "Documentação"], ["tables", "Tabelas técnicas"]].map(([id, label]) => `<button class="fichario-sub-tab ${state.settingsRulesView === id ? "is-active" : ""}" data-settings-rules-view="${id}" type="button">${label}</button>`).join("")}</div>
+      ${ficharioSettingsContent()}
+    </div>
+  `;
+}
+
+function usersPage() {
+  return `
+    <section class="fichario-module">
+      <div class="fichario-module-head"><span class="eyebrow">Usuários</span><h1 class="panel-title">Acessos do sistema</h1><p class="panel-subtitle">Cadastro, logins, permissões por perfil e usuários inativos ficam no mesmo módulo, sem separar permissão em outra tela.</p></div>
+      <div class="fichario-sub-tabs" role="tablist">${[["new", "Cadastro"], ["active", "Logins"], ["inactive", "Usuários inativos"]].map(([id, label]) => `<button class="fichario-sub-tab ${state.settingsUserView === id ? "is-active" : ""}" data-settings-user-view="${id}" type="button">${label}</button>`).join("")}</div>
+      ${ficharioUsersContent()}
+    </section>
   `;
 }
 
@@ -4812,22 +4945,24 @@ function viewContent() {
 
   if (state.view === "home") return dashboardHome();
   if (state.view === "charts") return chartsPage();
+  if (state.view === "audits") return startAuditPage();
   if (state.view === "area") return areaDetailPage();
   if (state.view === "start") return startAuditPage();
   if (state.view === "checklist") return checklistPage();
   if (state.view === "tables") return foodTablesPage();
   if (state.view === "reports") return reportsPage();
   if (state.view === "settings") return settingsPage();
+  if (state.view === "users") return usersPage();
   const [title, text] = placeholders[state.view] || placeholders.audits;
   return placeholderPage(title, text);
 }
 
 function render(options = {}) {
-  app.className = `app-shell ${state.sidebarCollapsed ? "is-collapsed" : ""}`;
+  app.className = "app-shell fichario-shell";
   app.innerHTML = `
-    ${sidebar()}
     <main class="main">
       ${topbar()}
+      ${ficharioTabs()}
       <section class="content">
         ${viewContent()}
       </section>
@@ -4837,6 +4972,15 @@ function render(options = {}) {
 }
 
 document.addEventListener("click", (event) => {
+  const userTrigger = event.target.closest("[data-user-menu-trigger]");
+  if (userTrigger) {
+    const userMenu = userTrigger.closest("[data-user-menu]");
+    const panel = userMenu?.querySelector("[data-user-menu-panel]");
+    const isOpen = panel ? panel.classList.toggle("hidden") === false : false;
+    userTrigger.setAttribute("aria-expanded", String(isOpen));
+    return;
+  }
+
   const nav = event.target.closest("[data-nav]");
   if (nav) {
     const nextView = nav.dataset.nav;
@@ -4991,6 +5135,12 @@ document.addEventListener("click", (event) => {
 
   if (event.target.closest("[data-toggle-users-list]")) {
     state.settingsUsersExpanded = !state.settingsUsersExpanded;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-toggle-feedback]")) {
+    state.feedbackExpanded = !state.feedbackExpanded;
     render();
     return;
   }
