@@ -10767,12 +10767,31 @@ h3 {
   min-height: 0;
   margin: 24px auto;
   padding: 22px 24px 26px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, .82);
   border-radius: 24px;
   background: rgba(255, 255, 255, .58);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(82, 99, 119, .52) transparent;
+}
+
+.fichario-shell .main::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.fichario-shell .main::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.fichario-shell .main::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(226, 235, 245, .78);
+  border-radius: 999px;
+  background: rgba(82, 99, 119, .52);
 }
 
 .fichario-shell .topbar.fichario-topbar {
@@ -11091,24 +11110,10 @@ h3 {
 .fichario-tab.is-active[data-nav="settings"] { color: var(--ink-950); }
 
 .fichario-shell .content {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
   padding: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(82, 99, 119, .52) transparent;
-}
-
-.fichario-shell .content::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.fichario-shell .content::-webkit-scrollbar-thumb {
-  border: 2px solid rgba(226, 235, 245, .78);
-  border-radius: 999px;
-  background: rgba(82, 99, 119, .52);
 }
 
 .fichario-home {
