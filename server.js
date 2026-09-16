@@ -1,6 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
@@ -181,6 +182,18 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+function methodNotAllowed(response) {
+  sendJson(response, 405, { error: "Método não permitido" });
+}
+
+function requireDatabase(response, pool) {
+  if (pool) return true;
+  sendJson(response, 503, {
+    error: "Banco Postgres não configurado. Configure DATABASE_URL para usar esta API."
+  });
+  return false;
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -194,6 +207,129 @@ function readBody(request) {
     request.on("end", () => resolve(body));
     request.on("error", reject);
   });
+}
+
+async function readJsonBody(request) {
+  const body = await readBody(request);
+  if (!body) return {};
+  return JSON.parse(body);
+}
+
+function pathMatch(pathname, pattern) {
+  const match = pathname.match(pattern);
+  return match ? match.groups || match : null;
+}
+
+function currentMonthStart() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
+
+function monthLabelFromStart(monthStart) {
+  const [year, month] = String(monthStart).split("-");
+  const labels = {
+    "01": "Janeiro",
+    "02": "Fevereiro",
+    "03": "Março",
+    "04": "Abril",
+    "05": "Maio",
+    "06": "Junho",
+    "07": "Julho",
+    "08": "Agosto",
+    "09": "Setembro",
+    "10": "Outubro",
+    "11": "Novembro",
+    "12": "Dezembro"
+  };
+  return `${labels[month] || month}/${year}`;
+}
+
+async function defaultUnitId(pool) {
+  const result = await pool.query(
+    "select id from units where code = $1 order by created_at asc limit 1",
+    ["einstein-morumbi"]
+  );
+  if (!result.rows[0]) throw new Error("Unidade padrão não encontrada.");
+  return result.rows[0].id;
+}
+
+async function currentUser(pool, request, unitId) {
+  const headerUserId = request.headers["x-user-id"];
+  if (headerUserId) {
+    const byHeader = await pool.query("select * from app_users where id = $1", [headerUserId]);
+    if (byHeader.rows[0]) return byHeader.rows[0];
+  }
+
+  const existing = await pool.query(
+    "select * from app_users where role in ('admin', 'quality', 'auditor') order by created_at asc limit 1"
+  );
+  if (existing.rows[0]) return existing.rows[0];
+
+  const existingAdmin = await pool.query(
+    "select * from app_users where lower(email) = lower($1) limit 1",
+    ["admin@idauditor.local"]
+  );
+  if (existingAdmin.rows[0]) return existingAdmin.rows[0];
+
+  const inserted = await pool.query(
+    `
+      insert into app_users (unit_id, full_name, email, role, platform_scope)
+      values ($1, $2, $3, 'admin', 'all_units')
+      returning *
+    `,
+    [unitId, "Administrador", "admin@idauditor.local"]
+  );
+  return inserted.rows[0] || null;
+}
+
+async function ensureCycle(pool, unitId, monthStart = currentMonthStart()) {
+  const result = await pool.query(
+    `
+      insert into audit_cycles (unit_id, month_start, label, status)
+      values ($1, $2, $3, 'open')
+      on conflict (unit_id, month_start)
+      do update set updated_at = now()
+      returning *
+    `,
+    [unitId, monthStart, monthLabelFromStart(monthStart)]
+  );
+  return result.rows[0];
+}
+
+async function defaultChecklistForArea(pool, unitId, areaId) {
+  const result = await pool.query(
+    `
+      select id
+      from checklists
+      where unit_id = $1
+        and (area_id = $2 or area_id is null)
+        and is_active = true
+      order by area_id nulls last, imported_at desc nulls last, created_at desc
+      limit 1
+    `,
+    [unitId, areaId]
+  );
+  return result.rows[0]?.id || null;
+}
+
+async function auditScore(pool, auditId) {
+  const result = await pool.query(
+    `
+      select
+        count(*) filter (where answer in ('C', 'NC'))::int as counted,
+        count(*) filter (where answer = 'C')::int as conforming
+      from audit_answers
+      where audit_id = $1
+    `,
+    [auditId]
+  );
+  const counted = Number(result.rows[0]?.counted || 0);
+  const conforming = Number(result.rows[0]?.conforming || 0);
+  return counted ? Number(((conforming / counted) * 10).toFixed(2)) : null;
+}
+
+function publicPlanCode() {
+  return `PA-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 }
 
 function staticPathFor(urlPath) {
@@ -272,6 +408,691 @@ async function handleApi(request, response, url) {
       });
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro ao consultar relatórios" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/login") {
+    if (request.method !== "POST") {
+      methodNotAllowed(response);
+      return true;
+    }
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) {
+        sendJson(response, 400, { error: "E-mail obrigatório" });
+        return true;
+      }
+      const result = await pool.query(
+        `
+          select id, unit_id, full_name, email, role, platform_scope, active
+          from app_users
+          where lower(email) = lower($1)
+            and active = true
+          limit 1
+        `,
+        [email]
+      );
+      if (!result.rows[0]) {
+        sendJson(response, 401, { error: "Usuário não encontrado ou inativo" });
+        return true;
+      }
+      sendJson(response, 200, { user: result.rows[0], tokenType: "prototype-header", header: "x-user-id" });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro no login" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/bootstrap" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const [unit, areas, settings] = await Promise.all([
+        pool.query("select * from units where id = $1", [unitId]),
+        pool.query(
+          `
+            select id, name, slug, area_type, responsible_user_id, display_order
+            from audit_areas
+            where unit_id = $1 and active = true
+            order by display_order, name
+          `,
+          [unitId]
+        ),
+        pool.query(
+          "select * from audit_workflow_settings where unit_id = $1 and area_id is null limit 1",
+          [unitId]
+        )
+      ]);
+      sendJson(response, 200, {
+        unit: unit.rows[0],
+        areas: areas.rows,
+        workflowSettings: settings.rows[0] || null
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao carregar bootstrap" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/areas" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const result = await pool.query(
+        `
+          select
+            aa.id,
+            aa.name,
+            aa.slug,
+            aa.area_type,
+            aa.display_order,
+            aa.responsible_user_id,
+            u.full_name as responsible_name,
+            count(distinct c.id)::int as checklist_count
+          from audit_areas aa
+          left join app_users u on u.id = aa.responsible_user_id
+          left join checklists c on c.area_id = aa.id and c.is_active = true
+          where aa.unit_id = $1 and aa.active = true
+          group by aa.id, u.full_name
+          order by aa.display_order, aa.name
+        `,
+        [unitId]
+      );
+      sendJson(response, 200, { areas: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar áreas" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/checklists" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const areaId = url.searchParams.get("areaId");
+      const areaSlug = url.searchParams.get("areaSlug");
+      const result = await pool.query(
+        `
+          select
+            c.id,
+            c.name,
+            c.version_label,
+            c.legal_base,
+            c.area_id,
+            aa.name as area_name,
+            aa.slug as area_slug,
+            count(distinct cb.id)::int as block_count,
+            count(cq.id)::int as question_count
+          from checklists c
+          left join audit_areas aa on aa.id = c.area_id
+          left join checklist_blocks cb on cb.checklist_id = c.id and cb.active = true
+          left join checklist_questions cq on cq.block_id = cb.id and cq.active = true
+          where c.unit_id = $1
+            and c.is_active = true
+            and ($2::uuid is null or c.area_id = $2::uuid)
+            and ($3::text is null or aa.slug = $3::text)
+          group by c.id, aa.name, aa.slug
+          order by aa.display_order nulls last, c.imported_at desc nulls last, c.created_at desc
+        `,
+        [unitId, areaId || null, areaSlug || null]
+      );
+      sendJson(response, 200, { checklists: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar checklists" });
+    }
+    return true;
+  }
+
+  const checklistDetailMatch = pathMatch(url.pathname, /^\/api\/checklists\/(?<id>[0-9a-f-]+)$/i);
+  if (checklistDetailMatch && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const checklist = await pool.query(
+        `
+          select c.*, aa.name as area_name, aa.slug as area_slug
+          from checklists c
+          left join audit_areas aa on aa.id = c.area_id
+          where c.id = $1
+        `,
+        [checklistDetailMatch.id]
+      );
+      if (!checklist.rows[0]) {
+        sendJson(response, 404, { error: "Checklist não encontrado" });
+        return true;
+      }
+      const blocks = await pool.query(
+        `
+          select id, title, display_order
+          from checklist_blocks
+          where checklist_id = $1 and active = true
+          order by display_order
+        `,
+        [checklistDetailMatch.id]
+      );
+      const questions = await pool.query(
+        `
+          select cq.*
+          from checklist_questions cq
+          join checklist_blocks cb on cb.id = cq.block_id
+          where cb.checklist_id = $1 and cq.active = true
+          order by cb.display_order, cq.question_number
+        `,
+        [checklistDetailMatch.id]
+      );
+      sendJson(response, 200, {
+        checklist: checklist.rows[0],
+        blocks: blocks.rows.map((block) => ({
+          ...block,
+          questions: questions.rows.filter((question) => question.block_id === block.id)
+        }))
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao carregar checklist" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/audits" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const unitId = body.unitId || await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const areaId = body.areaId;
+      if (!areaId) {
+        sendJson(response, 400, { error: "areaId é obrigatório" });
+        return true;
+      }
+      const checklistId = body.checklistId || await defaultChecklistForArea(pool, unitId, areaId);
+      if (!checklistId) {
+        sendJson(response, 400, { error: "Checklist da área não encontrado" });
+        return true;
+      }
+      const cycle = await ensureCycle(pool, unitId, body.monthStart || currentMonthStart());
+      const result = await pool.query(
+        `
+          insert into audits (
+            unit_id,
+            area_id,
+            subarea_id,
+            checklist_id,
+            cycle_id,
+            auditor_user_id,
+            local_audit_id,
+            source,
+            status,
+            started_at,
+            offline_created,
+            sync_status
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, 'in_progress', now(), $9, $10)
+          on conflict (device_id, local_audit_id)
+          where device_id is not null and local_audit_id is not null
+          do nothing
+          returning *
+        `,
+        [
+          unitId,
+          areaId,
+          body.subareaId || null,
+          checklistId,
+          cycle.id,
+          user?.id || null,
+          body.localAuditId || null,
+          body.source || "web",
+          Boolean(body.offlineCreated),
+          body.offlineCreated ? "pending" : "synced"
+        ]
+      );
+      sendJson(response, 201, { audit: result.rows[0] });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao iniciar auditoria" });
+    }
+    return true;
+  }
+
+  const auditAnswersMatch = pathMatch(url.pathname, /^\/api\/audits\/(?<id>[0-9a-f-]+)\/answers$/i);
+  if (auditAnswersMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const answers = Array.isArray(body.answers) ? body.answers : [body];
+      const saved = [];
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        for (const answer of answers) {
+          if (!answer.questionId || !["C", "NC", "X"].includes(answer.answer)) {
+            throw new Error("Cada resposta precisa ter questionId e answer C/NC/X.");
+          }
+          const question = await client.query(
+            "select risk_level from checklist_questions where id = $1",
+            [answer.questionId]
+          );
+          if (!question.rows[0]) throw new Error(`Pergunta não encontrada: ${answer.questionId}`);
+          const result = await client.query(
+            `
+              insert into audit_answers (
+                audit_id,
+                question_id,
+                answer,
+                score_value,
+                risk_level_snapshot,
+                notes,
+                answered_at
+              )
+              values ($1, $2, $3, $4, $5, $6, now())
+              on conflict (audit_id, question_id)
+              do update set
+                answer = excluded.answer,
+                score_value = excluded.score_value,
+                risk_level_snapshot = excluded.risk_level_snapshot,
+                notes = excluded.notes,
+                answered_at = now(),
+                updated_at = now()
+              returning *
+            `,
+            [
+              auditAnswersMatch.id,
+              answer.questionId,
+              answer.answer,
+              answer.answer === "C" ? 10 : answer.answer === "NC" ? 0 : null,
+              question.rows[0].risk_level,
+              answer.notes || null
+            ]
+          );
+          saved.push(result.rows[0]);
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      sendJson(response, 200, { answers: saved });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || "Erro ao salvar respostas" });
+    }
+    return true;
+  }
+
+  const auditFinalizeMatch = pathMatch(url.pathname, /^\/api\/audits\/(?<id>[0-9a-f-]+)\/finalize$/i);
+  if (auditFinalizeMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const client = await pool.connect();
+      let audit;
+      const createdPlans = [];
+      try {
+        await client.query("begin");
+        const score = await auditScore(client, auditFinalizeMatch.id);
+        const auditResult = await client.query(
+          `
+            update audits
+            set status = 'finished',
+                finished_at = coalesce(finished_at, now()),
+                final_score = $2,
+                updated_at = now()
+            where id = $1
+            returning *
+          `,
+          [auditFinalizeMatch.id, score]
+        );
+        audit = auditResult.rows[0];
+        if (!audit) throw new Error("Auditoria não encontrada");
+
+        const ncAnswers = await client.query(
+          `
+            select
+              aa.id as answer_id,
+              aa.question_id,
+              aa.notes,
+              cq.requirement_text,
+              cq.risk_level,
+              aa.risk_level_snapshot
+            from audit_answers aa
+            join checklist_questions cq on cq.id = aa.question_id
+            where aa.audit_id = $1 and aa.answer = 'NC'
+          `,
+          [audit.id]
+        );
+
+        for (const nc of ncAnswers.rows) {
+          const title = `Corrigir NC - ${String(nc.requirement_text).slice(0, 80)}`;
+          const planResult = await client.query(
+            `
+              insert into action_plans (
+                unit_id,
+                area_id,
+                subarea_id,
+                origin_audit_id,
+                origin_answer_id,
+                question_id,
+                generated_cycle_id,
+                created_by_user_id,
+                assigned_to_user_id,
+                title,
+                problem_description,
+                corrective_action,
+                due_at,
+                status,
+                creation_source,
+                automatic_correction_text,
+                locked_question_snapshot,
+                locked_risk_snapshot,
+                locked_audit_notes_snapshot
+              )
+              values (
+                $1, $2, $3, $4, $5, $6, $7, $8,
+                (select responsible_user_id from audit_areas where id = $2),
+                $9, $10, $11,
+                now() + (($12::int || ' days')::interval),
+                'generated',
+                'audit_nc',
+                $11, $10, $13, $14
+              )
+              returning *
+            `,
+            [
+              audit.unit_id,
+              audit.area_id,
+              audit.subarea_id,
+              audit.id,
+              nc.answer_id,
+              nc.question_id,
+              audit.cycle_id,
+              audit.auditor_user_id,
+              title,
+              nc.requirement_text,
+              body.defaultCorrection || "Corrigir a não conformidade e anexar evidência da ação realizada.",
+              Number(body.dueDays || 30),
+              nc.risk_level_snapshot || nc.risk_level,
+              nc.notes || null
+            ]
+          );
+          createdPlans.push(planResult.rows[0]);
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      sendJson(response, 200, { audit, actionPlans: createdPlans });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao finalizar auditoria" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/action-plans" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const status = url.searchParams.get("status");
+      const areaId = url.searchParams.get("areaId");
+      const result = await pool.query(
+        `
+          select
+            ap.*,
+            aa.name as area_name,
+            aa.slug as area_slug,
+            u.full_name as assigned_to_name
+          from action_plans ap
+          join audit_areas aa on aa.id = ap.area_id
+          left join app_users u on u.id = ap.assigned_to_user_id
+          where ap.unit_id = $1
+            and ($2::text is null or ap.status = $2)
+            and ($3::uuid is null or ap.area_id = $3)
+          order by ap.due_at nulls last, ap.created_at desc
+          limit 200
+        `,
+        [unitId, status || null, areaId || null]
+      );
+      sendJson(response, 200, { actionPlans: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar planos" });
+    }
+    return true;
+  }
+
+  const planFeedbackMatch = pathMatch(url.pathname, /^\/api\/action-plans\/(?<id>[0-9a-f-]+)\/feedback$/i);
+  if (planFeedbackMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const result = await pool.query(
+        `
+          insert into action_plan_feedback (
+            action_plan_id,
+            submitted_by_user_id,
+            evidence_file_id,
+            response_file_id,
+            observation,
+            correction_summary,
+            completion_status,
+            delay_justification,
+            capture_method,
+            status
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'submitted')
+          returning *
+        `,
+        [
+          planFeedbackMatch.id,
+          user?.id || null,
+          body.evidenceFileId || null,
+          body.responseFileId || null,
+          body.observation || null,
+          body.correctionSummary || null,
+          body.completionStatus || "completed",
+          body.delayJustification || null,
+          body.captureMethod || "upload"
+        ]
+      );
+      await pool.query(
+        `
+          update action_plans
+          set status = 'pending_review',
+              submitted_at = now(),
+              last_feedback_id = $2,
+              updated_at = now()
+          where id = $1
+        `,
+        [planFeedbackMatch.id, result.rows[0].id]
+      );
+      sendJson(response, 201, { feedback: result.rows[0] });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao enviar devolutiva" });
+    }
+    return true;
+  }
+
+  const planReviewMatch = pathMatch(url.pathname, /^\/api\/action-plans\/(?<id>[0-9a-f-]+)\/review$/i);
+  if (planReviewMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      if (!["approved", "rejected"].includes(body.decision)) {
+        sendJson(response, 400, { error: "decision deve ser approved ou rejected" });
+        return true;
+      }
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const nextStatus = body.decision === "approved" ? "approved" : body.allowResubmission ? "reopened" : "rejected";
+      const client = await pool.connect();
+      let plan;
+      let event;
+      try {
+        await client.query("begin");
+        const planResult = await client.query(
+          `
+            update action_plans
+            set status = $2,
+                approved_by_user_id = case when $2 = 'approved' then $3 else approved_by_user_id end,
+                approved_at = case when $2 = 'approved' then now() else approved_at end,
+                rejected_by_user_id = case when $4 = 'rejected' then $3 else rejected_by_user_id end,
+                rejected_at = case when $4 = 'rejected' then now() else rejected_at end,
+                rejection_reason = case when $4 = 'rejected' then $5 else rejection_reason end,
+                resubmission_note = case when $2 = 'reopened' then $5 else resubmission_note end,
+                reopened_at = case when $2 = 'reopened' then now() else reopened_at end,
+                updated_at = now()
+            where id = $1
+            returning *
+          `,
+          [planReviewMatch.id, nextStatus, user?.id || null, body.decision, body.justification || null]
+        );
+        plan = planResult.rows[0];
+        event = await client.query(
+          `
+            insert into action_plan_review_events (
+              action_plan_id,
+              feedback_id,
+              reviewer_user_id,
+              decision,
+              justification,
+              allow_resubmission,
+              resubmission_due_at,
+              visible_to_responsible_at
+            )
+            values ($1, $2, $3, $4, $5, $6, $7, now())
+            returning *
+          `,
+          [
+            planReviewMatch.id,
+            body.feedbackId || plan?.last_feedback_id || null,
+            user?.id || null,
+            body.decision,
+            body.justification || null,
+            Boolean(body.allowResubmission),
+            body.resubmissionDueAt || null
+          ]
+        );
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      sendJson(response, 200, { actionPlan: plan, reviewEvent: event.rows[0] });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao revisar plano" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/files" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const unitId = body.unitId || await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const result = await pool.query(
+        `
+          insert into stored_files (
+            unit_id,
+            uploaded_by_user_id,
+            file_type,
+            storage_provider,
+            storage_bucket,
+            storage_key,
+            file_url,
+            original_filename,
+            mime_type,
+            file_size_bytes,
+            checksum
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          returning *
+        `,
+        [
+          unitId,
+          user?.id || null,
+          body.fileType || "other",
+          body.storageProvider || "external",
+          body.storageBucket || null,
+          body.storageKey || null,
+          body.fileUrl || null,
+          body.originalFilename || null,
+          body.mimeType || null,
+          body.fileSizeBytes || null,
+          body.checksum || null
+        ]
+      );
+      sendJson(response, 201, {
+        file: result.rows[0],
+        note: "Arquivos grandes ficam no storage. O Postgres guarda somente metadados e chave/URL."
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao registrar arquivo" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/sync-queue" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const operations = Array.isArray(body.operations) ? body.operations : [body];
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const saved = [];
+      for (const operation of operations) {
+        if (!operation.clientOperationId) throw new Error("clientOperationId é obrigatório para sincronização offline.");
+        const result = await pool.query(
+          `
+            insert into sync_queue (
+              device_id,
+              user_id,
+              client_operation_id,
+              entity_type,
+              entity_id,
+              operation,
+              payload,
+              status
+            )
+            values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'pending')
+            on conflict (client_operation_id)
+            do update set client_operation_id = excluded.client_operation_id
+            returning *
+          `,
+          [
+            operation.deviceId || null,
+            user?.id || null,
+            operation.clientOperationId,
+            operation.entityType,
+            operation.entityId || null,
+            operation.operation || "create",
+            JSON.stringify(operation.payload || {})
+          ]
+        );
+        saved.push(result.rows[0]);
+      }
+      sendJson(response, 202, { operations: saved });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || "Erro ao registrar sincronização" });
     }
     return true;
   }
