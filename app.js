@@ -549,6 +549,7 @@ function defaultState() {
     planningView: "overview",
     planningAreaId: "",
     planningStatusFilter: "",
+    planningMonthFilter: "",
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
@@ -577,6 +578,7 @@ function persistableState(source = state) {
     planningView: source.planningView,
     planningAreaId: source.planningAreaId,
     planningStatusFilter: source.planningStatusFilter,
+    planningMonthFilter: source.planningMonthFilter,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -616,6 +618,7 @@ function normalizeSavedState(saved = {}) {
     planningView: validPlanningViews.has(merged.planningView) ? merged.planningView : base.planningView,
     planningAreaId: validAreaIds.has(merged.planningAreaId) || merged.planningAreaId === "" ? merged.planningAreaId : base.planningAreaId,
     planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
+    planningMonthFilter: ["", "2026-09", "2026-08", "2026-07"].includes(merged.planningMonthFilter) ? merged.planningMonthFilter : "",
     feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
@@ -5111,6 +5114,24 @@ function planningStatusFilterLabel(status) {
   }[status] || "Todos os planos";
 }
 
+function planningMonthLabel(month) {
+  return {
+    "2026-09": "Setembro/2026",
+    "2026-08": "Agosto/2026",
+    "2026-07": "Julho/2026"
+  }[month] || "Todos os meses";
+}
+
+function planningRowMonth(row) {
+  const match = String(row.due || "").match(/(\d{2})\/(\d{4})$/);
+  return match ? `${match[2]}-${match[1]}` : "";
+}
+
+function planningFilterByMonth(rows) {
+  if (!state.planningMonthFilter) return rows;
+  return rows.filter((row) => planningRowMonth(row) === state.planningMonthFilter);
+}
+
 function planningAreaSummaries(rows = planningActionRows()) {
   return areaData
     .map((area) => {
@@ -5136,13 +5157,60 @@ function planningSelectedAreaSummary(rows = planningActionRows()) {
   return summaries.find((item) => item.area.id === state.planningAreaId) || summaries[0];
 }
 
-function planningAreaSelect(selectedId, dataAttr = "planning-area-select") {
+function planningFilterDropdown(label, options, selectedValue, dataAttr, className = "") {
+  const selected = options.find((option) => option.value === selectedValue) || options[0];
   return `
-    <select class="planning-area-select" data-${dataAttr}>
-      <option value="">Selecione área ou subárea</option>
-      ${areaData.map((area) => `<option value="${area.id}" ${area.id === selectedId ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("")}
-    </select>
+    <div class="planning-filter-dropdown ${className}">
+      <button class="planning-filter-button" type="button" aria-label="${escapeHtml(label)}">
+        <span>${escapeHtml(selected.label)}</span>
+        <b>⌄</b>
+      </button>
+      <div class="planning-filter-menu">
+        ${options.map((option) => `<button class="${option.value === selectedValue ? "is-selected" : ""}" data-${dataAttr}="${escapeHtml(option.value)}" type="button">${escapeHtml(option.label)}</button>`).join("")}
+      </div>
+    </div>
   `;
+}
+
+function planningAreaSelect(selectedId, dataAttr = "planning-area-option") {
+  return planningFilterDropdown(
+    "Selecionar área",
+    [{ value: "", label: "Selecione área ou subárea" }, ...areaData.map((area) => ({ value: area.id, label: area.name }))],
+    selectedId,
+    dataAttr,
+    "is-area"
+  );
+}
+
+function planningStatusSelect(selectedStatus = state.planningStatusFilter) {
+  return planningFilterDropdown(
+    "Filtrar status",
+    [
+      { value: "", label: "Todos os status" },
+      { value: "awaiting_send", label: "Aguardando envio" },
+      { value: "in_progress", label: "Em andamento" },
+      { value: "overdue", label: "Vencidos" },
+      { value: "pending_review", label: "Devolutivas" }
+    ],
+    selectedStatus,
+    "planning-status-option",
+    "is-status"
+  );
+}
+
+function planningMonthSelect(selectedMonth = state.planningMonthFilter) {
+  return planningFilterDropdown(
+    "Filtrar mês",
+    [
+      { value: "", label: "Todos os meses" },
+      { value: "2026-09", label: "Setembro/2026" },
+      { value: "2026-08", label: "Agosto/2026" },
+      { value: "2026-07", label: "Julho/2026" }
+    ],
+    selectedMonth,
+    "planning-month-option",
+    "is-month"
+  );
 }
 
 function planningFolderCards(rows = planningActionRows(), dataAttr = "planning-folder-area") {
@@ -5226,11 +5294,11 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
 }
 
 function planningPlansContent() {
-  const baseRows = [...planningActiveRows(), ...planningFeedbackRows()];
+  const baseRows = planningFilterByMonth([...planningActiveRows(), ...planningFeedbackRows()]);
   const rows = state.planningStatusFilter === "pending_review"
-    ? planningFeedbackRows()
+    ? planningFilterByMonth(planningFeedbackRows())
     : state.planningStatusFilter
-      ? planningActiveRows().filter((row) => row.status === state.planningStatusFilter)
+      ? planningFilterByMonth(planningActiveRows()).filter((row) => row.status === state.planningStatusFilter)
       : baseRows;
   const selectedArea = areaData.find((area) => area.id === state.planningAreaId);
   const visibleRows = selectedArea ? rows.filter((row) => row.area.id === selectedArea.id) : rows;
@@ -5240,9 +5308,9 @@ function planningPlansContent() {
       <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Pastas dos planos gerados no ciclo atual. Use os filtros para abrir um status ou uma área específica.</p></div>${state.planningStatusFilter || selectedArea ? `<button class="fichario-sub-action" data-clear-planning-filter type="button">Limpar filtro</button>` : ""}</div>
       <div class="planning-filter-line">
         <label><span>${icons.search}</span><input placeholder="Pesquisar plano, área ou responsável..." /></label>
-        ${planningAreaSelect(state.planningAreaId, "planning-area-select")}
-        <button class="fichario-sub-action" type="button">Status</button>
-        <button class="fichario-sub-action" type="button">Mês</button>
+        ${planningAreaSelect(state.planningAreaId)}
+        ${planningStatusSelect()}
+        ${planningMonthSelect()}
       </div>
       ${isFolderView ? planningFolderCards(baseRows) : `
         <div class="planning-area-detail">
@@ -5279,14 +5347,14 @@ function planningFeedbackContent() {
 }
 
 function planningHistoryContent() {
-  const rows = planningHistoryRows();
+  const rows = planningFilterByMonth(planningHistoryRows());
   const selectedArea = areaData.find((area) => area.id === state.planningAreaId);
   const visibleRows = selectedArea ? rows.filter((row) => row.area.id === selectedArea.id) : [];
   return `
     <div class="fichario-sub-panel">
       <div class="fichario-sub-head planning-history-head">
         <div><h2>Histórico por área</h2><p>Selecione uma área para consultar planos aprovados, reprovados e vencidos.</p></div>
-        <div class="planning-head-actions">${planningAreaSelect(state.planningAreaId, "planning-history-select")}<button class="fichario-sub-action" type="button">Exportar</button></div>
+        <div class="planning-head-actions">${planningAreaSelect(state.planningAreaId, "planning-history-option")}${planningMonthSelect()}<button class="fichario-sub-action" type="button">Exportar</button></div>
       </div>
       <div class="planning-area-detail">
         <div class="planning-area-detail-head">
@@ -5574,9 +5642,49 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const planningAreaOption = event.target.closest("[data-planning-area-option]");
+  if (planningAreaOption) {
+    state.planningAreaId = planningAreaOption.dataset.planningAreaOption;
+    state.planningView = "plans";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningHistoryOption = event.target.closest("[data-planning-history-option]");
+  if (planningHistoryOption) {
+    state.planningAreaId = planningHistoryOption.dataset.planningHistoryOption;
+    state.planningView = "history";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningStatusOption = event.target.closest("[data-planning-status-option]");
+  if (planningStatusOption) {
+    state.planningStatusFilter = planningStatusOption.dataset.planningStatusOption;
+    state.planningView = state.planningStatusFilter === "pending_review" ? "feedback" : "plans";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningMonthOption = event.target.closest("[data-planning-month-option]");
+  if (planningMonthOption) {
+    state.planningMonthFilter = planningMonthOption.dataset.planningMonthOption;
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
   if (event.target.closest("[data-clear-planning-filter]")) {
     state.planningAreaId = "";
     state.planningStatusFilter = "";
+    state.planningMonthFilter = "";
     state.view = "actions";
     syncHashWithView("actions");
     render();
@@ -5751,24 +5859,6 @@ document.addEventListener("change", (event) => {
     render();
   }
 
-  const planningAreaSelectEl = event.target.closest("[data-planning-area-select]");
-  if (planningAreaSelectEl) {
-    state.planningAreaId = planningAreaSelectEl.value;
-    state.planningView = "plans";
-    state.view = "actions";
-    syncHashWithView("actions");
-    render();
-    return;
-  }
-
-  const planningHistorySelectEl = event.target.closest("[data-planning-history-select]");
-  if (planningHistorySelectEl) {
-    state.planningAreaId = planningHistorySelectEl.value;
-    state.planningView = "history";
-    state.view = "actions";
-    syncHashWithView("actions");
-    render();
-  }
 });
 
 const reportRequest = reportFileRequest();
