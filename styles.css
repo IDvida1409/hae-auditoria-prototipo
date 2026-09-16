@@ -13675,3 +13675,280 @@ button.planning-kpi:hover {
     font-size: 9.6px;
   }
 }
+
+/* Segunda passada mobile: proporção de app, menos cartões altos e rolagens horizontais controladas. */
+@media (max-width: 760px) {
+  .fichario-shell .chart-panel,
+  .fichario-shell .compare-panel,
+  .graph-bottom .mini-panel {
+    padding: 12px;
+  }
+
+  .mobile-chart-scroll {
+    margin-top: 4px;
+    padding-bottom: 2px;
+  }
+
+  .mobile-chart-scroll .bar-chart {
+    width: 610px;
+  }
+
+  .month-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 1px 5px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .month-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .month-chip {
+    flex: 0 0 calc(25% - 5px);
+    scroll-snap-align: start;
+    justify-content: center;
+    min-height: 25px;
+    padding: 0 3px;
+    font-size: 8.7px;
+  }
+
+  .graph-bottom {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .graph-bottom .mini-panel {
+    min-height: 104px;
+    gap: 8px;
+  }
+
+  .graph-bottom .mini-panel-head {
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+
+  .graph-bottom .mini-panel strong,
+  .graph-bottom .mini-panel .big-number {
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .graph-bottom .mini-panel small,
+  .graph-bottom .mini-panel span,
+  .graph-bottom .mini-panel p {
+    font-size: 9.8px;
+    line-height: 1.15;
+  }
+
+  .graph-bottom .risk-bars {
+    gap: 6px;
+    padding: 0;
+  }
+
+  .graph-bottom .risk-row {
+    grid-template-columns: 68px minmax(0, 1fr) 20px;
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .graph-bottom .risk-track {
+    height: 6px;
+  }
+
+  .graph-bottom .dash-evolution {
+    height: 54px;
+    min-height: 54px;
+  }
+
+  .graph-bottom .dash-evolution svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .graph-layout .compare-panel,
+  .graph-layout .compare-panel.area-mode {
+    order: 0;
+  }
+
+  .graph-layout .compare-panel {
+    padding: 13px;
+  }
+
+  .graph-layout .compare-panel h2 {
+    font-size: 18px;
+    line-height: 1.1;
+  }
+
+  .graph-layout .rank-row {
+    min-height: 38px;
+    padding: 7px 8px;
+    gap: 8px;
+  }
+
+  .graph-layout .rank-row strong {
+    font-size: 11.4px;
+  }
+
+  .graph-layout .rank-row small,
+  .graph-layout .graph-note {
+    font-size: 9.8px;
+    line-height: 1.16;
+  }
+
+  .fichario-summary-card .dash-evolution {
+    height: 78px;
+    margin-top: 2px;
+  }
+
+  .fichario-summary-card .dash-evolution svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .planning-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .planning-kpi {
+    min-height: 56px;
+    padding: 7px;
+  }
+
+  .planning-kpi span {
+    min-height: 20px;
+    font-size: 8.8px;
+  }
+
+  .planning-kpi strong {
+    font-size: 18px;
+  }
+
+  .planning-kpi small {
+    font-size: 8.4px;
+  }
+
+  .planning-chart-card {
+    min-height: 92px;
+    grid-template-columns: 62px minmax(0, 1fr);
+    padding: 9px;
+    gap: 8px;
+  }
+
+  .planning-donut {
+    width: 60px;
+    height: 60px;
+  }
+
+  .planning-donut strong {
+    font-size: 17px;
+  }
+
+  .planning-chart-legend {
+    gap: 4px;
+    font-size: 9.8px;
+  }
+
+  .planning-folder-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .planning-folder-card {
+    min-height: 102px;
+    padding: 9px 8px;
+  }
+
+  .planning-folder-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .planning-folder-card strong {
+    margin-top: 5px;
+    font-size: 11.2px;
+    line-height: 1.12;
+  }
+
+  .planning-folder-card span {
+    margin-top: 3px;
+    font-size: 10.2px;
+  }
+
+  .planning-folder-card small {
+    margin-top: 3px;
+    font-size: 8.8px;
+    line-height: 1.1;
+  }
+
+  .planning-area-detail-head {
+    min-height: 48px;
+    padding: 8px 10px;
+  }
+
+  .planning-area-detail-head span {
+    font-size: 9px;
+  }
+
+  .planning-area-detail-head h3 {
+    font-size: 13.5px;
+  }
+
+  .planning-area-detail-head p {
+    font-size: 9.5px;
+  }
+
+  .planning-table tr {
+    padding: 9px 10px;
+  }
+
+  .planning-table td {
+    font-size: 10.2px;
+  }
+
+  .planning-table td strong {
+    font-size: 11.2px;
+    line-height: 1.12;
+  }
+
+  .planning-table td span {
+    font-size: 9px;
+    line-height: 1.12;
+  }
+
+  .fichario-shell .start-tile {
+    height: 118px;
+    min-height: 118px;
+    grid-template-rows: 38px 34px 30px;
+    gap: 4px;
+  }
+
+  .fichario-shell .start-tile p {
+    max-height: 24px;
+    overflow: hidden;
+  }
+
+  .fichario-shell .start-tile .outline-btn {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 27px;
+    padding: 0 6px;
+    gap: 4px;
+    font-size: 8.9px;
+    white-space: nowrap;
+  }
+
+  .fichario-shell .start-tile .outline-btn svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+  }
+}
