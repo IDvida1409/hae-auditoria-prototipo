@@ -12793,8 +12793,8 @@ button.planning-kpi:hover {
 
   .fichario-summary-card {
     flex: 0 0 min(86%, 320px);
-    min-height: 142px;
-    height: auto;
+    min-height: 170px;
+    height: 170px;
     padding: 14px 16px;
     border-radius: 10px;
     scroll-snap-align: start;
@@ -12830,7 +12830,7 @@ button.planning-kpi:hover {
   }
 
   .fichario-summary-card .dash-evolution {
-    height: 118px;
+    height: 108px;
     margin-top: 8px;
   }
 
@@ -12861,8 +12861,31 @@ button.planning-kpi:hover {
   }
 
   .fichario-home .area-tile {
-    height: 154px;
-    min-height: 154px;
+    grid-template-rows: 50px 38px 28px;
+    height: 136px;
+    min-height: 136px;
+    gap: 4px;
+    padding: 10px 8px;
+    border-radius: 10px;
+  }
+
+  .fichario-home .area-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .fichario-home .area-name {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    font-size: 11.5px;
+    line-height: 1.12;
+    text-align: center;
+  }
+
+  .fichario-home .area-score {
+    font-size: 24px;
   }
 
   .fichario-home .desktop-selected-panel {
@@ -12916,48 +12939,51 @@ button.planning-kpi:hover {
   }
 
   .fichario-shell .start-grid {
-    grid-template-columns: 1fr;
-    gap: 11px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
     margin-top: 12px;
   }
 
   .fichario-shell .start-tile {
-    grid-template-columns: 62px minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    align-items: center;
-    justify-items: start;
-    min-height: 116px;
-    padding: 14px 15px;
-    gap: 8px 12px;
-    text-align: left;
+    grid-template-columns: 1fr;
+    grid-template-rows: 52px 50px 34px;
+    align-items: start;
+    justify-items: center;
+    min-height: 156px;
+    height: 156px;
+    padding: 12px 10px;
+    gap: 6px;
+    text-align: center;
+    border-radius: 10px;
   }
 
   .fichario-shell .start-tile img {
-    grid-row: 1 / 3;
-    width: 58px;
-    height: 58px;
+    grid-row: auto;
+    width: 52px;
+    height: 52px;
   }
 
   .fichario-shell .start-tile h3,
   .fichario-shell .start-tile p {
-    text-align: left;
+    text-align: center;
   }
 
   .fichario-shell .start-tile h3 {
     margin: 0;
-    font-size: 14px;
+    font-size: 12.7px;
+    line-height: 1.12;
   }
 
   .fichario-shell .start-tile p {
     min-height: 0;
     margin: 3px 0 0;
-    font-size: 11.5px;
-    line-height: 1.25;
+    font-size: 10.4px;
+    line-height: 1.18;
   }
 
   .fichario-shell .start-tile .outline-btn {
-    grid-column: 2;
-    width: auto;
+    grid-column: auto;
+    width: 100%;
     min-height: 34px;
     margin-top: 2px;
     padding-inline: 0;
@@ -13037,6 +13063,177 @@ button.planning-kpi:hover {
   .planning-filter-line > * {
     flex: 0 0 auto;
   }
+
+  .mobile-chart-scroll {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin-top: 8px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .mobile-chart-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-chart-scroll .bar-chart {
+    width: 760px;
+    max-width: none;
+  }
+
+  .graph-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .fichario-shell .chart-panel,
+  .fichario-shell .compare-panel {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .chart-head {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .chart-head h2 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.12;
+  }
+
+  .chart-note {
+    font-size: 12px;
+    line-height: 1.28;
+  }
+
+  .chart-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .chart-mode-btn {
+    min-width: 0;
+    min-height: 40px;
+    padding-inline: 12px;
+    border-radius: 10px;
+  }
+
+  .month-strip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .month-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .month-chip {
+    flex: 0 0 auto;
+  }
+
+  .graph-bottom {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .planning-module {
+    padding: 18px 12px 24px;
+  }
+
+  .planning-module .fichario-sub-panel {
+    padding: 18px 0 0;
+  }
+
+  .planning-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .planning-kpi {
+    min-height: 86px;
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .planning-kpi strong {
+    font-size: 24px;
+  }
+
+  .planning-overview-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .planning-chart-card {
+    grid-template-columns: 96px minmax(0, 1fr);
+    min-height: 142px;
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .planning-donut {
+    width: 92px;
+    height: 92px;
+  }
+
+  .planning-rank-card,
+  .planning-table-wrap,
+  .planning-feedback-list,
+  .planning-history-card,
+  .planning-area-detail {
+    border-radius: 10px;
+  }
+
+  .planning-rank-row,
+  .planning-feedback-row,
+  .planning-history-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    min-height: auto;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .planning-rank-row em,
+  .planning-feedback-row .planning-status,
+  .planning-feedback-row .fichario-sub-action,
+  .planning-history-card b,
+  .planning-history-card .planning-status,
+  .planning-history-card .fichario-sub-action {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .planning-table,
+  .planning-table tbody,
+  .planning-table tr,
+  .planning-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .planning-table thead {
+    display: none;
+  }
+
+  .planning-table tr {
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .planning-table td {
+    padding: 3px 0;
+    border: 0;
+  }
+
+  .planning-table td:last-child {
+    padding-top: 8px;
+  }
 }
 
 @media (max-width: 420px) {
@@ -13071,7 +13268,8 @@ button.planning-kpi:hover {
     font-size: 11.4px;
   }
 
-  .fichario-home .area-grid {
-    grid-template-columns: 1fr;
+  .fichario-home .area-grid,
+  .fichario-shell .start-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

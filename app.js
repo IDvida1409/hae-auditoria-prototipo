@@ -1958,7 +1958,9 @@ function chartsPage() {
               <button class="chart-expand-btn" data-toggle-chart-size title="${state.chartExpanded ? "Reduzir gráfico" : "Expandir gráfico"}">${state.chartExpanded ? "-" : "+"}</button>
             </div>
           </div>
-          ${isImpactMode ? actionImpactChart() : chartSvg()}
+          <div class="mobile-chart-scroll">
+            ${isImpactMode ? actionImpactChart() : chartSvg()}
+          </div>
           ${isImpactMode ? "" : `<div class="month-strip">
             ${monthOptions
               .map(
