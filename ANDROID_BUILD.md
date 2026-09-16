@@ -25,11 +25,34 @@ cd android
 .\gradlew assembleDebug
 ```
 
+Com o projeto Android ja criado, o fluxo curto fica:
+
+```powershell
+npm run android:apk
+```
+
 O APK de teste sera gerado em:
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Status atual neste computador
+
+A pasta nativa `android/` ja foi criada com Capacitor e o sync dos arquivos web funcionou.
+
+A compilacao do APK ainda para neste erro local:
+
+```text
+ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+```
+
+Para concluir o APK neste computador, falta instalar/configurar:
+
+- Java JDK 17 ou superior;
+- Android Studio ou Android SDK;
+- `JAVA_HOME`;
+- `ANDROID_HOME` ou `ANDROID_SDK_ROOT`.
 
 ## Offline no tablet
 
