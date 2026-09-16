@@ -78,6 +78,10 @@ As APIs reais começam pelo banco Postgres. Sem `DATABASE_URL`, as rotas estrutu
   - Registra operações offline com `clientOperationId`.
   - `clientOperationId` é único e protege contra envio duplicado quando o tablet sincronizar novamente.
   - O app deve salvar localmente primeiro e enviar a fila quando houver internet.
+- `offline-store.js`
+  - Estrutura local do APK/PWA usando IndexedDB.
+  - Guarda fila de operações, metadados e arquivos/fotos locais.
+  - Expõe `window.HAE_OFFLINE` para iniciar auditoria, salvar respostas, registrar devolutivas e enfileirar fotos.
 - `GET /api/sync-queue?status=pending`
   - Lista operações pendentes.
 - `POST /api/sync-queue/process`

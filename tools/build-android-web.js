@@ -8,6 +8,7 @@ const files = [
   "index.html",
   "styles.css",
   "checklist-data.js",
+  "offline-store.js",
   "app.js",
   "manifest.webmanifest",
   "sw.js",

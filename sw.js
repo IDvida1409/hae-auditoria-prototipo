@@ -1,9 +1,10 @@
-const CACHE_NAME = "hae-auditoria-v3-report-library-10";
+const CACHE_NAME = "hae-auditoria-v4-offline-1";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/checklist-data.js",
+  "/offline-store.js",
   "/app.js",
   "/manifest.webmanifest"
 ];
