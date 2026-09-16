@@ -13273,3 +13273,405 @@ button.planning-kpi:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Refinamento mobile do APK: menos ruído, cards consistentes e fluxo de leitura de app. */
+@media (max-width: 760px) {
+  .fichario-shell .main {
+    padding-inline: 7px;
+  }
+
+  .fichario-shell .content-panel {
+    border-radius: 17px;
+  }
+
+  .fichario-home {
+    padding-top: 12px;
+    padding-inline: 11px;
+  }
+
+  .fichario-home .home-intro h1,
+  .fichario-home .home-intro p,
+  .fichario-home .panel-legends {
+    display: none;
+  }
+
+  .fichario-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .fichario-home .home-intro .eyebrow {
+    margin: 0;
+    font-size: 11.5px;
+  }
+
+  .fichario-home .date-line {
+    gap: 6px;
+    min-height: 24px;
+    font-size: 10.5px;
+    text-align: right;
+  }
+
+  .fichario-home .date-line img {
+    width: 21px;
+    height: 21px;
+  }
+
+  .fichario-summary-grid {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .fichario-summary-card {
+    flex: 0 0 min(92%, 330px);
+    min-height: 112px;
+    height: 112px;
+    padding: 10px;
+    border-radius: 9px;
+  }
+
+  .fichario-summary-card h2 {
+    font-size: 13px;
+    line-height: 1.08;
+  }
+
+  .fichario-summary-card > p {
+    margin-top: 2px;
+    font-size: 10.4px;
+    line-height: 1.18;
+  }
+
+  .pending-compact-grid {
+    align-items: start;
+    gap: 3px;
+    margin-top: 6px;
+  }
+
+  .pending-compact-grid img {
+    width: 25px;
+    height: 25px;
+  }
+
+  .pending-compact-grid b {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .pending-compact-grid small {
+    max-width: 54px;
+    min-height: 21px;
+    font-size: 8.5px;
+    line-height: 1.05;
+  }
+
+  .fichario-summary-card .dash-evolution {
+    height: 66px;
+    margin-top: 4px;
+  }
+
+  .feedback-count strong {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .feedback-count span {
+    font-size: 9.8px;
+    line-height: 1.08;
+  }
+
+  .feedback-toggle,
+  .fichario-summary-card .outline-btn {
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 10.5px;
+  }
+
+  .fichario-home .area-grid {
+    gap: 8px;
+  }
+
+  .fichario-home .area-tile {
+    grid-template-rows: 40px 30px 24px;
+    height: 108px;
+    min-height: 108px;
+    padding: 9px 7px;
+    border-left-width: 4px;
+  }
+
+  .fichario-home .area-icon {
+    width: 39px;
+    height: 39px;
+  }
+
+  .fichario-home .area-name {
+    min-height: 28px;
+    font-size: 10.3px;
+    line-height: 1.12;
+  }
+
+  .fichario-home .area-score {
+    font-size: 21px;
+    line-height: 1;
+  }
+
+  .fichario-shell .chart-panel,
+  .fichario-shell .compare-panel,
+  .fichario-module,
+  .planning-chart-card,
+  .planning-rank-card,
+  .planning-table-wrap,
+  .planning-feedback-list,
+  .planning-area-detail {
+    border-radius: 12px;
+  }
+
+  .chart-head h2,
+  .fichario-module .panel-title,
+  .fichario-sub-head h2 {
+    font-size: 18px;
+    line-height: 1.1;
+  }
+
+  .fichario-module .panel-subtitle,
+  .fichario-sub-head p {
+    font-size: 11px;
+    line-height: 1.28;
+  }
+
+  .fichario-module-head {
+    margin-bottom: 12px;
+  }
+
+  .fichario-module .eyebrow {
+    font-size: 11px;
+  }
+
+  .fichario-sub-tabs {
+    gap: 6px;
+  }
+
+  .fichario-sub-tab {
+    min-width: 105px;
+    min-height: 42px;
+    padding-inline: 10px;
+    font-size: 11px;
+  }
+
+  .chart-head {
+    gap: 7px;
+  }
+
+  .chart-note {
+    font-size: 10.7px;
+    line-height: 1.24;
+  }
+
+  .chart-mode-btn {
+    min-height: 34px;
+    font-size: 10.6px;
+  }
+
+  .mobile-chart-scroll .bar-chart {
+    width: 640px;
+  }
+
+  .month-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .month-chip {
+    min-width: 0;
+    min-height: 24px;
+    padding: 0 4px;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .month-chip small {
+    font-size: 8px;
+  }
+
+  .graph-layout .compare-panel.area-mode {
+    order: -1;
+  }
+
+  .graph-layout .compare-panel.area-mode h2 {
+    font-size: 16px;
+  }
+
+  .graph-layout .compare-panel.area-mode .area-compare-head {
+    margin-bottom: 10px;
+  }
+
+  .planning-kpi-grid {
+    gap: 7px;
+  }
+
+  .planning-kpi {
+    min-height: 64px;
+    padding: 8px 9px;
+    border-radius: 8px;
+  }
+
+  .planning-kpi span {
+    font-size: 9.6px;
+    line-height: 1.1;
+  }
+
+  .planning-kpi strong {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .planning-kpi small {
+    font-size: 9.2px;
+    line-height: 1.12;
+  }
+
+  .planning-chart-card {
+    grid-template-columns: 74px minmax(0, 1fr);
+    min-height: 104px;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .planning-donut {
+    width: 70px;
+    height: 70px;
+  }
+
+  .planning-donut strong {
+    font-size: 19px;
+    line-height: 1;
+  }
+
+  .planning-donut span {
+    font-size: 9px;
+  }
+
+  .planning-chart-legend {
+    gap: 5px;
+    font-size: 10.7px;
+    line-height: 1.15;
+  }
+
+  .planning-card-head h2 {
+    font-size: 17px;
+    line-height: 1.1;
+  }
+
+  .planning-card-head p {
+    font-size: 10.8px;
+    line-height: 1.22;
+  }
+
+  .planning-rank-row {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .planning-rank-row em {
+    grid-column: auto;
+    justify-self: end;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .planning-rank-row b {
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+  }
+
+  .planning-rank-row strong {
+    font-size: 11.8px;
+    line-height: 1.12;
+  }
+
+  .planning-rank-row span {
+    font-size: 9.8px;
+    line-height: 1.18;
+  }
+
+  .planning-feedback-row {
+    grid-template-columns: 30px minmax(0, 1fr);
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .planning-feedback-row .planning-status,
+  .planning-feedback-row .fichario-sub-action {
+    grid-column: 2;
+  }
+
+  .planning-feedback-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .planning-feedback-row strong {
+    font-size: 12px;
+    line-height: 1.12;
+  }
+
+  .planning-feedback-row span {
+    font-size: 10px;
+    line-height: 1.18;
+  }
+
+  .fichario-sub-head .fichario-sub-action {
+    width: auto;
+    min-height: 32px;
+    justify-self: start;
+    padding-inline: 12px;
+    font-size: 10.8px;
+  }
+
+  .planning-filter-line label,
+  .planning-filter-dropdown,
+  .planning-filter-button {
+    min-height: 38px;
+  }
+
+  .planning-filter-button,
+  .planning-filter-line input {
+    font-size: 11px;
+  }
+
+  .fichario-shell .start-tile {
+    height: 124px;
+    min-height: 124px;
+    grid-template-rows: 42px 38px 28px;
+    padding: 9px 8px;
+  }
+
+  .fichario-shell .start-tile img {
+    width: 42px;
+    height: 42px;
+  }
+
+  .fichario-shell .start-tile h3 {
+    font-size: 11.2px;
+    line-height: 1.12;
+  }
+
+  .fichario-shell .start-tile p {
+    font-size: 9.3px;
+    line-height: 1.12;
+  }
+
+  .fichario-shell .start-tile .outline-btn {
+    min-height: 28px;
+    font-size: 9.6px;
+  }
+}
