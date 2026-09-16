@@ -7,6 +7,19 @@ Esta estrutura prepara o projeto para sair do protótipo visual e virar produto 
 - `001_core_schema.sql`: base principal do produto.
 - `002_report_archive_fields.sql`: campos de arquivo/histórico dos relatórios.
 - `003_product_workflow_schema.sql`: complementa o fluxo real aprovado para responsáveis, restaurantes terceiros, devolutivas, aprovação/reprovação e avaliação do impacto no mês seguinte.
+- `004_operational_base_schema.sql`: prepara a base operacional inicial com as 12 áreas aprovadas, suporte futuro a subáreas, checklist vinculado por área e regra padrão de auditoria/plano de ação.
+
+## Carga inicial
+
+- As migrations criam a estrutura do banco e cadastram a organização, unidade, 12 áreas e regras padrão.
+- O checklist real extraído da planilha fica em `checklist-data.js`.
+- Para importar blocos e perguntas para o Postgres, configure `DATABASE_URL` e rode:
+
+```bash
+npm run db:import-checklist
+```
+
+Esse importador cria um checklist por área, com blocos e perguntas, usando a Portaria SMS nº 2.619/2011 como base legal.
 
 ## Módulos cobertos
 
@@ -16,6 +29,7 @@ Esta estrutura prepara o projeto para sair do protótipo visual e virar produto 
 - `audit_areas`, `area_members` e `user_area_permissions`: áreas internas, responsável padrão da área, áreas de restaurantes terceiros e permissões por área.
 - `audit_workflow_settings`: regras configuráveis de auditoria e plano de ação por unidade ou área.
 - `checklists`, `checklist_blocks` e `checklist_questions`: estrutura da Portaria/checklist por versão, bloco, pergunta e risco.
+- `audit_subareas` e `subarea_members`: estrutura reservada para quando as subáreas forem definidas, sem travar o modelo atual das 12 áreas.
 - `audit_cycles`, `audits` e `audit_answers`: auditoria mensal, respostas C/NC/X, nota e sincronização.
 - `stored_files` e `file_links`: fotos, evidências, certificados e PDFs ficam em storage; o banco guarda metadados e vínculos.
 - `action_plan_documents`, `action_plan_document_items`, `action_plans`, `action_plan_feedback`, `action_plan_review_events` e `action_plan_timeline_events`: documento do plano de ação, itens gerados pelas NCs, prazo, devolutiva, evidência, aprovação/reprovação e histórico completo.

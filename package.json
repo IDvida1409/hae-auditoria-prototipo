@@ -9,7 +9,8 @@
     "dev": "node server.js",
     "build:android-web": "node tools/build-android-web.js",
     "build:sites": "node tools/build-sites-worker.js",
-    "check": "node --check app.js && node --check server.js && node --check tools/build-sites-worker.js && node --check tools/build-android-web.js"
+    "check": "node --check app.js && node --check server.js && node --check tools/build-sites-worker.js && node --check tools/build-android-web.js && node --check tools/import-checklist-data.js",
+    "db:import-checklist": "node tools/import-checklist-data.js"
   },
   "engines": {
     "node": ">=20"
