@@ -254,6 +254,31 @@ async function defaultUnitId(pool) {
 }
 
 async function currentUser(pool, request, unitId) {
+  const authorization = String(request.headers.authorization || "");
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearer) {
+    const byToken = await pool.query(
+      `
+        select u.*
+        from user_sessions s
+        join app_users u on u.id = s.user_id
+        where s.token_hash = $1
+          and s.revoked_at is null
+          and s.expires_at > now()
+          and u.active = true
+        limit 1
+      `,
+      [hashToken(bearer)]
+    );
+    if (byToken.rows[0]) {
+      await pool.query(
+        "update user_sessions set last_seen_at = now() where token_hash = $1",
+        [hashToken(bearer)]
+      );
+      return byToken.rows[0];
+    }
+  }
+
   const headerUserId = request.headers["x-user-id"];
   if (headerUserId) {
     const byHeader = await pool.query("select * from app_users where id = $1", [headerUserId]);
@@ -330,6 +355,31 @@ async function auditScore(pool, auditId) {
 
 function publicPlanCode() {
   return `PA-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+}
+
+function hashToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function newToken(prefix = "tok") {
+  return `${prefix}_${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+function requestIp(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket.remoteAddress || null;
+}
+
+function storageKeyFor(fileType, originalFilename = "") {
+  const safeName = String(originalFilename || "arquivo")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  const ext = path.extname(safeName);
+  const base = path.basename(safeName, ext).slice(0, 64) || "arquivo";
+  return `${fileType}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${base}${ext}`;
 }
 
 function staticPathFor(urlPath) {
@@ -440,9 +490,81 @@ async function handleApi(request, response, url) {
         sendJson(response, 401, { error: "Usuário não encontrado ou inativo" });
         return true;
       }
-      sendJson(response, 200, { user: result.rows[0], tokenType: "prototype-header", header: "x-user-id" });
+      const token = newToken("sess");
+      const session = await pool.query(
+        `
+          insert into user_sessions (
+            user_id,
+            token_hash,
+            ip_address,
+            user_agent,
+            expires_at,
+            last_seen_at
+          )
+          values ($1, $2, $3, $4, now() + interval '12 hours', now())
+          returning id, user_id, expires_at, created_at
+        `,
+        [
+          result.rows[0].id,
+          hashToken(token),
+          requestIp(request),
+          request.headers["user-agent"] || null
+        ]
+      );
+      sendJson(response, 200, {
+        user: result.rows[0],
+        session: session.rows[0],
+        token,
+        tokenType: "bearer"
+      });
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro no login" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/me" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      if (!user) {
+        sendJson(response, 401, { error: "Sessão inválida" });
+        return true;
+      }
+      sendJson(response, 200, {
+        user: {
+          id: user.id,
+          unit_id: user.unit_id,
+          full_name: user.full_name,
+          email: user.email,
+          role: user.role,
+          platform_scope: user.platform_scope,
+          active: user.active
+        }
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao consultar sessão" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const authorization = String(request.headers.authorization || "");
+      const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (bearer) {
+        await pool.query(
+          "update user_sessions set revoked_at = now() where token_hash = $1 and revoked_at is null",
+          [hashToken(bearer)]
+        );
+      }
+      sendJson(response, 200, { ok: true });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao encerrar sessão" });
     }
     return true;
   }
@@ -1001,6 +1123,211 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (url.pathname === "/api/report-jobs" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const unitId = body.unitId || await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const result = await pool.query(
+        `
+          insert into report_generation_jobs (
+            unit_id,
+            area_id,
+            cycle_id,
+            requested_by_user_id,
+            report_type,
+            status,
+            payload
+          )
+          values ($1, $2, $3, $4, $5, 'queued', $6::jsonb)
+          returning *
+        `,
+        [
+          unitId,
+          body.areaId || null,
+          body.cycleId || null,
+          user?.id || null,
+          body.reportType || "monthly",
+          JSON.stringify(body.payload || {})
+        ]
+      );
+      sendJson(response, 202, { reportJob: result.rows[0] });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao criar job de relatório" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/report-jobs" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const status = url.searchParams.get("status");
+      const result = await pool.query(
+        `
+          select rj.*, aa.name as area_name, r.title as report_title
+          from report_generation_jobs rj
+          left join audit_areas aa on aa.id = rj.area_id
+          left join reports r on r.id = rj.report_id
+          where ($1::text is null or rj.status = $1)
+          order by rj.created_at desc
+          limit 100
+        `,
+        [status || null]
+      );
+      sendJson(response, 200, { reportJobs: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar jobs de relatório" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/files/upload-intents" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const unitId = body.unitId || await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const fileType = body.fileType || "other";
+      const storageKey = body.storageKey || storageKeyFor(fileType, body.originalFilename);
+      const result = await pool.query(
+        `
+          insert into file_upload_intents (
+            unit_id,
+            requested_by_user_id,
+            file_type,
+            entity_type,
+            entity_id,
+            storage_provider,
+            storage_bucket,
+            storage_key,
+            upload_url,
+            public_file_url,
+            expected_mime_type,
+            expected_size_bytes,
+            status
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'created')
+          returning *
+        `,
+        [
+          unitId,
+          user?.id || null,
+          fileType,
+          body.entityType || null,
+          body.entityId || null,
+          body.storageProvider || process.env.FILE_STORAGE_PROVIDER || "external",
+          body.storageBucket || process.env.FILE_STORAGE_BUCKET || null,
+          storageKey,
+          body.uploadUrl || null,
+          body.fileUrl || null,
+          body.mimeType || null,
+          body.fileSizeBytes || null
+        ]
+      );
+      sendJson(response, 201, {
+        uploadIntent: result.rows[0],
+        uploadMode: "external-storage-metadata",
+        note: "Use storage externo/privado para o binário e confirme depois em /api/files/upload-intents/:id/complete."
+      });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao criar intenção de upload" });
+    }
+    return true;
+  }
+
+  const uploadCompleteMatch = pathMatch(url.pathname, /^\/api\/files\/upload-intents\/(?<id>[0-9a-f-]+)\/complete$/i);
+  if (uploadCompleteMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const client = await pool.connect();
+      let file;
+      let intent;
+      try {
+        await client.query("begin");
+        const intentResult = await client.query(
+          "select * from file_upload_intents where id = $1 for update",
+          [uploadCompleteMatch.id]
+        );
+        intent = intentResult.rows[0];
+        if (!intent) throw new Error("Intenção de upload não encontrada");
+        if (intent.status !== "created") throw new Error("Intenção de upload já foi processada");
+
+        const fileResult = await client.query(
+          `
+            insert into stored_files (
+              unit_id,
+              uploaded_by_user_id,
+              file_type,
+              storage_provider,
+              storage_bucket,
+              storage_key,
+              file_url,
+              original_filename,
+              mime_type,
+              file_size_bytes,
+              checksum
+            )
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            returning *
+          `,
+          [
+            intent.unit_id,
+            intent.requested_by_user_id,
+            intent.file_type,
+            intent.storage_provider,
+            intent.storage_bucket,
+            intent.storage_key,
+            body.fileUrl || intent.public_file_url,
+            body.originalFilename || null,
+            body.mimeType || intent.expected_mime_type,
+            body.fileSizeBytes || intent.expected_size_bytes,
+            body.checksum || null
+          ]
+        );
+        file = fileResult.rows[0];
+
+        if (intent.entity_type && intent.entity_id) {
+          await client.query(
+            `
+              insert into file_links (file_id, entity_type, entity_id, caption)
+              values ($1, $2, $3, $4)
+            `,
+            [file.id, intent.entity_type, intent.entity_id, body.caption || null]
+          );
+        }
+
+        const updatedIntent = await client.query(
+          `
+            update file_upload_intents
+            set status = 'attached',
+                stored_file_id = $2,
+                updated_at = now()
+            where id = $1
+            returning *
+          `,
+          [intent.id, file.id]
+        );
+        intent = updatedIntent.rows[0];
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+      sendJson(response, 200, { file, uploadIntent: intent });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || "Erro ao confirmar upload" });
+    }
+    return true;
+  }
+
   if (url.pathname === "/api/files" && request.method === "POST") {
     try {
       const pool = await getPool();
@@ -1093,6 +1420,73 @@ async function handleApi(request, response, url) {
       sendJson(response, 202, { operations: saved });
     } catch (error) {
       sendJson(response, 400, { error: error.message || "Erro ao registrar sincronização" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/sync-queue" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const status = url.searchParams.get("status") || "pending";
+      const result = await pool.query(
+        `
+          select *
+          from sync_queue
+          where status = $1
+          order by created_at asc
+          limit 200
+        `,
+        [status]
+      );
+      sendJson(response, 200, { operations: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar fila de sincronização" });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/sync-queue/process" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      const limit = Math.min(Number(body.limit || 50), 200);
+      const pending = await pool.query(
+        `
+          select *
+          from sync_queue
+          where status = 'pending'
+          order by created_at asc
+          limit $1
+        `,
+        [limit]
+      );
+      const processed = [];
+      for (const operation of pending.rows) {
+        const result = await pool.query(
+          `
+            update sync_queue
+            set status = 'synced',
+                processed_at = now(),
+                synced_at = now(),
+                result_payload = $2::jsonb
+            where id = $1
+            returning *
+          `,
+          [
+            operation.id,
+            JSON.stringify({
+              accepted: true,
+              note: "Operação recebida. Aplicação específica será conectada por entity_type/operation."
+            })
+          ]
+        );
+        processed.push(result.rows[0]);
+      }
+      sendJson(response, 200, { processed });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao processar fila offline" });
     }
     return true;
   }

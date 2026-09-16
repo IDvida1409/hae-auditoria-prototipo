@@ -8,6 +8,7 @@ Esta estrutura prepara o projeto para sair do protótipo visual e virar produto 
 - `002_report_archive_fields.sql`: campos de arquivo/histórico dos relatórios.
 - `003_product_workflow_schema.sql`: complementa o fluxo real aprovado para responsáveis, restaurantes terceiros, devolutivas, aprovação/reprovação e avaliação do impacto no mês seguinte.
 - `004_operational_base_schema.sql`: prepara a base operacional inicial com as 12 áreas aprovadas, suporte futuro a subáreas, checklist vinculado por área e regra padrão de auditoria/plano de ação.
+- `005_api_infrastructure_schema.sql`: prepara sessões de login, intenções de upload, eventos de acesso a arquivos, jobs de relatório e campos de processamento da fila offline.
 
 ## Carga inicial
 
@@ -38,6 +39,9 @@ Esse importador cria um checklist por área, com blocos e perguntas, usando a Po
 - `document_requirements` e `certificates`: licenças/certificados obrigatórios, validade, alerta e revisão.
 - `notifications`: avisos dentro do painel para auditor, Qualidade e responsável.
 - `mobile_devices` e `sync_queue`: base para o app Android offline-first.
+- `user_sessions`: sessão bearer do painel/app.
+- `file_upload_intents` e `file_access_events`: upload/download sem salvar binário pesado no Postgres.
+- `report_generation_jobs`: fila para geração assíncrona de PDFs e relatórios.
 - `activity_logs`: rastreabilidade das ações importantes.
 
 ## Fluxo do plano de ação

@@ -10,7 +10,12 @@ As APIs reais começam pelo banco Postgres. Sem `DATABASE_URL`, as rotas estrutu
   - Carrega unidade, áreas e regras padrão de auditoria/plano.
 - `POST /api/auth/login`
   - Login provisório por e-mail para estruturar fluxo de sessão.
-  - Retorna o usuário e indica uso temporário do header `x-user-id`.
+- `GET /api/auth/me`
+  - Retorna usuário da sessão atual.
+- `POST /api/auth/logout`
+  - Revoga a sessão atual.
+- O login já retorna token `Bearer`.
+- O header `x-user-id` continua aceito apenas como fallback de protótipo.
 
 ## Áreas e checklists
 
@@ -52,6 +57,20 @@ As APIs reais começam pelo banco Postgres. Sem `DATABASE_URL`, as rotas estrutu
   - Registra metadados de arquivo.
   - O banco não guarda PDF/foto como blob.
   - O banco guarda `storage_provider`, `storage_bucket`, `storage_key`, `file_url`, tamanho, tipo e checksum.
+- `POST /api/files/upload-intents`
+  - Cria intenção de upload, com `storage_key`, expiração e vínculo opcional com entidade.
+  - Deve ser usado antes de subir fotos/PDFs para storage.
+- `POST /api/files/upload-intents/:id/complete`
+  - Confirma upload realizado.
+  - Cria `stored_files` e `file_links`.
+
+## Relatórios assíncronos
+
+- `POST /api/report-jobs`
+  - Cria job para gerar relatório mensal, comparativo, geral ou plano de ação.
+- `GET /api/report-jobs?status=queued`
+  - Lista jobs por status.
+- A geração real do PDF será plugada nessa fila, evitando travar a tela enquanto o PDF é criado.
 
 ## Offline tablet
 
@@ -59,6 +78,11 @@ As APIs reais começam pelo banco Postgres. Sem `DATABASE_URL`, as rotas estrutu
   - Registra operações offline com `clientOperationId`.
   - `clientOperationId` é único e protege contra envio duplicado quando o tablet sincronizar novamente.
   - O app deve salvar localmente primeiro e enviar a fila quando houver internet.
+- `GET /api/sync-queue?status=pending`
+  - Lista operações pendentes.
+- `POST /api/sync-queue/process`
+  - Processa lote básico da fila.
+  - Por enquanto registra aceitação; depois será conectado por `entity_type` e `operation`.
 
 ## Estratégia para fotos e PDFs
 
