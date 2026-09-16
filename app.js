@@ -5308,7 +5308,6 @@ function planningPlansContent() {
       <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Pastas dos planos gerados no ciclo atual. Use os filtros para abrir um status ou uma área específica.</p></div>${state.planningStatusFilter || selectedArea ? `<button class="fichario-sub-action" data-clear-planning-filter type="button">Limpar filtro</button>` : ""}</div>
       <div class="planning-filter-line">
         <label><span>${icons.search}</span><input placeholder="Pesquisar plano, área ou responsável..." /></label>
-        ${planningAreaSelect(state.planningAreaId)}
         ${planningStatusSelect()}
         ${planningMonthSelect()}
       </div>

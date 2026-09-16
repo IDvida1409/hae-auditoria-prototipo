@@ -11965,7 +11965,7 @@ button.planning-kpi:hover {
 
 .planning-filter-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(210px, auto) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   margin-bottom: 10px;
 }
