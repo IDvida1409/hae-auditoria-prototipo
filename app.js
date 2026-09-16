@@ -5119,7 +5119,7 @@ function planningMonthLabel(month) {
     "2026-09": "Setembro/2026",
     "2026-08": "Agosto/2026",
     "2026-07": "Julho/2026"
-  }[month] || "Todos os meses";
+  }[month] || "Mês";
 }
 
 function planningRowMonth(row) {
@@ -5186,7 +5186,7 @@ function planningStatusSelect(selectedStatus = state.planningStatusFilter) {
   return planningFilterDropdown(
     "Filtrar status",
     [
-      { value: "", label: "Todos os status" },
+      { value: "", label: "Status" },
       { value: "awaiting_send", label: "Aguardando envio" },
       { value: "in_progress", label: "Em andamento" },
       { value: "overdue", label: "Vencidos" },
@@ -5202,7 +5202,7 @@ function planningMonthSelect(selectedMonth = state.planningMonthFilter) {
   return planningFilterDropdown(
     "Filtrar mês",
     [
-      { value: "", label: "Todos os meses" },
+      { value: "", label: "Mês" },
       { value: "2026-09", label: "Setembro/2026" },
       { value: "2026-08", label: "Agosto/2026" },
       { value: "2026-07", label: "Julho/2026" }
@@ -5308,6 +5308,7 @@ function planningPlansContent() {
       <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Pastas dos planos gerados no ciclo atual. Use os filtros para abrir um status ou uma área específica.</p></div>${state.planningStatusFilter || selectedArea ? `<button class="fichario-sub-action" data-clear-planning-filter type="button">Limpar filtro</button>` : ""}</div>
       <div class="planning-filter-line">
         <label><span>${icons.search}</span><input placeholder="Pesquisar plano, área ou responsável..." /></label>
+        ${planningAreaSelect(state.planningAreaId)}
         ${planningStatusSelect()}
         ${planningMonthSelect()}
       </div>
