@@ -547,7 +547,8 @@ function defaultState() {
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
     planningView: "overview",
-    planningAreaId: "area-residuos",
+    planningAreaId: "",
+    planningStatusFilter: "",
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
@@ -575,6 +576,7 @@ function persistableState(source = state) {
     settingsUsersExpanded: source.settingsUsersExpanded,
     planningView: source.planningView,
     planningAreaId: source.planningAreaId,
+    planningStatusFilter: source.planningStatusFilter,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -612,7 +614,8 @@ function normalizeSavedState(saved = {}) {
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
     planningView: validPlanningViews.has(merged.planningView) ? merged.planningView : base.planningView,
-    planningAreaId: validAreaIds.has(merged.planningAreaId) ? merged.planningAreaId : base.planningAreaId,
+    planningAreaId: validAreaIds.has(merged.planningAreaId) || merged.planningAreaId === "" ? merged.planningAreaId : base.planningAreaId,
+    planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
     feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
@@ -5030,7 +5033,7 @@ function planningStatusMeta(status) {
   return {
     approved: ["Aprovado", "good"],
     rejected: ["Reprovado", "danger"],
-    pending_review: ["Devolutiva recebida", "warning"],
+    pending_review: ["Devolutiva recebida", "purple"],
     awaiting_send: ["Aguardando envio", "warning"],
     in_progress: ["Em andamento", "blue"],
     reopened: ["Reaberto", "warning"],
@@ -5048,13 +5051,15 @@ function planningTotals(rows = planningActionRows()) {
   return { total: rows.length, approved, rejected, waiting, overdue, active, awaiting };
 }
 
-function planningKpi(label, value, detail, tone = "blue") {
+function planningKpi(label, value, detail, tone = "blue", status = "") {
+  const attrs = status ? ` data-planning-status="${status}" type="button"` : "";
+  const tag = status ? "button" : "div";
   return `
-    <div class="planning-kpi is-${tone}">
+    <${tag} class="planning-kpi is-${tone}"${attrs}>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(String(value))}</strong>
       <small>${escapeHtml(detail)}</small>
-    </div>
+    </${tag}>
   `;
 }
 
@@ -5074,7 +5079,7 @@ function planningStatusChart(totals) {
         <span><i class="warning"></i>${totals.awaiting} aguardando envio</span>
         <span><i class="blue"></i>${totals.active} em andamento</span>
         <span><i class="danger"></i>${totals.overdue} vencidos</span>
-        <span><i class="warning"></i>${totals.waiting} devolutivas recebidas</span>
+        <span><i class="purple"></i>${totals.waiting} devolutivas recebidas</span>
       </div>
     </div>
   `;
@@ -5095,6 +5100,15 @@ function planningAreaRanking(rows) {
     .filter((row) => row.total)
     .sort((a, b) => (b.rejected + b.overdue) - (a.rejected + a.overdue) || b.total - a.total)
     .slice(0, 5);
+}
+
+function planningStatusFilterLabel(status) {
+  return {
+    awaiting_send: "Aguardando envio",
+    in_progress: "Em andamento",
+    overdue: "Vencidos",
+    pending_review: "Devolutivas"
+  }[status] || "Todos os planos";
 }
 
 function planningAreaSummaries(rows = planningActionRows()) {
@@ -5122,6 +5136,31 @@ function planningSelectedAreaSummary(rows = planningActionRows()) {
   return summaries.find((item) => item.area.id === state.planningAreaId) || summaries[0];
 }
 
+function planningAreaSelect(selectedId, dataAttr = "planning-area-select") {
+  return `
+    <select class="planning-area-select" data-${dataAttr}>
+      <option value="">Selecione área ou subárea</option>
+      ${areaData.map((area) => `<option value="${area.id}" ${area.id === selectedId ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("")}
+    </select>
+  `;
+}
+
+function planningFolderCards(rows = planningActionRows(), dataAttr = "planning-folder-area") {
+  const summaries = planningAreaSummaries(rows);
+  return `
+    <div class="planning-folder-grid">
+      ${summaries.map((item) => `
+        <button class="planning-folder-card ${state.planningAreaId === item.area.id ? "is-active" : ""}" data-${dataAttr}="${item.area.id}" type="button">
+          <div>${assetIcon(item.area.icon || "action", "blue", "planning-folder-icon")}</div>
+          <strong>${escapeHtml(item.area.name)}</strong>
+          <span>${item.total} planos gerados</span>
+          <small>${item.awaiting} aguardando envio · ${item.active} em andamento · ${item.overdue} vencidos</small>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function planningOverview() {
   const activeRows = planningActiveRows();
   const feedbackRows = planningFeedbackRows();
@@ -5131,22 +5170,22 @@ function planningOverview() {
   return `
     <div class="fichario-sub-panel">
       <div class="planning-kpi-grid">
-        ${planningKpi("Planos vigentes", totals.total, "auditoria atual", "neutral")}
-        ${planningKpi("Aguardando envio", totals.awaiting, "auditor optou por editar", "warning")}
-        ${planningKpi("Em andamento", totals.active, "já enviados ao responsável", "blue")}
-        ${planningKpi("Vencidos", totals.overdue, "passaram do prazo", "danger")}
-        ${planningKpi("Devolutivas", feedbackRows.length, "aguardando auditor", "warning")}
+        ${planningKpi("Planos vigentes", totals.total, "auditoria atual", "neutral", "all")}
+        ${planningKpi("Aguardando envio", totals.awaiting, "auditor optou por editar", "warning", "awaiting_send")}
+        ${planningKpi("Em andamento", totals.active, "já enviados ao responsável", "blue", "in_progress")}
+        ${planningKpi("Vencidos", totals.overdue, "passaram do prazo", "danger", "overdue")}
+        ${planningKpi("Devolutivas", feedbackRows.length, "aguardando auditor", "purple", "pending_review")}
       </div>
       <div class="planning-overview-grid">
         ${planningStatusChart(totals)}
         <div class="planning-rank-card">
-          <div class="planning-card-head"><h2>Áreas com maior atenção</h2><p>Ranking por reprovação, vencimento e volume de planos.</p></div>
+          <div class="planning-card-head"><h2>Áreas com maior atenção</h2><p>Ranking por vencimento, devolutivas e quantidade de planos.</p></div>
           <div class="planning-rank-list">
             ${ranking.map((item, index) => `
               <button class="planning-rank-row" data-planning-area="${item.area.id}" type="button">
                 <b>${index + 1}</b>
                 <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} planos vigentes · ${item.overdue} vencidos · ${item.waiting || 0} devolutivas</span></div>
-                <em>${String(item.area.score).replace(".", ",")}</em>
+                <em>${item.total}</em>
               </button>
             `).join("")}
           </div>
@@ -5158,6 +5197,9 @@ function planningOverview() {
 
 function planningPlansTable(rows = planningActionRows(), options = {}) {
   const compact = Boolean(options.compact);
+  if (!rows.length) {
+    return `<div class="planning-empty-state">Nenhum plano encontrado para este filtro.</div>`;
+  }
   return `
     <div class="planning-table-wrap">
       <table class="planning-table">
@@ -5184,30 +5226,32 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
 }
 
 function planningPlansContent() {
-  const rows = planningActiveRows();
-  const summaries = planningAreaSummaries(rows);
-  const selected = planningSelectedAreaSummary(rows);
+  const baseRows = [...planningActiveRows(), ...planningFeedbackRows()];
+  const rows = state.planningStatusFilter === "pending_review"
+    ? planningFeedbackRows()
+    : state.planningStatusFilter
+      ? planningActiveRows().filter((row) => row.status === state.planningStatusFilter)
+      : baseRows;
+  const selectedArea = areaData.find((area) => area.id === state.planningAreaId);
+  const visibleRows = selectedArea ? rows.filter((row) => row.area.id === selectedArea.id) : rows;
+  const isFolderView = !state.planningStatusFilter && !selectedArea;
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>Planos de ação vigentes</h2><p>Aqui entram apenas planos abertos: aguardando envio, em andamento ou vencidos. Aprovados e reprovados ficam no histórico.</p></div><button class="fichario-sub-action is-primary" type="button">Revisar aguardando envio</button></div>
-      <div class="planning-filter-line"><label><span>${icons.search}</span><input placeholder="Pesquisar área, responsável ou plano..." /></label><button class="fichario-sub-action" type="button">Status</button><button class="fichario-sub-action" type="button">Mês</button></div>
-      <div class="planning-area-layout">
-        <div class="planning-area-list">
-          ${summaries.map((item) => `
-            <button class="planning-area-row ${selected?.area.id === item.area.id ? "is-active" : ""}" data-planning-area="${item.area.id}" type="button">
-              <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.total} vigentes · ${item.awaiting} aguardando envio · ${item.active} em andamento</span></div>
-              <b>${item.total}</b>
-            </button>
-          `).join("")}
-        </div>
+      <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Pastas dos planos gerados no ciclo atual. Use os filtros para abrir um status ou uma área específica.</p></div>${state.planningStatusFilter || selectedArea ? `<button class="fichario-sub-action" data-clear-planning-filter type="button">Limpar filtro</button>` : ""}</div>
+      <div class="planning-filter-line">
+        <label><span>${icons.search}</span><input placeholder="Pesquisar plano, área ou responsável..." /></label>
+        ${planningAreaSelect(state.planningAreaId, "planning-area-select")}
+        <button class="fichario-sub-action" type="button">Status</button>
+        <button class="fichario-sub-action" type="button">Mês</button>
+      </div>
+      ${isFolderView ? planningFolderCards(baseRows) : `
         <div class="planning-area-detail">
           <div class="planning-area-detail-head">
-            <div><span>Área selecionada</span><h3>${escapeHtml(selected?.area.name || "Área")}</h3><p>${selected?.total || 0} planos vigentes · nota ${String(selected?.area.score || 0).replace(".", ",")}</p></div>
-            <button class="fichario-sub-action" data-area-detail="${selected?.area.id || ""}" type="button">Abrir área</button>
+            <div><span>${selectedArea ? "Área filtrada" : "Filtro aplicado"}</span><h3>${escapeHtml(selectedArea?.name || planningStatusFilterLabel(state.planningStatusFilter))}</h3><p>${visibleRows.length} planos listados · ${escapeHtml(planningStatusFilterLabel(state.planningStatusFilter).toLowerCase())}.</p></div>
           </div>
-          ${planningPlansTable(selected?.rows || [], { compact: true })}
+          ${planningPlansTable(visibleRows)}
         </div>
-      </div>
+      `}
     </div>
   `;
 }
@@ -5236,27 +5280,20 @@ function planningFeedbackContent() {
 
 function planningHistoryContent() {
   const rows = planningHistoryRows();
-  const summaries = planningAreaSummaries(rows);
-  const selected = planningSelectedAreaSummary(rows);
+  const selectedArea = areaData.find((area) => area.id === state.planningAreaId);
+  const visibleRows = selectedArea ? rows.filter((row) => row.area.id === selectedArea.id) : [];
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>Histórico por área</h2><p>Aprovados e reprovados ficam fechados aqui. Selecione uma área para ver o histórico completo daquela área.</p></div><button class="fichario-sub-action" type="button">Exportar histórico</button></div>
-      <div class="planning-area-layout">
-        <div class="planning-area-list">
-          ${summaries.map((item) => `
-            <button class="planning-area-row ${selected?.area.id === item.area.id ? "is-active" : ""}" data-planning-history-area="${item.area.id}" type="button">
-              <div><strong>${escapeHtml(item.area.name)}</strong><span>${item.approved} aprovados · ${item.rejected} reprovados</span></div>
-              <b>${item.total}</b>
-            </button>
-          `).join("")}
+      <div class="fichario-sub-head planning-history-head">
+        <div><h2>Histórico por área</h2><p>Selecione uma área para consultar planos aprovados, reprovados e vencidos.</p></div>
+        <div class="planning-head-actions">${planningAreaSelect(state.planningAreaId, "planning-history-select")}<button class="fichario-sub-action" type="button">Exportar</button></div>
+      </div>
+      <div class="planning-area-detail">
+        <div class="planning-area-detail-head">
+          <div><span>${selectedArea ? "Área selecionada" : "Nenhuma área selecionada"}</span><h3>${escapeHtml(selectedArea?.name || "Selecione a área")}</h3><p>${selectedArea ? `${visibleRows.length} registros históricos disponíveis para consulta.` : "Escolha uma área no filtro acima para carregar o histórico."}</p></div>
+          <button class="fichario-sub-action" type="button" ${selectedArea ? "" : "disabled"}>Baixar histórico</button>
         </div>
-        <div class="planning-area-detail">
-          <div class="planning-area-detail-head">
-            <div><span>Histórico selecionado</span><h3>${escapeHtml(selected?.area.name || "Área")}</h3><p>${selected?.total || 0} planos fechados · disponíveis para consulta e download.</p></div>
-            <button class="fichario-sub-action" type="button">Baixar histórico</button>
-          </div>
-          ${planningPlansTable(selected?.rows || [], { compact: true })}
-        </div>
+        ${selectedArea ? planningPlansTable(visibleRows) : `<div class="planning-empty-state">Selecione uma área para visualizar os planos fechados.</div>`}
       </div>
     </div>
   `;
@@ -5517,6 +5554,40 @@ document.addEventListener("click", (event) => {
   const planningView = event.target.closest("[data-planning-view]");
   if (planningView) {
     state.planningView = planningView.dataset.planningView;
+    state.planningStatusFilter = "";
+    if (state.planningView !== "history") state.planningAreaId = "";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningStatus = event.target.closest("[data-planning-status]");
+  if (planningStatus) {
+    const status = planningStatus.dataset.planningStatus;
+    state.planningStatusFilter = status === "all" ? "" : status;
+    state.planningAreaId = "";
+    state.planningView = status === "pending_review" ? "feedback" : "plans";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-clear-planning-filter]")) {
+    state.planningAreaId = "";
+    state.planningStatusFilter = "";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningFolder = event.target.closest("[data-planning-folder-area]");
+  if (planningFolder) {
+    state.planningAreaId = planningFolder.dataset.planningFolderArea;
+    state.planningStatusFilter = "";
+    state.planningView = "plans";
     state.view = "actions";
     syncHashWithView("actions");
     render();
@@ -5526,6 +5597,7 @@ document.addEventListener("click", (event) => {
   const planningArea = event.target.closest("[data-planning-area]");
   if (planningArea) {
     state.planningAreaId = planningArea.dataset.planningArea;
+    state.planningStatusFilter = "";
     state.planningView = "plans";
     state.view = "actions";
     syncHashWithView("actions");
@@ -5676,6 +5748,25 @@ document.addEventListener("change", (event) => {
   const reportArea = event.target.closest("[data-report-area-select]");
   if (reportArea) {
     state.selectedArea = reportArea.value;
+    render();
+  }
+
+  const planningAreaSelectEl = event.target.closest("[data-planning-area-select]");
+  if (planningAreaSelectEl) {
+    state.planningAreaId = planningAreaSelectEl.value;
+    state.planningView = "plans";
+    state.view = "actions";
+    syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const planningHistorySelectEl = event.target.closest("[data-planning-history-select]");
+  if (planningHistorySelectEl) {
+    state.planningAreaId = planningHistorySelectEl.value;
+    state.planningView = "history";
+    state.view = "actions";
+    syncHashWithView("actions");
     render();
   }
 });
