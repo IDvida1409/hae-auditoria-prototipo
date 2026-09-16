@@ -12595,3 +12595,294 @@ button.planning-kpi:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Ajustes específicos do APK/celular: mantém o desktop aprovado e reorganiza só telas estreitas. */
+@media (max-width: 760px) {
+  body {
+    overflow: hidden;
+    background: #eef4fb;
+  }
+
+  .app-shell.fichario-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+    background: linear-gradient(180deg, #eef5fc 0%, #e8f0f8 100%);
+  }
+
+  .fichario-shell .main {
+    width: 100vw;
+    height: 100dvh;
+    margin: 0;
+    padding: 14px 10px max(18px, env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: 0;
+    background: rgba(246, 250, 255, .96);
+    box-shadow: none;
+  }
+
+  .fichario-shell .topbar.fichario-topbar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 50px;
+    padding: 0 4px 12px;
+  }
+
+  .fichario-topbar .brand-row {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .fichario-topbar .idauditor-mark {
+    width: 132px;
+    height: 36px;
+    opacity: .9;
+  }
+
+  .fichario-topbar .message-btn {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-radius: 12px;
+  }
+
+  .fichario-topbar .message-btn img {
+    width: 23px;
+    height: 23px;
+  }
+
+  .fichario-topbar .message-btn::after {
+    top: -7px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    font-size: 10.5px;
+  }
+
+  .fichario-topbar .user-mini {
+    flex: 0 0 auto;
+  }
+
+  .fichario-topbar .user-menu-trigger {
+    min-width: 0;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .fichario-topbar .user-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 13px;
+  }
+
+  .fichario-topbar .user-menu-trigger > svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .fichario-tabs {
+    gap: 4px;
+    margin: 0 -10px;
+    padding: 0 10px;
+    scroll-padding-inline: 10px;
+  }
+
+  .fichario-tab {
+    min-width: 118px;
+    height: 48px;
+    gap: 7px;
+    padding: 0 12px 7px;
+    border-radius: 15px 15px 0 0;
+  }
+
+  .fichario-tab::after {
+    right: -20px;
+    width: 28px;
+    height: 48px;
+  }
+
+  .fichario-tab.is-active {
+    height: 54px;
+  }
+
+  .fichario-tab img {
+    width: 25px;
+    height: 25px;
+    flex-basis: 25px;
+  }
+
+  .fichario-tab span {
+    font-size: 12px;
+  }
+
+  .fichario-home {
+    padding: 18px 16px 24px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .fichario-panel-head {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .fichario-home .home-intro .eyebrow {
+    font-size: 13px;
+    gap: 9px;
+  }
+
+  .fichario-home .home-intro .home-eyebrow img {
+    width: 25px;
+    height: 25px;
+  }
+
+  .fichario-home .date-line {
+    justify-self: start;
+    min-height: 32px;
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  .fichario-home .date-line img {
+    width: 30px;
+    height: 30px;
+  }
+
+  .fichario-home .panel-legends {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    margin: 4px 0 16px;
+  }
+
+  .fichario-home .panel-legend-group {
+    gap: 8px;
+  }
+
+  .fichario-home .panel-legend-group strong {
+    font-size: 10.5px;
+  }
+
+  .fichario-home .panel-legend-group > span {
+    gap: 9px 13px;
+  }
+
+  .fichario-home .panel-legend-item {
+    font-size: 12px;
+  }
+
+  .fichario-summary-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .fichario-summary-card {
+    min-height: 142px;
+    height: auto;
+    padding: 14px 16px;
+    border-radius: 10px;
+  }
+
+  .fichario-summary-card h2 {
+    font-size: 17px;
+    line-height: 1.15;
+  }
+
+  .fichario-summary-card > p {
+    font-size: 12.5px;
+  }
+
+  .pending-compact-grid {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .pending-compact-grid img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .pending-compact-grid b {
+    font-size: 24px;
+  }
+
+  .pending-compact-grid small {
+    max-width: 72px;
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .fichario-summary-card .dash-evolution {
+    height: 118px;
+    margin-top: 8px;
+  }
+
+  .feedback-compact-row {
+    align-items: center;
+    margin-top: 10px;
+  }
+
+  .feedback-count strong {
+    font-size: 28px;
+  }
+
+  .feedback-count span {
+    font-size: 12px;
+  }
+
+  .feedback-toggle,
+  .fichario-summary-card .outline-btn {
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 11px;
+    font-size: 13px;
+  }
+
+  .fichario-home .area-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .fichario-home .area-tile {
+    height: 154px;
+    min-height: 154px;
+  }
+}
+
+@media (max-width: 420px) {
+  .fichario-shell .main {
+    padding-inline: 8px;
+  }
+
+  .fichario-home {
+    padding-inline: 12px;
+  }
+
+  .fichario-topbar .idauditor-mark {
+    width: 118px;
+  }
+
+  .fichario-topbar .message-btn {
+    width: 39px;
+    height: 39px;
+    flex-basis: 39px;
+  }
+
+  .fichario-topbar .user-avatar {
+    width: 35px;
+    height: 35px;
+  }
+
+  .fichario-tab {
+    min-width: 108px;
+  }
+
+  .fichario-tab span {
+    font-size: 11.4px;
+  }
+
+  .fichario-home .area-grid {
+    grid-template-columns: 1fr;
+  }
+}
