@@ -11537,6 +11537,10 @@ h3 {
   box-shadow: inset 0 1px rgba(255, 255, 255, .28), 0 18px 38px rgba(7, 26, 61, .16);
 }
 
+.fichario-home .mobile-selected-panel {
+  display: none;
+}
+
 .fichario-home .selected-panel > h2,
 .fichario-home .selected-area-copy h2,
 .fichario-home .side-title {
@@ -12772,16 +12776,28 @@ button.planning-kpi:hover {
   }
 
   .fichario-summary-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    display: flex;
+    gap: 10px;
+    margin-right: -12px;
+    padding-right: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
     margin-bottom: 16px;
   }
 
+  .fichario-summary-grid::-webkit-scrollbar {
+    display: none;
+  }
+
   .fichario-summary-card {
+    flex: 0 0 min(86%, 320px);
     min-height: 142px;
     height: auto;
     padding: 14px 16px;
     border-radius: 10px;
+    scroll-snap-align: start;
   }
 
   .fichario-summary-card h2 {
@@ -12847,6 +12863,179 @@ button.planning-kpi:hover {
   .fichario-home .area-tile {
     height: 154px;
     min-height: 154px;
+  }
+
+  .fichario-home .desktop-selected-panel {
+    display: none;
+  }
+
+  .fichario-home .mobile-selected-panel {
+    display: grid;
+    position: relative;
+    top: auto;
+    max-width: none;
+    margin: 0 0 16px;
+  }
+
+  .fichario-home .mobile-selected-panel .selected-area-head {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .fichario-home .mobile-selected-panel .selected-icon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .fichario-home .mobile-selected-panel .quick-metrics.quick-metrics-risk .quick-metric {
+    grid-template-columns: minmax(86px, 1fr) auto;
+  }
+
+  .fichario-home .mobile-selected-panel .metric-risk-distribution {
+    grid-template-columns: 1fr !important;
+  }
+
+  .fichario-shell .audit-start {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .fichario-shell .info-strip {
+    min-height: auto;
+    padding: 13px 42px 13px 15px;
+    border-radius: 12px;
+  }
+
+  .fichario-shell .info-strip h2 {
+    font-size: 14px;
+  }
+
+  .fichario-shell .info-strip p {
+    font-size: 11px;
+  }
+
+  .fichario-shell .start-grid {
+    grid-template-columns: 1fr;
+    gap: 11px;
+    margin-top: 12px;
+  }
+
+  .fichario-shell .start-tile {
+    grid-template-columns: 62px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    justify-items: start;
+    min-height: 116px;
+    padding: 14px 15px;
+    gap: 8px 12px;
+    text-align: left;
+  }
+
+  .fichario-shell .start-tile img {
+    grid-row: 1 / 3;
+    width: 58px;
+    height: 58px;
+  }
+
+  .fichario-shell .start-tile h3,
+  .fichario-shell .start-tile p {
+    text-align: left;
+  }
+
+  .fichario-shell .start-tile h3 {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .fichario-shell .start-tile p {
+    min-height: 0;
+    margin: 3px 0 0;
+    font-size: 11.5px;
+    line-height: 1.25;
+  }
+
+  .fichario-shell .start-tile .outline-btn {
+    grid-column: 2;
+    width: auto;
+    min-height: 34px;
+    margin-top: 2px;
+    padding-inline: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .fichario-shell .how-panel {
+    min-height: 0;
+    height: auto;
+    padding: 16px;
+    gap: 12px;
+    border-radius: 12px;
+  }
+
+  .fichario-shell .how-panel h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .fichario-shell .how-step {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .fichario-shell .how-panel .how-step .nav-icon,
+  .fichario-shell .how-panel .how-step .tiny-icon,
+  .fichario-shell .how-panel .how-step .tiny-icon svg,
+  .fichario-shell .how-panel .how-step .tiny-icon .asset-img {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .fichario-shell .how-step h3 {
+    font-size: 13px;
+  }
+
+  .fichario-shell .how-step p {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .fichario-sub-tabs,
+  .planning-filter-line {
+    scrollbar-width: none;
+  }
+
+  .fichario-sub-tabs::-webkit-scrollbar,
+  .planning-filter-line::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fichario-sub-tabs {
+    max-width: 100%;
+    padding-bottom: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .fichario-sub-tab {
+    min-width: 118px;
+    padding-inline: 14px;
+    font-size: 12px;
+  }
+
+  .planning-filter-line {
+    display: flex;
+    gap: 8px;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .planning-filter-line > * {
+    flex: 0 0 auto;
   }
 }
 

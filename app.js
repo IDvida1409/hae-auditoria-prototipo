@@ -1173,7 +1173,7 @@ function quickMetrics(area) {
   `;
 }
 
-function selectedPanel() {
+function selectedPanel(extraClass = "") {
   if (!state.selectedArea) {
     return "";
   }
@@ -1185,7 +1185,7 @@ function selectedPanel() {
     ? `${highRiskCount} ${highRiskCount === 1 ? "item de alto risco está não conforme" : "itens de alto risco estão não conformes"}; priorizar ação corretiva.`
     : "Acompanhar as não conformidades registradas e manter a evolução da nota.";
   return `
-    <aside class="selected-panel surface">
+    <aside class="selected-panel surface ${extraClass}">
       <button class="panel-close" data-clear-selection title="Fechar detalhe">${icons.close}</button>
       <h2>Área selecionada</h2>
       <div class="selected-area-head" style="--status-color:${status.color}">
@@ -1550,11 +1550,12 @@ function dashboardHome() {
               </div>
             </section>
           </div>
+          ${hasSelection ? selectedPanel("mobile-selected-panel") : ""}
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
             ${areaData.map((area) => areaTile(area)).join("")}
           </div>
         </div>
-        ${hasSelection ? selectedPanel() : ""}
+        ${hasSelection ? selectedPanel("desktop-selected-panel") : ""}
       </div>
     </div>
   `;
