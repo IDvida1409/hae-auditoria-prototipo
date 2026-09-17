@@ -4,5 +4,8 @@ www/
 .env
 .DS_Store
 *.log
+data/uploads/
+.backend-tests/
+*.upload-tmp
 preview*.png
 layout-check*.png

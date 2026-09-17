@@ -85,8 +85,23 @@ As APIs reais começam pelo banco Postgres. Sem `DATABASE_URL`, as rotas estrutu
 - `GET /api/sync-queue?status=pending`
   - Lista operações pendentes.
 - `POST /api/sync-queue/process`
-  - Processa lote básico da fila.
-  - Por enquanto registra aceitação; depois será conectado por `entity_type` e `operation`.
+  - Aplica operações em transações, por usuário/dispositivo, com dependências e controle de duplicidade.
+  - `synced` significa que a operação foi aplicada. Recebimento isolado não é confirmação de sincronização.
+  - O POST da fila também tenta processar imediatamente o lote recebido.
+  - Requer `deviceUid`; cada operação contém `clientOperationId`, `clientSequence`, `dependsOn` e `payload`.
+  - Finalização offline calcula a nota, mas aguarda definição do fluxo para geração do plano.
+
+## Complementos da infraestrutura
+
+- `GET /api/offline-bootstrap`: áreas, checklists completos, blocos, perguntas e configurações para cache local.
+- `GET /api/audits` e `GET /api/audits/:id`: consulta e recuperação de auditorias/respostas/evidências.
+- `GET /api/dashboard?monthStart=YYYY-MM-01`: agregados reais de notas, NCs e planos.
+- `GET /api/users`, `POST /api/users` e `PATCH /api/users/:id`: cadastro básico sem ativar tela de login.
+- `GET /api/notifications` e `POST /api/notifications/:id/read`: consulta e registro de leitura.
+- `POST /api/offline-files`: upload binário, checksum, proteção contra duplicidade e armazenamento privado.
+- `GET /api/files/:id/content`: download do arquivo privado pelo usuário que fez o upload.
+- Permissões de negócio e autenticação real ainda precisam ser definidas e aplicadas.
+- Consulte `BACKEND_READINESS.md` para requisitos de implantação e validação pendente.
 
 ## Estratégia para fotos e PDFs
 

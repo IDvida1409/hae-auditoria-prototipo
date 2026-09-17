@@ -34,6 +34,9 @@ for (const file of files) {
   fs.copyFileSync(path.join(root, file), path.join(output, file));
 }
 
+const androidIndex = path.join(output, "index.html");
+fs.writeFileSync(androidIndex, fs.readFileSync(androidIndex, "utf8").replace("<body>", '<body class="android-app">'));
+
 copyDir(path.join(root, "assets"), path.join(output, "assets"));
 
 console.log(`Build Android web gerado em ${output}`);

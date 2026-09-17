@@ -2,11 +2,16 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const syncService = require("./lib/sync-service");
+const fileStorage = require("./lib/file-storage");
+const operationalApi = require("./lib/operational-api");
+const resourceApi = require("./lib/resource-api");
+const { migrate: runMigrations } = require("./lib/database");
+const reportWorker = require("./lib/report-worker");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
-const migrationsDir = path.join(root, "migrations");
 const port = Number(process.env.PORT || 3000);
 const databaseUrl = process.env.DATABASE_URL;
 let poolPromise = null;
@@ -53,50 +58,6 @@ function useSslForPostgres() {
   return mode === "require" || mode === "verify-ca" || mode === "verify-full";
 }
 
-function migrationFiles() {
-  if (!fs.existsSync(migrationsDir)) return [];
-  return fs.readdirSync(migrationsDir)
-    .filter((file) => /^\d+_.+\.sql$/i.test(file))
-    .sort();
-}
-
-async function runMigrations(pool) {
-  await pool.query(`
-    create table if not exists schema_migrations (
-      id serial primary key,
-      filename text not null unique,
-      applied_at timestamptz not null default now()
-    )
-  `);
-
-  for (const filename of migrationFiles()) {
-    const applied = await pool.query(
-      "select 1 from schema_migrations where filename = $1",
-      [filename]
-    );
-    if (applied.rows.length) continue;
-
-    const sql = fs.readFileSync(path.join(migrationsDir, filename), "utf8").trim();
-    if (!sql) continue;
-
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
-      await client.query(sql);
-      await client.query(
-        "insert into schema_migrations (filename) values ($1)",
-        [filename]
-      );
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw new Error(`Falha ao aplicar migracao ${filename}: ${error.message}`);
-    } finally {
-      client.release();
-    }
-  }
-}
-
 async function schemaStatus(pool) {
   const result = await pool.query(`
     select
@@ -122,16 +83,13 @@ async function getPool() {
         connectionString: databaseUrl,
         ssl: useSslForPostgres() ? { rejectUnauthorized: false } : false
       });
-      await pool.query(`
-        create table if not exists app_state (
-          id text primary key,
-          state jsonb,
-          updated_at timestamptz
-        )
-      `);
-      await runMigrations(pool);
+      try { await runMigrations(pool); }
+      catch (error) { await pool.end(); throw error; }
       return pool;
-    })();
+    })().catch((error) => {
+      poolPromise = null;
+      throw error;
+    });
   }
   return poolPromise;
 }
@@ -385,8 +343,11 @@ function storageKeyFor(fileType, originalFilename = "") {
 function staticPathFor(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js"]);
+  if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
-  if (!resolved.startsWith(root)) return null;
+  if (!resolved.startsWith(root + path.sep)) return null;
+  if (relativePath.startsWith("assets/") && !resolved.startsWith(path.join(root, "assets") + path.sep)) return null;
   return resolved;
 }
 
@@ -410,6 +371,52 @@ function readStaticReports() {
 }
 
 async function handleApi(request, response, url) {
+  const structuredApisEnabled = process.env.STRUCTURED_APIS_ENABLED !== "false" &&
+    !(process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true");
+  if (!structuredApisEnabled && url.pathname.startsWith("/api/") &&
+      !["/api/health", "/api/state"].includes(url.pathname)) {
+    sendJson(response, 503, { error: "APIs estruturadas aguardam ativacao do controle de acesso." });
+    return true;
+  }
+  const conflictMatch = pathMatch(url.pathname, /^\/api\/sync-queue\/(?<operationId>[^/]+)\/resolve$/);
+  if (conflictMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      const body = await readJsonBody(request);
+      const device = await syncService.deviceFor(pool, user, body.deviceUid);
+      sendJson(response, 200, await syncService.resolveConflict(pool, user, device, decodeURIComponent(conflictMatch.operationId), body.strategy));
+    } catch (error) { sendJson(response, 409, { error: error.message }); }
+    return true;
+  }
+  if (await resourceApi.handle(request, response, url, { getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase })) return true;
+  if (await operationalApi.handle(request, response, url, { getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase })) return true;
+  if (url.pathname === "/api/offline-files" && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const device = await syncService.deviceFor(pool, user, request.headers["x-device-uid"]);
+      sendJson(response, 201, { file: await fileStorage.upload(pool, request, user, device, unitId) });
+    } catch (error) {
+      if (!response.headersSent && !response.destroyed) sendJson(response, 400, { error: error.message });
+    }
+    return true;
+  }
+  const downloadMatch = pathMatch(url.pathname, /^\/api\/files\/(?<id>[0-9a-f-]+)\/content$/i);
+  if (downloadMatch && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      if (!await fileStorage.download(pool, request, response, user, downloadMatch.id)) sendJson(response, 404, { error: "Arquivo nao encontrado" });
+    } catch (error) {
+      if (!response.headersSent) sendJson(response, 500, { error: "Arquivo indisponivel" });
+    }
+    return true;
+  }
   if (url.pathname === "/api/health") {
     try {
       const pool = await getPool();
@@ -729,6 +736,8 @@ async function handleApi(request, response, url) {
       const body = await readJsonBody(request);
       const unitId = body.unitId || await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
+      const device = body.deviceUid ? await syncService.deviceFor(pool, user, body.deviceUid) : null;
+      if (body.localAuditId && !device) throw new Error("deviceUid obrigatorio quando localAuditId for informado");
       const areaId = body.areaId;
       if (!areaId) {
         sendJson(response, 400, { error: "areaId é obrigatório" });
@@ -749,6 +758,7 @@ async function handleApi(request, response, url) {
             checklist_id,
             cycle_id,
             auditor_user_id,
+            device_id,
             local_audit_id,
             source,
             status,
@@ -756,10 +766,10 @@ async function handleApi(request, response, url) {
             offline_created,
             sync_status
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, 'in_progress', now(), $9, $10)
+          values ($1, $2, $3, $4, $5, $6, $11, $7, $8, 'in_progress', now(), $9, $10)
           on conflict (device_id, local_audit_id)
           where device_id is not null and local_audit_id is not null
-          do nothing
+          do update set local_audit_id = excluded.local_audit_id
           returning *
         `,
         [
@@ -772,7 +782,8 @@ async function handleApi(request, response, url) {
           body.localAuditId || null,
           body.source || "web",
           Boolean(body.offlineCreated),
-          body.offlineCreated ? "pending" : "synced"
+          body.offlineCreated ? "pending" : "synced",
+          device?.id || null
         ]
       );
       sendJson(response, 201, { audit: result.rows[0] });
@@ -793,15 +804,21 @@ async function handleApi(request, response, url) {
       const client = await pool.connect();
       try {
         await client.query("begin");
+        const audit = await client.query("select * from audits where id=$1 for update", [auditAnswersMatch.id]);
+        if (!audit.rows[0] || ["finished", "cancelled"].includes(audit.rows[0].status)) throw new Error("Auditoria inexistente ou encerrada");
         for (const answer of answers) {
           if (!answer.questionId || !["C", "NC", "X"].includes(answer.answer)) {
             throw new Error("Cada resposta precisa ter questionId e answer C/NC/X.");
           }
           const question = await client.query(
-            "select risk_level from checklist_questions where id = $1",
-            [answer.questionId]
+            "select q.risk_level from checklist_questions q join checklist_blocks b on b.id=q.block_id where q.id=$1 and b.checklist_id=$2",
+            [answer.questionId, audit.rows[0].checklist_id]
           );
           if (!question.rows[0]) throw new Error(`Pergunta não encontrada: ${answer.questionId}`);
+          if (answer.expectedRevision != null) {
+            const current = await client.query("select revision from audit_answers where audit_id=$1 and question_id=$2", [auditAnswersMatch.id, answer.questionId]);
+            if (answer.expectedRevision !== (current.rows[0]?.revision || 0)) throw new Error("Conflito de revisao da resposta");
+          }
           const result = await client.query(
             `
               insert into audit_answers (
@@ -820,6 +837,7 @@ async function handleApi(request, response, url) {
                 score_value = excluded.score_value,
                 risk_level_snapshot = excluded.risk_level_snapshot,
                 notes = excluded.notes,
+                revision = audit_answers.revision + 1,
                 answered_at = now(),
                 updated_at = now()
               returning *
@@ -1385,39 +1403,13 @@ async function handleApi(request, response, url) {
       const operations = Array.isArray(body.operations) ? body.operations : [body];
       const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
-      const saved = [];
-      for (const operation of operations) {
-        if (!operation.clientOperationId) throw new Error("clientOperationId é obrigatório para sincronização offline.");
-        const result = await pool.query(
-          `
-            insert into sync_queue (
-              device_id,
-              user_id,
-              client_operation_id,
-              entity_type,
-              entity_id,
-              operation,
-              payload,
-              status
-            )
-            values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'pending')
-            on conflict (client_operation_id)
-            do update set client_operation_id = excluded.client_operation_id
-            returning *
-          `,
-          [
-            operation.deviceId || null,
-            user?.id || null,
-            operation.clientOperationId,
-            operation.entityType,
-            operation.entityId || null,
-            operation.operation || "create",
-            JSON.stringify(operation.payload || {})
-          ]
-        );
-        saved.push(result.rows[0]);
-      }
-      sendJson(response, 202, { operations: saved });
+      const device = await syncService.deviceFor(pool, user, body.deviceUid);
+      const saved = await syncService.enqueue(pool, user, device, operations);
+      const processed = await syncService.processOperations(pool, user.id, device.id, saved.map((item) => item.client_operation_id), saved.length);
+      const updated = new Map(processed.map((item) => [item.id, item]));
+      const results = saved.map((item) => updated.get(item.id) || item);
+      const complete = results.every((item) => ["synced", "ignored"].includes(item.status));
+      sendJson(response, complete ? 200 : 202, { operations: results, complete });
     } catch (error) {
       sendJson(response, 400, { error: error.message || "Erro ao registrar sincronização" });
     }
@@ -1429,15 +1421,17 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const status = url.searchParams.get("status") || "pending";
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      const device = await syncService.deviceFor(pool, user, url.searchParams.get("deviceUid"));
       const result = await pool.query(
         `
           select *
           from sync_queue
-          where status = $1
+          where status = $1 and user_id = $2 and device_id = $3
           order by created_at asc
           limit 200
         `,
-        [status]
+        [status, user.id, device.id]
       );
       sendJson(response, 200, { operations: result.rows });
     } catch (error) {
@@ -1451,39 +1445,9 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const body = await readJsonBody(request);
-      const limit = Math.min(Number(body.limit || 50), 200);
-      const pending = await pool.query(
-        `
-          select *
-          from sync_queue
-          where status = 'pending'
-          order by created_at asc
-          limit $1
-        `,
-        [limit]
-      );
-      const processed = [];
-      for (const operation of pending.rows) {
-        const result = await pool.query(
-          `
-            update sync_queue
-            set status = 'synced',
-                processed_at = now(),
-                synced_at = now(),
-                result_payload = $2::jsonb
-            where id = $1
-            returning *
-          `,
-          [
-            operation.id,
-            JSON.stringify({
-              accepted: true,
-              note: "Operação recebida. Aplicação específica será conectada por entity_type/operation."
-            })
-          ]
-        );
-        processed.push(result.rows[0]);
-      }
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      const device = await syncService.deviceFor(pool, user, body.deviceUid);
+      const processed = await syncService.processOperations(pool, user.id, device.id, null, body.limit);
       sendJson(response, 200, { processed });
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro ao processar fila offline" });
@@ -1514,10 +1478,38 @@ function serveStatic(request, response, url) {
 }
 
 const server = http.createServer(async (request, response) => {
+  const origin = request.headers.origin;
+  const allowedOrigins = new Set(["https://localhost", "http://localhost", ...(process.env.CORS_ORIGINS || "").split(",").map((item) => item.trim()).filter(Boolean)]);
+  if (origin && allowedOrigins.has(origin)) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Vary", "Origin");
+    response.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Device-Uid,X-Local-File-Id,X-File-Type,X-File-Name");
+    response.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,OPTIONS");
+  }
+  if (request.method === "OPTIONS") {
+    response.writeHead(origin && allowedOrigins.has(origin) ? 204 : 403);
+    response.end();
+    return;
+  }
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (await handleApi(request, response, url)) return;
   serveStatic(request, response, url);
 });
+
+let reportWorkerRunning = false;
+const reportTimer = setInterval(async () => {
+  if (!databaseUrl || reportWorkerRunning || process.env.REPORT_WORKER_ENABLED === "false" ||
+      (process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true")) return;
+  reportWorkerRunning = true;
+  try {
+    const pool = await getPool();
+    for (let index = 0; index < 5; index++) {
+      if (!await reportWorker.processNext(pool)) break;
+    }
+  } catch (error) { console.error("Worker de relatorios:", error.message); }
+  finally { reportWorkerRunning = false; }
+}, 3000);
+reportTimer.unref();
 
 server.listen(port, () => {
   console.log(`HAE Auditoria rodando em http://localhost:${port}`);

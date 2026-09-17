@@ -10807,8 +10807,21 @@ h3 {
 .fichario-topbar .brand-row {
   display: flex;
   align-items: center;
-  gap: 0;
-  min-width: 170px;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.fichario-topbar .app-build-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: #075bd8;
+  background: #eaf3ff;
+  font-size: 11px;
+  font-weight: 720;
+  white-space: nowrap;
 }
 
 .fichario-topbar .idvida-mark {
@@ -13950,5 +13963,770 @@ button.planning-kpi:hover {
     width: 14px;
     height: 14px;
     flex: 0 0 14px;
+  }
+}
+
+/* Correção final do APK mobile: gráfico em apresentação, legenda paginada e cards compactos. */
+@media (max-width: 760px) {
+  body:has(.graph-layout.is-expanded) {
+    overflow: hidden;
+  }
+
+  .graph-layout .month-strip {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 5px 1px 7px !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .graph-layout .month-strip::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .graph-layout .month-chip {
+    flex: 0 0 calc((100% - 18px) / 4) !important;
+    min-width: calc((100% - 18px) / 4) !important;
+    min-height: 28px !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 0 4px !important;
+    border-radius: 8px !important;
+    font-size: 9.4px !important;
+    scroll-snap-align: start !important;
+  }
+
+  .graph-layout .chip-color {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  .graph-layout.is-expanded {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    display: block !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    overflow: hidden !important;
+    background: #eaf0f7 !important;
+  }
+
+  .graph-layout.is-expanded > div {
+    height: 100% !important;
+  }
+
+  .graph-layout.is-expanded .chart-panel-large {
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 10px !important;
+    border-radius: 14px !important;
+  }
+
+  .graph-layout.is-expanded .chart-head {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: start !important;
+    gap: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .graph-layout.is-expanded .chart-head h2 {
+    font-size: 16px !important;
+  }
+
+  .graph-layout.is-expanded .chart-note {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  .graph-layout.is-expanded .chart-tools {
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  .graph-layout.is-expanded .chart-mode-btn {
+    max-width: 182px !important;
+    min-height: 36px !important;
+    padding-inline: 9px !important;
+    font-size: 10px !important;
+  }
+
+  .graph-layout.is-expanded .chart-mode-btn span {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .graph-layout.is-expanded .chart-expand-btn {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    border-radius: 10px !important;
+    font-size: 22px !important;
+  }
+
+  .graph-layout.is-expanded .mobile-chart-scroll {
+    height: 100% !important;
+    margin: 0 !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .graph-layout.is-expanded .mobile-chart-scroll .bar-chart {
+    width: 980px !important;
+    min-width: 980px !important;
+    height: 430px !important;
+    max-height: 100% !important;
+  }
+
+  .graph-layout.is-expanded.is-impact-mode .mobile-chart-scroll {
+    overflow-x: hidden !important;
+  }
+
+  .graph-layout.is-expanded.is-impact-mode .impact-row-list {
+    grid-template-columns: 1fr !important;
+  }
+
+  .graph-layout.is-expanded .month-strip {
+    margin-top: 4px !important;
+  }
+
+  .graph-layout.is-expanded .graph-bottom,
+  .graph-layout.is-expanded .graph-action-row,
+  .graph-layout.is-expanded .compare-panel {
+    display: none !important;
+  }
+
+  .graph-bottom {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    margin-top: 9px !important;
+  }
+
+  .graph-bottom .mini-panel {
+    min-height: 0 !important;
+    padding: 10px !important;
+    gap: 7px !important;
+  }
+
+  .graph-bottom .mini-panel-head {
+    font-size: 11.6px !important;
+    line-height: 1.12 !important;
+  }
+
+  .graph-assessment {
+    display: grid !important;
+    grid-template-columns: 82px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "score chart"
+      "delta chart" !important;
+    align-items: center !important;
+    min-height: 92px !important;
+    gap: 6px 9px !important;
+    margin-top: 3px !important;
+  }
+
+  .general-score-row {
+    grid-area: score !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 2px !important;
+  }
+
+  .general-score-value {
+    font-size: 25px !important;
+  }
+
+  .general-score-row strong {
+    font-size: 10.8px !important;
+  }
+
+  .general-score-row span {
+    font-size: 9px !important;
+  }
+
+  .general-sparkline {
+    grid-area: chart !important;
+    height: 88px !important;
+    margin: 0 !important;
+  }
+
+  .general-delta {
+    grid-area: delta !important;
+    min-height: 20px !important;
+    padding: 0 6px !important;
+    font-size: 9px !important;
+    line-height: 20px !important;
+  }
+
+  .graph-risk-summary,
+  .graph-audits {
+    display: grid !important;
+    grid-template-columns: 74px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-top: 4px !important;
+  }
+
+  .risk-total-line,
+  .audit-total-line {
+    display: grid !important;
+    gap: 1px !important;
+    align-content: center !important;
+  }
+
+  .risk-total-line strong,
+  .audit-total-line strong {
+    font-size: 24px !important;
+    line-height: 1 !important;
+  }
+
+  .risk-total-line span,
+  .audit-total-line span {
+    font-size: 9px !important;
+    line-height: 1.08 !important;
+  }
+
+  .graph-summary-list {
+    gap: 5px !important;
+    margin-top: 0 !important;
+  }
+
+  .graph-summary-top {
+    font-size: 9.8px !important;
+  }
+
+  .graph-summary-track {
+    height: 5px !important;
+  }
+
+  .graph-action-row {
+    grid-template-columns: 1fr !important;
+    margin-top: 8px !important;
+  }
+
+  .graph-action-row .primary-btn {
+    width: 100% !important;
+    min-height: 40px !important;
+    padding-inline: 10px !important;
+    font-size: 12px !important;
+  }
+
+  .planning-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .planning-kpi {
+    min-height: 54px !important;
+    padding: 7px !important;
+    border-radius: 8px !important;
+  }
+
+  .planning-kpi span {
+    min-height: 0 !important;
+    font-size: 8.7px !important;
+  }
+
+  .planning-kpi strong {
+    margin-top: 2px !important;
+    font-size: 18px !important;
+  }
+
+  .planning-kpi small {
+    margin-top: 2px !important;
+    font-size: 8.1px !important;
+  }
+
+  .planning-chart-card {
+    min-height: 90px !important;
+    grid-template-columns: 58px minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  .planning-donut {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  .planning-chart-legend {
+    gap: 3px !important;
+    font-size: 9.2px !important;
+    line-height: 1.1 !important;
+  }
+
+  .planning-rank-card {
+    padding: 9px !important;
+  }
+
+  .planning-rank-row {
+    min-height: 38px !important;
+    padding: 8px !important;
+  }
+
+  .planning-folder-card {
+    min-height: 96px !important;
+  }
+
+  .planning-module .fichario-setting-line {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    min-height: 76px !important;
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .planning-module .fichario-setting-line b {
+    grid-column: 1 !important;
+    font-size: 12px !important;
+  }
+
+  .planning-module .fichario-setting-line .fichario-sub-action {
+    grid-column: 2 !important;
+    grid-row: 1 / span 2 !important;
+    min-height: 34px !important;
+  }
+}
+
+@media (max-width: 760px) and (orientation: landscape) {
+  .graph-layout.is-expanded {
+    padding: 6px !important;
+  }
+
+  .graph-layout.is-expanded .chart-panel-large {
+    padding: 8px !important;
+  }
+
+  .graph-layout.is-expanded .mobile-chart-scroll .bar-chart {
+    width: 1000px !important;
+    height: 360px !important;
+  }
+}
+
+/* Ajuste de fluxo mobile do APK: gráfico, cards deslizáveis e resumo preto na posição certa. */
+@media (max-width: 760px) {
+  .fichario-summary-card {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    scroll-snap-align: start !important;
+  }
+
+  .fichario-summary-grid {
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .graph-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .graph-layout > div {
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
+  }
+
+  .graph-layout .chart-panel-large {
+    order: 1 !important;
+  }
+
+  .graph-layout .graph-bottom {
+    order: 2 !important;
+    display: flex !important;
+    grid-template-columns: none !important;
+    gap: 8px !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding: 1px 0 7px !important;
+    margin-top: 9px !important;
+    scroll-snap-type: x mandatory !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+
+  .graph-layout .graph-bottom::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .graph-bottom .mini-panel {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 122px !important;
+    height: 122px !important;
+    padding: 10px 12px !important;
+    overflow: hidden !important;
+    scroll-snap-align: start !important;
+  }
+
+  .graph-bottom .mini-panel-head {
+    min-height: 20px !important;
+    margin-bottom: 2px !important;
+    font-size: 12.2px !important;
+  }
+
+  .graph-bottom .mini-panel-head .tiny-icon,
+  .graph-bottom .mini-panel-head svg,
+  .graph-bottom .mini-panel-head img {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  .graph-assessment {
+    grid-template-columns: 118px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "score chart"
+      "delta chart" !important;
+    min-height: 88px !important;
+    height: 88px !important;
+    gap: 4px 10px !important;
+    margin: 1px 0 0 !important;
+  }
+
+  .general-score-row {
+    align-self: start !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .general-score-value {
+    font-size: 30px !important;
+    line-height: .95 !important;
+  }
+
+  .general-score-row strong {
+    max-width: 104px !important;
+    margin-top: 4px !important;
+    font-size: 11.4px !important;
+    line-height: 1.1 !important;
+  }
+
+  .general-score-row span {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .general-sparkline {
+    height: 82px !important;
+    align-self: center !important;
+  }
+
+  .graph-bottom .general-sparkline {
+    width: 100% !important;
+    height: 96px !important;
+  }
+
+  .general-delta {
+    width: max-content !important;
+    max-width: 108px !important;
+    min-height: 22px !important;
+    padding: 0 7px !important;
+    white-space: normal !important;
+    font-size: 9.6px !important;
+    line-height: 1.12 !important;
+  }
+
+  .graph-risk-summary,
+  .graph-audits {
+    grid-template-columns: 92px minmax(0, 1fr) !important;
+    height: 86px !important;
+    gap: 10px !important;
+  }
+
+  .risk-total-line strong,
+  .audit-total-line strong {
+    font-size: 30px !important;
+  }
+
+  .risk-total-line span,
+  .audit-total-line span {
+    font-size: 10.5px !important;
+  }
+
+  .graph-summary-list {
+    gap: 5px !important;
+  }
+
+  .graph-summary-top {
+    font-size: 10.8px !important;
+  }
+
+  .graph-summary-top b {
+    font-size: 11.8px !important;
+  }
+
+  .graph-summary-track {
+    height: 6px !important;
+  }
+
+  .graph-layout .graph-action-row {
+    order: 3 !important;
+  }
+
+  .graph-layout .compare-panel {
+    order: 4 !important;
+    margin-top: 2px !important;
+  }
+
+  .graph-layout .compare-panel.area-mode {
+    order: 0 !important;
+    margin: 0 0 2px !important;
+  }
+
+  .graph-layout .compare-panel.area-mode h2 {
+    font-size: 17px !important;
+  }
+
+  .graph-layout.is-expanded .compare-panel,
+  .graph-layout.is-expanded .graph-bottom,
+  .graph-layout.is-expanded .graph-action-row {
+    display: none !important;
+  }
+}
+
+/* Card de evolução nas telas de gráficos: gráfico deve ocupar o card, sem notas emboladas. */
+.graph-bottom .mini-panel:first-child {
+  min-height: 238px !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-areas:
+    "score"
+    "chart"
+    "delta" !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin-top: 6px !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-score-row {
+  grid-area: score !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-score-value {
+  font-size: 30px !important;
+  line-height: .95 !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-score-row strong {
+  max-width: none !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.12 !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-score-row span {
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-sparkline {
+  grid-area: chart !important;
+  display: block !important;
+  width: 100% !important;
+  height: 118px !important;
+  margin: 0 !important;
+}
+
+.graph-bottom .mini-panel:first-child .general-delta {
+  grid-area: delta !important;
+  justify-self: start !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-areas:
+    "score"
+    "chart"
+    "delta" !important;
+  gap: 6px !important;
+  margin-top: 4px !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-row {
+  grid-area: score !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-value {
+  font-size: 30px !important;
+  line-height: .95 !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-row strong {
+  max-width: none !important;
+  margin: 0 !important;
+  font-size: 13px !important;
+  line-height: 1.1 !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-row span {
+  font-size: 11px !important;
+}
+
+.graph-assessment-subtitle {
+  margin: 0 !important;
+  color: var(--ink-600) !important;
+  font-size: 12.5px !important;
+  line-height: 1.2 !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .dash-evolution {
+  width: 100% !important;
+  height: 126px !important;
+  margin-top: 0 !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .dash-evolution svg,
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-sparkline {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-sparkline {
+  grid-area: auto !important;
+  height: 128px !important;
+  margin: 0 !important;
+}
+
+.graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-delta {
+  grid-area: delta !important;
+  justify-self: start !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+}
+
+@media (max-width: 760px) {
+  .graph-bottom .mini-panel:first-child {
+    min-height: 166px !important;
+    height: 166px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .general-score-value {
+    font-size: 24px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .general-score-row strong {
+    font-size: 11.6px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .general-score-row span {
+    font-size: 10px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .general-sparkline {
+    height: 82px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .dash-evolution {
+    height: 92px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-sparkline {
+    height: 92px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-value {
+    font-size: 24px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-row strong {
+    font-size: 11.5px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-score-row span {
+    font-size: 10px !important;
+  }
+
+  .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-delta {
+    font-size: 9.8px !important;
+  }
+
+  .graph-assessment-subtitle {
+    font-size: 10.8px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .android-app .graph-layout > div {
+    order: 1 !important;
+  }
+
+  .android-app .graph-layout .compare-panel.area-mode {
+    order: 0 !important;
+    scroll-margin-top: 10px;
+  }
+
+  .android-app .graph-bottom .mini-panel {
+    box-sizing: border-box !important;
+    min-height: 220px !important;
+    height: 220px !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .android-app .graph-bottom .mini-panel-head {
+    flex: 0 0 22px !important;
+  }
+
+  .android-app .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style {
+    flex: 1 !important;
+    grid-template-rows: 32px minmax(0, 1fr) 24px !important;
+    gap: 6px !important;
+    min-height: 0 !important;
+  }
+
+  .android-app .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-sparkline {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .android-app .graph-bottom .mini-panel:first-child .graph-assessment.is-panel-style .general-delta {
+    align-self: center !important;
+    min-height: 24px !important;
+    line-height: 24px !important;
+    font-size: 11px !important;
+  }
+
+  .android-app .graph-bottom .graph-risk-summary,
+  .android-app .graph-bottom .graph-audits {
+    flex: 1 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    align-items: center !important;
+    margin: 4px 0 0 !important;
+  }
+
+  .android-app .graph-bottom .graph-summary-list {
+    gap: 10px !important;
   }
 }

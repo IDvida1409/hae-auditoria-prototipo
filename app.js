@@ -1043,6 +1043,7 @@ function topbar() {
     <header class="topbar fichario-topbar">
       <div class="brand-row">
         <img class="idauditor-mark" src="assets/idauditor-logo.png?v=fichario-shell-1" alt="IDAuditor" />
+        <span class="app-build-badge">Teste 1.0.7</span>
       </div>
       <div class="unit-copy">
         <img class="hospital-mark" src="assets/einstein-logo-menu.png?v=fichario-shell-1" alt="" />
@@ -1376,13 +1377,13 @@ function dashboardEvolution(area = null) {
 }
 
 function generalAssessmentMiniChart() {
-  const monthIds = months.map(([monthId]) => monthId);
+  const monthIds = availableMonthIds();
   const monthPoints = monthIds.map((monthId) => ({ monthId, value: monthAverage(monthId) }));
   const availablePoints = monthPoints.filter((point) => point.value != null);
   const labels = monthIds.map((monthId) => monthId.slice(0, 3).replace(/^./, (letter) => letter.toUpperCase()));
-  const w = 340;
-  const h = 112;
-  const pad = { left: 18, right: 18, top: 26, bottom: 25 };
+  const w = 460;
+  const h = 138;
+  const pad = { left: 24, right: 24, top: 34, bottom: 30 };
   const values = availablePoints.map((point) => point.value);
   const minValue = Math.min(...values, 8) - 0.25;
   const maxValue = Math.max(...values, 8) + 0.25;
@@ -1396,22 +1397,22 @@ function generalAssessmentMiniChart() {
   return `
     <svg class="general-sparkline" viewBox="0 0 ${w} ${h}" role="img" aria-label="Tendência da avaliação geral">
       <line x1="${pad.left}" y1="${h - pad.bottom}" x2="${w - pad.right}" y2="${h - pad.bottom}" stroke="#e3eaf2" stroke-width="1" />
-      <path d="${lineD}" fill="none" stroke="#2f8f46" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+      <path d="${lineD}" fill="none" stroke="#2f8f46" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>
       ${availablePoints
         .map((point) => {
           const index = monthIds.indexOf(point.monthId);
           const x = pad.left + index * xStep;
           const y = yFor(point.value);
           return `
-            <text x="${x}" y="${y - 8}" text-anchor="middle" fill="#207333" font-size="8.8" font-weight="720">${formatScore(point.value)}</text>
-            <circle cx="${x}" cy="${y}" r="3.6" fill="#2f8f46" stroke="#ffffff" stroke-width="1.9"></circle>
+            <text x="${x}" y="${y - 12}" text-anchor="middle" fill="#207333" font-size="14" font-weight="780">${formatScore(point.value)}</text>
+            <circle cx="${x}" cy="${y}" r="5" fill="#2f8f46" stroke="#ffffff" stroke-width="2.4"></circle>
           `;
         })
         .join("")}
       ${labels
         .map(
           (label, index) => `
-            <text x="${pad.left + index * xStep}" y="${h - 5}" text-anchor="middle" fill="${monthPoints[index].value == null ? "#a8b3c2" : "#425474"}" font-size="8.8" font-weight="650">${label}</text>
+            <text x="${pad.left + index * xStep}" y="${h - 7}" text-anchor="middle" fill="${monthPoints[index].value == null ? "#a8b3c2" : "#425474"}" font-size="10.6" font-weight="700">${label}</text>
           `
         )
         .join("")}
@@ -1428,7 +1429,7 @@ function graphGeneralAssessment() {
   const trendClass = delta >= 0 ? "positive" : "danger";
 
   return `
-    <div class="graph-card-body graph-assessment">
+    <div class="graph-card-body graph-assessment is-panel-style">
       <div class="general-score-row">
         <div class="general-score-value">${formatScore(currentScore)}</div>
         <div>
@@ -5440,6 +5441,19 @@ function render(options = {}) {
   if (!options.skipSave) saveState();
 }
 
+function enterChartPresentationMode() {
+  const root = document.documentElement;
+  root.requestFullscreen?.().catch(() => {});
+  screen.orientation?.lock?.("landscape").catch(() => {});
+}
+
+function exitChartPresentationMode() {
+  screen.orientation?.unlock?.();
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.().catch(() => {});
+  }
+}
+
 document.addEventListener("click", (event) => {
   const userTrigger = event.target.closest("[data-user-menu-trigger]");
   if (userTrigger) {
@@ -5481,7 +5495,13 @@ document.addEventListener("click", (event) => {
     state.chartFocusArea = chartArea.dataset.chartArea;
     state.selectedArea = chartArea.dataset.chartArea;
     state.view = "charts";
+    if (document.body.classList.contains("android-app")) state.chartExpanded = false;
     render();
+    if (document.body.classList.contains("android-app")) {
+      requestAnimationFrame(() => {
+        document.querySelector(".graph-layout .compare-panel.area-mode")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+    }
     return;
   }
 
@@ -5513,7 +5533,13 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-toggle-chart-size]")) {
-    state.chartExpanded = !state.chartExpanded;
+    const nextExpanded = !state.chartExpanded;
+    state.chartExpanded = nextExpanded;
+    if (nextExpanded) {
+      enterChartPresentationMode();
+    } else {
+      exitChartPresentationMode();
+    }
     render();
     return;
   }
@@ -5735,6 +5761,11 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-clear-chart-focus]")) {
     state.chartFocusArea = null;
     render();
+    if (document.body.classList.contains("android-app")) {
+      requestAnimationFrame(() => {
+        document.querySelector(".graph-layout .chart-panel-large")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      });
+    }
     return;
   }
 

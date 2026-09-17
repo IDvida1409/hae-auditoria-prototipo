@@ -3,9 +3,15 @@ services:
     name: hae-auditoria-prototipo
     env: node
     plan: free
-    buildCommand: npm install --omit=dev
+    buildCommand: npm ci --omit=dev && npx playwright install --with-deps chromium
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: FILE_STORAGE_DIR
+        value: /var/data/uploads
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "0"
+      - key: STRUCTURED_APIS_ENABLED
+        value: "false"

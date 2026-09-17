@@ -9,6 +9,7 @@ Esta estrutura prepara o projeto para sair do protótipo visual e virar produto 
 - `003_product_workflow_schema.sql`: complementa o fluxo real aprovado para responsáveis, restaurantes terceiros, devolutivas, aprovação/reprovação e avaliação do impacto no mês seguinte.
 - `004_operational_base_schema.sql`: prepara a base operacional inicial com as 12 áreas aprovadas, suporte futuro a subáreas, checklist vinculado por área e regra padrão de auditoria/plano de ação.
 - `005_api_infrastructure_schema.sql`: prepara sessões de login, intenções de upload, eventos de acesso a arquivos, jobs de relatório e campos de processamento da fila offline.
+- `006_offline_sync_integrity.sql`: operações offline, ordem, dependências, revisão das respostas e identificação de arquivos por dispositivo.
 
 ## Carga inicial
 
