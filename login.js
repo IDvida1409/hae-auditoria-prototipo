@@ -37,19 +37,22 @@
   async function submit(form, callback) {
     const values = Object.fromEntries(new FormData(form));
     message(""); busy(form, true);
-    try { await callback(values); }
+    let keepBusy = false;
+    try { keepBusy = await callback(values) === "navigating"; }
     catch (error) { message(error.message); }
-    finally { busy(form, false); }
+    finally { if (!keepBusy) busy(form, false); }
   }
   forms.login.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(forms.login, async (values) => {
       const data = await api("login", { method: "POST", body: JSON.stringify({ ...values, remember: values.remember === "on" }) });
       applyBranding(data.branding);
-      forms.login.reset();
-      if (data.user.must_change_password) { setMode("change"); return; }
+      if (data.user.must_change_password) { forms.login.reset(); setMode("change"); return; }
       sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
+      forms.login.querySelector('.primary-button span').textContent = "Entrando...";
+      message("Autenticação concluída. Abrindo o painel.", true);
       location.replace("/");
+      return "navigating";
     });
   });
   forms.change.addEventListener("submit", (event) => {

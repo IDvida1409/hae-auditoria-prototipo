@@ -49,6 +49,28 @@ async function main() {
       assert.deepEqual(errors, []);
       await page.close();
     }
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.route("**/api/access/me", route => route.fulfill({ status: 401, json: { error: "unauthenticated" } }));
+    await page.route("**/api/access/branding", route => route.fulfill({ json: { branding: null } }));
+    await page.route("**/api/access/login", route => route.fulfill({ json: { user: { id: "test", must_change_password: false }, branding: null } }));
+    await page.route("http://localhost:3012/", route => route.fulfill({ contentType: "text/html", body: "<title>Painel</title>" }));
+    await page.goto("http://localhost:3012/login.html");
+    await page.evaluate(() => addEventListener("beforeunload", () => {
+      const form = document.getElementById("login-form");
+      sessionStorage.setItem("login-transition-test", JSON.stringify({
+        username: form.elements.username.value,
+        password: form.elements.password.value,
+        buttonText: form.querySelector('.primary-button span').textContent,
+        disabled: form.querySelector('.primary-button').disabled
+      }));
+    }));
+    await page.locator('[name="username"]').fill("teste.01");
+    await page.locator('#login-form [name="password"]').fill("12345678");
+    await page.locator("#login-form").evaluate(form => form.requestSubmit());
+    await page.waitForURL("http://localhost:3012/");
+    const transition = JSON.parse(await page.evaluate(() => sessionStorage.getItem("login-transition-test")));
+    assert.deepEqual(transition, { username: "teste.01", password: "12345678", buttonText: "Entrando...", disabled: true });
+    await page.close();
     console.log("PASS: responsive reference layout, discreet logo, no registration and username submission on four viewports (mock API).");
   } finally { await browser.close(); }
 }
