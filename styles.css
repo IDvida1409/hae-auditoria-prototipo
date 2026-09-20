@@ -15545,6 +15545,122 @@ button.planning-kpi:hover {
   background: #153b61;
 }
 
+.action-plan-deadline-record {
+  margin: 18px 22px;
+  padding: 16px;
+  border: 1px solid #e4c35b;
+  border-left: 4px solid #e6ad00;
+  border-radius: 7px;
+  background: #fffbeb;
+}
+
+.action-plan-deadline-head,
+.action-plan-deadline-head > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-plan-deadline-head {
+  justify-content: space-between;
+}
+
+.action-plan-deadline-head .tiny-icon {
+  width: 27px;
+  height: 27px;
+  color: #9b6f00;
+}
+
+.action-plan-deadline-head small,
+.action-plan-deadline-head strong {
+  display: block;
+}
+
+.action-plan-deadline-head small {
+  color: #7d6a31;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.action-plan-deadline-head strong {
+  margin-top: 2px;
+  color: #3d3316;
+  font-size: 13px;
+}
+
+.action-plan-deadline-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+  margin-top: 13px;
+}
+
+.action-plan-deadline-grid > div {
+  padding: 10px 12px;
+  border: 1px solid #eadcae;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .78);
+}
+
+.action-plan-deadline-grid span {
+  color: #7b6933;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.action-plan-deadline-grid p,
+.action-plan-decision-note p {
+  margin-top: 4px;
+  color: #334a63;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.action-plan-decision-note {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-left: 3px solid #26944e;
+  border-radius: 5px;
+  background: #edf8f1;
+}
+
+.action-plan-decision-note.is-rejected {
+  border-left-color: #d73543;
+  background: #fff1f2;
+}
+
+.action-plan-decision-note.is-document {
+  margin: 18px 22px;
+}
+
+.action-plan-decision-note strong,
+.action-plan-decision-note span {
+  display: block;
+}
+
+.action-plan-decision-note strong {
+  color: #173451;
+  font-size: 11px;
+}
+
+.action-plan-decision-note span {
+  margin-top: 2px;
+  color: #52687d;
+  font-size: 10px;
+}
+
+.action-plan-modal-error {
+  margin-top: 8px;
+  color: #b42331;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.action-plan-modal-actions .primary-btn.is-danger {
+  background: #c92d3b;
+}
+
 .action-plan-admin-actions .outline-btn,
 .action-plan-admin-actions .primary-btn {
   min-height: 38px;
@@ -15569,4 +15685,6 @@ button.planning-kpi:hover {
   .action-plan-locked-note { align-items: flex-start; }
   .action-plan-admin-actions { align-items: stretch; flex-direction: column; width: 100%; }
   .action-plan-admin-actions .planning-status { align-self: flex-start; }
+  .action-plan-deadline-head { align-items: flex-start; flex-direction: column; }
+  .action-plan-deadline-grid { grid-template-columns: 1fr; }
 }

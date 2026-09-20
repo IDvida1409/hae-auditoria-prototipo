@@ -715,6 +715,7 @@ function defaultState() {
     planningPlanId: "",
     planningPlanOverrides: {},
     planningNotice: "",
+    planningDecisionModal: false,
     actionPlanPreview: false,
     actionDeadlineModal: false,
     feedbackExpanded: false,
@@ -794,6 +795,7 @@ function normalizeSavedState(saved = {}) {
     planningPlanId: "",
     planningPlanOverrides: merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
     planningNotice: "",
+    planningDecisionModal: false,
     actionPlanPreview: false,
     actionDeadlineModal: false,
     feedbackExpanded: false,
@@ -5263,7 +5265,8 @@ function planningActionRows() {
       attempts: area.score < 7 ? 2 : 1,
       source: "Auditoria atual",
       deadlineRequested: area.id === "higienizacao-cubas",
-      requestedDue: area.id === "higienizacao-cubas" ? "15/12/2026" : ""
+      requestedDue: area.id === "higienizacao-cubas" ? "15/12/2026" : "",
+      deadlineReason: area.id === "higienizacao-cubas" ? "A substituição da peça depende da compra do componente e do agendamento da manutenção especializada." : ""
     }));
 
   const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
@@ -5648,6 +5651,49 @@ function planningDeadlineModal() {
   `;
 }
 
+function planningDecisionModal() {
+  if (!state.planningDecisionModal) return "";
+  const { planId, decision } = state.planningDecisionModal;
+  const plan = planningActionRows().find((row) => row.id === planId);
+  if (!plan) return "";
+  const isDeadline = decision === "deadline_rejected";
+  return `
+    <div class="action-plan-modal-backdrop" role="presentation">
+      <section class="action-plan-modal surface" role="dialog" aria-modal="true" aria-labelledby="decision-modal-title">
+        <button class="panel-close" data-close-plan-decision title="Fechar">${icons.close}</button>
+        <span class="eyebrow">Decisão do auditor</span>
+        <h2 id="decision-modal-title">${isDeadline ? "Recusar solicitação de prazo" : "Reprovar devolutiva"}</h2>
+        <p>${isDeadline ? `Explique por que o novo prazo solicitado para ${escapeHtml(plan.requestedDue || "15/12/2026")} não será aceito.` : "Informe objetivamente o que precisa ser corrigido ou complementado pelo responsável."}</p>
+        <label class="action-plan-field is-wide"><span>Justificativa obrigatória</span><textarea data-plan-decision-reason placeholder="${isDeadline ? "Ex.: o prazo solicitado ultrapassa a próxima auditoria; apresente uma data intermediária e o comprovante do fornecedor." : "Ex.: a evidência não demonstra a correção completa do item e precisa ser refeita."}"></textarea></label>
+        <div class="action-plan-modal-error" data-plan-decision-error hidden>Informe a justificativa antes de confirmar.</div>
+        <div class="action-plan-modal-actions">
+          <button class="outline-btn" data-close-plan-decision type="button">Cancelar</button>
+          <button class="primary-btn is-danger" data-confirm-plan-decision="${escapeHtml(decision)}" data-plan-id="${escapeHtml(plan.id)}" type="button">${isDeadline ? "Confirmar recusa" : "Confirmar reprovação"}</button>
+        </div>
+      </section>
+    </div>`;
+}
+
+function planningDeadlineRecord(plan) {
+  if (!plan.deadlineRequested && !plan.deadlineDecision) return "";
+  const decisionCopy = plan.deadlineDecision === "approved"
+    ? ["Prazo aprovado", `Novo vencimento confirmado para ${plan.requestedDue || plan.due}.`, "good"]
+    : plan.deadlineDecision === "rejected"
+      ? ["Prazo recusado", "O prazo anterior foi mantido e o responsável deverá apresentar uma nova solução.", "danger"]
+      : ["Aguardando decisão do auditor", "A solicitação ainda não foi aprovada nem recusada.", "warning"];
+  return `
+    <section class="action-plan-deadline-record">
+      <div class="action-plan-deadline-head"><div>${svgIcon("clock")}<span><small>Solicitação registrada na devolutiva</small><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong></span></div><span class="planning-status is-${decisionCopy[2]}">${decisionCopy[0]}</span></div>
+      <div class="action-plan-deadline-grid"><div><span>Motivo informado pelo responsável</span><p>${escapeHtml(plan.deadlineReason || "Compra de peça e agendamento de manutenção especializada.")}</p></div><div><span>Item relacionado</span><p>Todos os itens deste plano de ação</p></div></div>
+      ${plan.deadlineDecision ? `<div class="action-plan-decision-note is-${plan.deadlineDecision}"><strong>Decisão do auditor</strong><span>${escapeHtml(decisionCopy[1])}</span>${plan.decisionReason ? `<p><b>Justificativa:</b> ${escapeHtml(plan.decisionReason)}</p>` : ""}</div>` : ""}
+    </section>`;
+}
+
+function planningAuditDecisionRecord(plan) {
+  if (plan.status !== "rejected" || !plan.decisionReason) return "";
+  return `<section class="action-plan-decision-note is-rejected is-document"><strong>Devolutiva reprovada pelo auditor</strong><span>O plano foi devolvido ao responsável para correção.</span><p><b>Justificativa:</b> ${escapeHtml(plan.decisionReason)}</p></section>`;
+}
+
 function planningPreviewFooter(plan) {
   if (plan.status === "awaiting_send") {
     return `<footer class="action-plan-submit-footer"><div><strong>Rascunho do auditor</strong><span>Somente observação e ação orientada podem ser alteradas antes do envio.</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-save-action-plan="${escapeHtml(plan.id)}" type="button">Salvar rascunho</button><button class="primary-btn" data-send-action-plan="${escapeHtml(plan.id)}" type="button">Salvar e enviar ao responsável</button></div></footer>`;
@@ -5656,7 +5702,7 @@ function planningPreviewFooter(plan) {
     return `<footer class="action-plan-submit-footer is-review"><div><strong>Devolutiva recebida</strong><span>Revise as respostas, evidências e assinatura antes de decidir.</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Reprovar devolutiva</button><button class="primary-btn" data-plan-decision="approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar evidências</button></div></footer>`;
   }
   if (plan.deadlineRequested) {
-    return `<footer class="action-plan-submit-footer is-review"><div><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong><span>Motivo: compra de peça e agendamento de manutenção especializada.</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></footer>`;
+    return `<footer class="action-plan-submit-footer is-review"><div><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong><span>Motivo: ${escapeHtml(plan.deadlineReason || "Compra de peça e agendamento de manutenção especializada.")}</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></footer>`;
   }
   const [label] = planningStatusMeta(plan.status);
   return `<footer class="action-plan-submit-footer"><div><strong>${escapeHtml(label)}</strong><span>${plan.status === "in_progress" ? "Plano enviado e bloqueado para edição. Aguardando devolutiva do responsável." : "Documento encerrado e mantido no histórico da área."}</span></div><div class="action-plan-admin-actions"><span class="planning-status is-${plan.status === "approved" ? "good" : plan.status === "rejected" ? "danger" : "blue"}">${escapeHtml(label)}</span></div></footer>`;
@@ -5667,7 +5713,7 @@ function planningPlanPreview() {
   const area = plan.area;
   const items = actionPlanPreviewItems(area);
   const isDraft = plan.status === "awaiting_send";
-  const hasResponse = ["pending_review", "approved", "rejected"].includes(plan.status) || plan.deadlineRequested;
+  const hasResponse = ["pending_review", "approved", "rejected"].includes(plan.status) || plan.deadlineRequested || Boolean(plan.deadlineDecision);
   const effectiveStatus = plan.deadlineRequested ? "extension_requested" : plan.status;
   const [statusLabel, statusTone] = planningStatusMeta(effectiveStatus);
   const responseCopy = [
@@ -5693,10 +5739,13 @@ function planningPlanPreview() {
         <div class="action-plan-nc-list">
           ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}</div><div class="action-plan-nc-body"><figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure><div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(reportObservationForQuestion(row))}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea readonly placeholder="Aguardando resposta do responsável...">${hasResponse ? escapeHtml(responseCopy[index]) : ""}</textarea></label><div class="action-plan-evidence-actions">${hasResponse ? `<figure class="action-plan-return-evidence"><img src="assets/report-evidence-utensilios.png" alt="Evidência enviada pelo responsável" /><figcaption>Evidência enviada · 19/09/2026</figcaption></figure>` : `<small class="action-plan-awaiting-copy">A evidência será adicionada pelo responsável após o envio.</small>`}</div></div></section>`).join("")}
         </div>
+        ${planningDeadlineRecord(plan)}
+        ${planningAuditDecisionRecord(plan)}
         <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>${hasResponse ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(plan.owner)}</strong><span>Responsável pela área</span><small>Ciência e assinatura registradas em 19/09/2026 às 14:13</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito automaticamente quando o responsável confirmar o recebimento.</small></div>`}</section>
         ${planningPreviewFooter(plan)}
       </article>
       ${planningDeadlineModal()}
+      ${planningDecisionModal()}
     </div>`;
 }
 
@@ -5829,6 +5878,32 @@ function updatePlanningPlan(planId, values) {
     ...(state.planningPlanOverrides || {}),
     [planId]: { ...(state.planningPlanOverrides?.[planId] || {}), ...values }
   };
+}
+
+function applyPlanningDecision(plan, decision, reason = "") {
+  if (decision === "approved" || decision === "rejected") {
+    updatePlanningPlan(plan.id, { status: decision, decisionReason: reason, source: "Decidido em 20/09/2026" });
+    state.planningNotice = `Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e devolvida com justificativa"}.`;
+    addPlanningNotification(`action_plan_${decision}`, plan, `Devolutiva ${decision === "approved" ? "aprovada" : "reprovada"} - ${plan.area.name}`, reason || "A decisão do auditor foi registrada no histórico do plano.", "sent");
+    state.planningView = "history";
+  } else {
+    const approved = decision === "deadline_approved";
+    updatePlanningPlan(plan.id, {
+      status: "in_progress",
+      deadlineRequested: false,
+      deadlineDecision: approved ? "approved" : "rejected",
+      decisionReason: reason,
+      due: approved ? (plan.requestedDue || "15/12/2026") : plan.due,
+      source: approved ? "Novo prazo aprovado" : "Novo prazo recusado"
+    });
+    state.planningNotice = `Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada com justificativa"}.`;
+    addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : reason, "sent");
+    state.planningView = "plans";
+  }
+  state.actionPlanPreview = false;
+  state.actionDeadlineModal = false;
+  state.planningDecisionModal = false;
+  state.planningAreaId = "";
 }
 
 function viewContent() {
@@ -6177,6 +6252,7 @@ document.addEventListener("click", (event) => {
   if (planningView) {
     state.actionPlanPreview = false;
     state.actionDeadlineModal = false;
+    state.planningDecisionModal = false;
     state.planningView = planningView.dataset.planningView;
     state.planningStatusFilter = "";
     if (state.planningView !== "history") state.planningAreaId = "";
@@ -6194,6 +6270,7 @@ document.addEventListener("click", (event) => {
     state.planningNotice = "";
     state.actionPlanPreview = true;
     state.actionDeadlineModal = false;
+    state.planningDecisionModal = false;
     render();
     requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
     return;
@@ -6214,7 +6291,7 @@ document.addEventListener("click", (event) => {
       updatePlanningPlan(plan.id, { status: "in_progress", source: "Enviado em 20/09/2026 às 16:55" });
       state.planningPlanId = plan.id;
       state.planningAreaId = plan.area.id;
-      state.actionPlanPreview = true;
+      state.actionPlanPreview = false;
       state.planningNotice = `Plano de ${plan.area.name} enviado ao responsável e bloqueado para edição.`;
       addPlanningNotification("action_plan", plan, `Plano enviado - ${plan.area.name}`, `O plano foi disponibilizado para ${plan.owner}.`, "sent");
     }
@@ -6227,22 +6304,35 @@ document.addEventListener("click", (event) => {
     const plan = planningActionRows().find((row) => row.id === planDecision.dataset.planId);
     const decision = planDecision.dataset.planDecision;
     if (plan) {
-      if (decision === "approved" || decision === "rejected") {
-        updatePlanningPlan(plan.id, { status: decision, source: `Decidido em 20/09/2026` });
-        state.planningNotice = `Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e registrada no histórico"}.`;
-        addPlanningNotification(`action_plan_${decision}`, plan, `Devolutiva ${decision === "approved" ? "aprovada" : "reprovada"} - ${plan.area.name}`, "A decisão do auditor foi registrada no histórico do plano.", "sent");
-        state.planningView = "history";
-      } else {
-        const approved = decision === "deadline_approved";
-        updatePlanningPlan(plan.id, { status: "in_progress", deadlineRequested: false, due: approved ? (plan.requestedDue || "15/12/2026") : plan.due, source: approved ? "Novo prazo aprovado" : "Novo prazo recusado" });
-        state.planningNotice = `Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada"}.`;
-        addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : "O prazo original foi mantido.", "sent");
-        state.planningView = "plans";
+      if (decision === "rejected" || decision === "deadline_rejected") {
+        state.planningDecisionModal = { planId: plan.id, decision };
+        render();
+        requestAnimationFrame(() => document.querySelector("[data-plan-decision-reason]")?.focus());
+        return;
       }
-      state.actionPlanPreview = false;
-      state.actionDeadlineModal = false;
-      state.planningAreaId = "";
+      applyPlanningDecision(plan, decision);
     }
+    render();
+    return;
+  }
+
+  const confirmPlanDecision = event.target.closest("[data-confirm-plan-decision]");
+  if (confirmPlanDecision) {
+    const plan = planningActionRows().find((row) => row.id === confirmPlanDecision.dataset.planId);
+    const reason = document.querySelector("[data-plan-decision-reason]")?.value.trim() || "";
+    if (!reason) {
+      const error = document.querySelector("[data-plan-decision-error]");
+      if (error) error.hidden = false;
+      document.querySelector("[data-plan-decision-reason]")?.focus();
+      return;
+    }
+    if (plan) applyPlanningDecision(plan, confirmPlanDecision.dataset.confirmPlanDecision, reason);
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-close-plan-decision]")) {
+    state.planningDecisionModal = false;
     render();
     return;
   }
@@ -6250,6 +6340,7 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-close-action-plan-preview]")) {
     state.actionPlanPreview = false;
     state.actionDeadlineModal = false;
+    state.planningDecisionModal = false;
     render();
     return;
   }
