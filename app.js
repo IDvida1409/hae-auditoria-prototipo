@@ -5741,7 +5741,12 @@ function planningPreviewFooter(plan, itemCount = 0) {
     const approved = decisions.filter((item) => item.status === "approved").length;
     const rejected = decisions.filter((item) => item.status === "rejected").length;
     const complete = itemCount > 0 && decisions.length >= itemCount;
-    return `<footer class="action-plan-submit-footer is-review"><div><strong>Análise da devolutiva: ${decisions.length}/${itemCount}</strong><span>${approved} aprovada(s) · ${rejected} reprovada(s). A notificação será enviada somente após concluir todas as NCs.</span></div><div class="action-plan-admin-actions"><button class="primary-btn" data-finalize-plan-review="${escapeHtml(plan.id)}" type="button" ${complete ? "" : "disabled"}>${complete ? (rejected ? "Enviar correções ao responsável" : "Concluir e aprovar plano") : "Analise todas as NCs"}</button></div></footer>`;
+    const extended = plan.deadlineDecision === "approved";
+    const summary = extended && !rejected
+      ? `${approved} aprovada(s) · prazo prorrogado. O plano continuará aberto até ${escapeHtml(plan.due)}.`
+      : `${approved} aprovada(s) · ${rejected} reprovada(s). A notificação será enviada somente após concluir todas as NCs.`;
+    const actionLabel = rejected ? "Enviar correções ao responsável" : extended ? "Concluir análise" : "Concluir e aprovar plano";
+    return `<footer class="action-plan-submit-footer is-review"><div><strong>Análise da devolutiva: ${decisions.length}/${itemCount}</strong><span>${summary}</span></div><div class="action-plan-admin-actions"><button class="primary-btn" data-finalize-plan-review="${escapeHtml(plan.id)}" type="button" ${complete ? "" : "disabled"}>${complete ? actionLabel : "Analise todas as NCs"}</button></div></footer>`;
   }
   const [label] = planningStatusMeta(plan.status);
   return `<footer class="action-plan-submit-footer"><div><strong>${escapeHtml(label)}</strong><span>${plan.status === "in_progress" ? "Plano enviado e bloqueado para edição. Aguardando devolutiva do responsável." : "Documento encerrado e mantido no histórico da área."}</span></div><div class="action-plan-admin-actions"><span class="planning-status is-${plan.status === "approved" ? "good" : plan.status === "rejected" ? "danger" : "blue"}">${escapeHtml(label)}</span></div></footer>`;
@@ -6432,12 +6437,24 @@ document.addEventListener("click", (event) => {
       const decisions = Object.values(plan.itemDecisions || {});
       if (decisions.length < items.length) return;
       const rejected = decisions.filter((item) => item.status === "rejected");
-      const status = rejected.length ? "needs_correction" : "approved";
-      updatePlanningPlan(plan.id, { status, source: "Análise concluída em 20/09/2026" });
-      setPlanningNotice(rejected.length ? `${rejected.length} NC(s) devolvida(s) ao responsável para correção.` : `Todas as evidências de ${plan.area.name} foram aprovadas.`);
-      addPlanningNotification("action_plan_review_completed", plan, rejected.length ? `Correções solicitadas - ${plan.area.name}` : `Plano aprovado - ${plan.area.name}`, rejected.length ? "A análise foi concluída. Somente as NCs reprovadas deverão ser corrigidas." : "Todas as evidências foram aprovadas e o plano foi encerrado.", "sent");
+      const extended = plan.deadlineDecision === "approved";
+      const status = rejected.length ? "needs_correction" : extended ? "in_progress" : "approved";
+      const source = extended && !rejected ? `Prazo prorrogado até ${plan.due}` : "Análise concluída em 20/09/2026";
+      updatePlanningPlan(plan.id, { status, source });
+      setPlanningNotice(rejected.length
+        ? `${rejected.length} NC(s) devolvida(s) ao responsável para correção.`
+        : extended
+          ? `Análise concluída. O plano de ${plan.area.name} continuará aberto até ${plan.due}.`
+          : `Todas as evidências de ${plan.area.name} foram aprovadas.`);
+      addPlanningNotification(
+        "action_plan_review_completed",
+        plan,
+        rejected.length ? `Correções solicitadas - ${plan.area.name}` : extended ? `Prazo prorrogado - ${plan.area.name}` : `Plano aprovado - ${plan.area.name}`,
+        rejected.length ? "A análise foi concluída. Somente as NCs reprovadas deverão ser corrigidas." : extended ? `A análise foi concluída e o plano continuará em andamento até ${plan.due}.` : "Todas as evidências foram aprovadas e o plano foi encerrado.",
+        "sent"
+      );
       state.actionPlanPreview = false;
-      state.planningView = rejected.length ? "plans" : "history";
+      state.planningView = rejected.length || extended ? "plans" : "history";
       state.planningAreaId = "";
     }
     render();
