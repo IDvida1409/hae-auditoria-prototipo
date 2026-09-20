@@ -1,4 +1,4 @@
-const CACHE_NAME = "hae-auditoria-v20-action-review-1";
+const CACHE_NAME = "hae-auditoria-v21-action-review-2";
 const APP_SHELL = [
   "/",
   "/index.html",

@@ -339,7 +339,9 @@ async function loadAccessNotifications() {
   const data = await accessRequest("notifications").catch(() => ({ notifications: [] }));
   const existing = data.notifications || [];
   const demo = planningDemoNotifications();
-  accessNotifications = [...existing, ...demo.filter((item) => !existing.some((current) => current.id === item.id))]
+  const merged = new Map(existing.map((item) => [item.id, item]));
+  demo.forEach((item) => merged.set(item.id, item));
+  accessNotifications = [...merged.values()]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
@@ -551,7 +553,7 @@ const months = [
 
 const currentMonthId = "ago/26";
 const futureMonthIds = new Set(["set/26", "out/26", "nov/26", "dez/26"]);
-const stateStorageKey = "hae-auditoria-state-v2";
+const stateStorageKey = "hae-auditoria-state-v3";
 
 const monthLines = {
   "jan/26": [5.0, 6.1, 5.2, 6.0, 8.0, 6.1, 5.3, 5.0, 4.6, 5.2, 4.8, 4.5],
@@ -5260,7 +5262,7 @@ function planningActionRows() {
       title: area.critical ? "Corrigir NCs de alto risco" : "Regularizar pendências da área",
       block: subareaData[area.id]?.[0]?.label || "Checklist mensal",
       owner: area.name,
-      status: area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "awaiting_send",
+      status: area.id === "higienizacao-cubas" || area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "awaiting_send",
       due: `${18 + index}/09/2026`,
       ncs: area.ncs,
       attempts: area.score < 7 ? 2 : 1,
@@ -5269,11 +5271,7 @@ function planningActionRows() {
       requestedDue: area.id === "higienizacao-cubas" ? "15/12/2026" : "",
       deadlineReason: area.id === "higienizacao-cubas" ? "Solicito alteração do prazo porque a substituição depende da compra do componente e do agendamento da manutenção especializada." : "",
       deadlineItemIndex: area.id === "higienizacao-cubas" ? 1 : null,
-      itemDecisions: area.id === "higienizacao-cubas" ? {
-        0: { status: "approved" },
-        1: { status: "rejected", reason: "A evidência ainda não demonstra a substituição da peça indicada na NC 02." },
-        2: { status: "approved" }
-      } : {}
+      itemDecisions: {}
     }));
 
   const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
@@ -5645,7 +5643,7 @@ function planningItemReview(plan, index) {
     const approved = decision.status === "approved";
     return `<div class="action-plan-item-review is-${approved ? "approved" : "rejected"}"><div><span>Decisão do auditor</span><strong>${approved ? "Evidência aprovada" : "Evidência reprovada"}</strong>${decision.reason ? `<p><b>Justificativa:</b> ${escapeHtml(decision.reason)}</p>` : ""}</div><span class="planning-status is-${approved ? "good" : "danger"}">${approved ? "Aprovada" : "Reprovada"}</span></div>`;
   }
-  if (plan.status !== "pending_review") return "";
+  if (plan.status !== "pending_review" && !plan.deadlineRequested) return "";
   return `<div class="action-plan-item-review is-pending"><div><span>Análise da NC ${String(index + 1).padStart(2, "0")}</span><strong>Aguardando decisão do auditor</strong></div><div class="action-plan-item-actions"><button class="outline-btn is-danger" data-plan-item-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Reprovar evidência</button><button class="primary-btn" data-plan-item-decision="approved" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Aprovar evidência</button></div></div>`;
 }
 
@@ -5713,6 +5711,7 @@ function planningDeadlineRecord(plan, items = []) {
     <section class="action-plan-deadline-record">
       <div class="action-plan-deadline-head"><div>${svgIcon("clock")}<span><small>Solicitação registrada na devolutiva</small><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong></span></div><span class="planning-status is-${decisionCopy[2]}">${decisionCopy[0]}</span></div>
       <div class="action-plan-deadline-grid"><div><span>Observação do responsável</span><p>${escapeHtml(plan.deadlineReason || "Solicito alteração do prazo devido à compra de peça e ao agendamento da manutenção especializada.")}</p></div><div><span>Não conformidade vinculada</span><p>${escapeHtml(linkedLabel)}</p></div></div>
+      ${plan.deadlineRequested ? `<div class="action-plan-deadline-actions"><span>Decisão do auditor sobre esta solicitação</span><div><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></div>` : ""}
       ${plan.deadlineDecision ? `<div class="action-plan-decision-note is-${plan.deadlineDecision}"><strong>Decisão do auditor</strong><span>${escapeHtml(decisionCopy[1])}</span>${plan.decisionReason ? `<p><b>Justificativa:</b> ${escapeHtml(plan.decisionReason)}</p>` : ""}</div>` : ""}
     </section>`;
 }
@@ -5727,7 +5726,7 @@ function planningPreviewFooter(plan, itemCount = 0) {
     return `<footer class="action-plan-submit-footer"><div><strong>Rascunho do auditor</strong><span>Somente observação e ação orientada podem ser alteradas antes do envio.</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-save-action-plan="${escapeHtml(plan.id)}" type="button">Salvar rascunho</button><button class="primary-btn" data-send-action-plan="${escapeHtml(plan.id)}" type="button">Salvar e enviar ao responsável</button></div></footer>`;
   }
   if (plan.deadlineRequested) {
-    return `<footer class="action-plan-submit-footer is-review"><div><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong><span>Motivo: ${escapeHtml(plan.deadlineReason || "Compra de peça e agendamento de manutenção especializada.")}</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></footer>`;
+    return `<footer class="action-plan-submit-footer is-review"><div><strong>Solicitação de prazo aguardando decisão</strong><span>A observação do responsável, a NC vinculada e os botões de decisão estão destacados acima.</span></div></footer>`;
   }
   if (plan.status === "pending_review") {
     const decisions = Object.values(plan.itemDecisions || {});
@@ -5934,7 +5933,7 @@ function applyPlanningDecision(plan, decision, reason = "") {
   } else {
     const approved = decision === "deadline_approved";
     updatePlanningPlan(plan.id, {
-      status: "in_progress",
+      status: plan.status === "pending_review" ? "pending_review" : "in_progress",
       deadlineRequested: false,
       deadlineDecision: approved ? "approved" : "rejected",
       decisionReason: reason,
@@ -5943,7 +5942,11 @@ function applyPlanningDecision(plan, decision, reason = "") {
     });
     setPlanningNotice(`Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada com justificativa"}.`);
     addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : reason, "sent");
-    state.planningView = "plans";
+    state.planningView = "feedback";
+    state.actionPlanPreview = true;
+    state.actionDeadlineModal = false;
+    state.planningDecisionModal = false;
+    return;
   }
   state.actionPlanPreview = false;
   state.actionDeadlineModal = false;

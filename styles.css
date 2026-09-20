@@ -15694,6 +15694,32 @@ button.planning-kpi:hover {
   background: #edf8f1;
 }
 
+.action-plan-deadline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eadcae;
+}
+
+.action-plan-deadline-actions > span {
+  color: #65551f;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.action-plan-deadline-actions > div {
+  display: flex;
+  gap: 7px;
+}
+
+.action-plan-deadline-actions button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
 .action-plan-decision-note.is-rejected {
   border-left-color: #d73543;
   background: #fff1f2;
@@ -15756,6 +15782,8 @@ button.planning-kpi:hover {
   .action-plan-admin-actions .planning-status { align-self: flex-start; }
   .action-plan-deadline-head { align-items: flex-start; flex-direction: column; }
   .action-plan-deadline-grid { grid-template-columns: 1fr; }
+  .action-plan-deadline-actions { align-items: stretch; flex-direction: column; }
+  .action-plan-deadline-actions > div { flex-direction: column; }
   .action-plan-item-review { align-items: stretch; flex-direction: column; }
   .action-plan-item-actions { align-items: stretch; flex-direction: column; }
 }
