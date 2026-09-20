@@ -900,6 +900,11 @@ function formatScore(value) {
   return value.toFixed(1).replace(".", ",");
 }
 
+function actionPlanFileRequest() {
+  const planId = new URLSearchParams(location.search).get("actionPlan");
+  return planId && /^[a-z0-9-]+$/i.test(planId) ? planId : null;
+}
+
 function buildBackendQuestionMap(payload) {
   const mapping = new Map();
   for (const backendArea of payload?.areas || []) {
@@ -5752,13 +5757,18 @@ function planningPlanPreview() {
     "O registro foi corrigido, a liderança orientou o turno e incluiu uma dupla checagem no encerramento.",
     "O item foi identificado e os demais recipientes do setor foram revisados conforme o padrão orientado."
   ];
+  const standaloneDocument = Boolean(actionPlanFileRequest());
   return `
     <div class="fichario-sub-panel action-plan-preview-shell">
       ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="action-plan-preview-toolbar">
-        <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
+        ${standaloneDocument
+          ? `<a class="fichario-sub-action" href="/#actions">${svgIcon("arrow", "is-back")} Voltar aos planos</a>`
+          : `<button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>`}
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
-        <a class="fichario-sub-action" href="/plano-acao-preview.html" target="_blank" rel="noopener">${svgIcon("document")} Visualizar impressão</a>
+        ${standaloneDocument
+          ? `<button class="fichario-sub-action" data-print-action-plan type="button">${svgIcon("document")} Visualizar impressão</button>`
+          : `<a class="fichario-sub-action" href="/?actionPlan=${encodeURIComponent(plan.id)}#actions" target="_blank" rel="noopener">${svgIcon("document")} Abrir documento</a>`}
       </div>
       ${isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
@@ -5979,6 +5989,19 @@ function viewContent() {
 }
 
 function render(options = {}) {
+  const actionPlanId = actionPlanFileRequest();
+  if (actionPlanId) {
+    state.view = "actions";
+    state.planningView = "feedback";
+    state.planningPlanId = actionPlanId;
+    state.actionPlanPreview = true;
+    document.body.classList.add("action-plan-document-body");
+    app.className = "app-shell is-action-plan-document";
+    app.innerHTML = `<main class="stored-action-plan-view">${planningPlanPreview()}</main>`;
+    if (!options.skipSave) saveState();
+    return;
+  }
+  document.body.classList.remove("action-plan-document-body");
   app.className = "app-shell fichario-shell";
   app.innerHTML = `
     <main class="main">
@@ -6034,9 +6057,10 @@ document.addEventListener("click", (event) => {
       const planId = notificationItem.dataset.notificationPlanId;
       const plan = planningActionRows().find((row) => row.id === planId);
       if (plan) {
-        state.planningPlanId = plan.id;
-        state.planningAreaId = plan.area.id;
-        state.actionPlanPreview = true;
+        notificationsOpen = false;
+        render();
+        window.open(`/?actionPlan=${encodeURIComponent(plan.id)}#actions`, "_blank", "noopener");
+        return;
       }
     }
     notificationsOpen = false;
@@ -6323,14 +6347,12 @@ document.addEventListener("click", (event) => {
   const openActionPlanPreview = event.target.closest("[data-open-action-plan-preview]");
   if (openActionPlanPreview) {
     const plan = planningActionRows().find((row) => row.id === openActionPlanPreview.dataset.openActionPlanPreview) || planningActionRows()[0];
-    state.planningPlanId = plan.id;
-    state.planningAreaId = plan.area.id;
-    setPlanningNotice();
-    state.actionPlanPreview = true;
-    state.actionDeadlineModal = false;
-    state.planningDecisionModal = false;
-    render();
-    requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
+    window.open(`/?actionPlan=${encodeURIComponent(plan.id)}#actions`, "_blank", "noopener");
+    return;
+  }
+
+  if (event.target.closest("[data-print-action-plan]")) {
+    window.print();
     return;
   }
 

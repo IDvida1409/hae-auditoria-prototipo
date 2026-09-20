@@ -1443,6 +1443,14 @@ async function handleApi(request, response, url) {
 }
 
 function serveStatic(request, response, url) {
+  if (url.pathname === "/plano-acao-preview.html") {
+    response.writeHead(302, {
+      location: "/?actionPlan=cozinha-catering-auto#actions",
+      "cache-control": "no-store"
+    });
+    response.end();
+    return;
+  }
   const requestedPath = staticPathFor(url.pathname);
   const filePath = requestedPath && fs.existsSync(requestedPath) && fs.statSync(requestedPath).isFile()
     ? requestedPath
