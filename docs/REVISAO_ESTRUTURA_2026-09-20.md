@@ -37,8 +37,9 @@ unificar a finalizacao da auditoria e completar o plano de acao.
   mas a matriz de acesso por area, tela e operacao ainda nao e aplicada no servidor.
 - **Notificacoes:** senha funciona de ponta a ponta; os destinos de plano, auditoria e
   relatorio existem na interface, mas nem todos os eventos de negocio sao gerados.
-- **Offline:** a infraestrutura local e do backend existe, mas as telas do checklist
-  ainda nao gravam por `HAE_OFFLINE` nem exibem o ciclo completo de sincronizacao.
+- **Offline:** a infraestrutura local e do backend existe e a interface ja exibe
+  automaticamente sem conexao, salvo localmente, sincronizando, sincronizado e erro.
+  As telas do checklist ainda precisam gravar suas respostas por `HAE_OFFLINE`.
 - **Auditorias:** existem endpoints reais, mas o painel continua usando dados de exemplo
   e o snapshot global em grande parte das telas.
 - **Planos de acao:** banco, estados e endpoints basicos existem; documento, ciencia,

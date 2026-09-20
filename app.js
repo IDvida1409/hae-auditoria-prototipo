@@ -288,6 +288,8 @@ let currentAccessUser = null;
 let accessNotice = null;
 let accessNotifications = [];
 let notificationsOpen = false;
+let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
+let offlineNoticeTimer = null;
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -378,6 +380,56 @@ function notificationsPanel() {
       </div>
     </section>`;
 }
+
+const offlineNoticeContent = {
+  offline: ["Sem conexão", "Os dados serão salvos neste aparelho e sincronizados automaticamente quando a internet voltar."],
+  saved: ["Salvo neste aparelho", "A informação está protegida localmente e será sincronizada automaticamente."],
+  syncing: ["Sincronizando dados", "Aguarde enquanto as informações salvas neste aparelho são enviadas."],
+  synced: ["Dados sincronizados", "As informações deste aparelho foram atualizadas no sistema."],
+  pending: ["Sincronização pendente", "Os dados continuam salvos neste aparelho. Uma nova tentativa será feita automaticamente."],
+  error: ["Não foi possível sincronizar", "Os dados continuam salvos neste aparelho e uma nova tentativa será feita automaticamente."],
+  unconfigured: ["Dados salvos neste aparelho", "A sincronização será iniciada automaticamente quando o aplicativo estiver conectado ao servidor."]
+};
+
+function offlineStatusNotice() {
+  if (!offlineNotice || !offlineNoticeContent[offlineNotice.phase]) return "";
+  const [title, description] = offlineNoticeContent[offlineNotice.phase];
+  const pending = Number(offlineNotice.pending || 0);
+  return `<aside class="offline-status is-${offlineNotice.phase}" role="status" aria-live="polite">
+    <i class="offline-status-dot" aria-hidden="true"></i>
+    <span><strong>${title}</strong><small>${description}${pending ? ` ${pending} ${pending === 1 ? "item pendente" : "itens pendentes"}.` : ""}</small></span>
+  </aside>`;
+}
+
+function paintOfflineStatus() {
+  const root = document.querySelector("[data-offline-status]");
+  if (root) root.innerHTML = offlineStatusNotice();
+}
+
+function setOfflineNotice(detail) {
+  clearTimeout(offlineNoticeTimer);
+  const phase = detail?.phase;
+  if (phase === "idle") {
+    offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
+  } else if (phase === "saved" && navigator.onLine !== false) {
+    return;
+  } else {
+    offlineNotice = { ...detail, phase };
+  }
+  paintOfflineStatus();
+  if (["saved", "synced"].includes(phase)) {
+    offlineNoticeTimer = setTimeout(() => {
+      offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
+      paintOfflineStatus();
+    }, 4500);
+  }
+}
+
+window.addEventListener("offline:sync-status", (event) => setOfflineNotice(event.detail || {}));
+window.addEventListener("offline", () => setOfflineNotice({ phase: "offline", pending: offlineNotice?.pending || 0 }));
+window.addEventListener("online", () => {
+  if (offlineNotice?.phase === "offline") setOfflineNotice({ phase: "syncing", pending: offlineNotice.pending || 0 });
+});
 
 const settingsPermissionProfiles = [
   { profile: "Qualidade/Admin", scope: "Acesso total", actions: "Usuários, metas, auditorias, relatórios, planos e aprovações." },
@@ -5541,6 +5593,7 @@ function render(options = {}) {
     <main class="main">
       ${topbar()}
       ${ficharioTabs()}
+      <div data-offline-status>${offlineStatusNotice()}</div>
       <section class="content">
         ${viewContent()}
       </section>
