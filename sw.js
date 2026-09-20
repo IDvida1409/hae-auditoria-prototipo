@@ -1,4 +1,4 @@
-const CACHE_NAME = "hae-auditoria-v12-clean-test-app-1";
+const CACHE_NAME = "hae-auditoria-v13-access-1";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -6,7 +6,14 @@ const APP_SHELL = [
   "/checklist-data.js",
   "/offline-store.js",
   "/app.js",
-  "/manifest.webmanifest"
+  "/manifest.webmanifest",
+  "/login.html",
+  "/login.css",
+  "/login.js",
+  "/assets/idvida-login-logo.png",
+  "/assets/hospital-einstein-logo.png",
+  "/assets/login-reference.png",
+  "/assets/vendor/lucide.min.js"
 ];
 
 self.addEventListener("install", (event) => {

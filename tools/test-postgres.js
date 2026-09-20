@@ -89,6 +89,53 @@ async function main() {
     const area = bootstrap.areas.find((item) => item.id === checklist.area_id);
     const question = checklist.blocks.flatMap((block) => block.questions)[0];
     const user = await json("/api/users", { fullName: "Integration Auditor", email: "integration@idauditor.test", role: "auditor" });
+    const { hashPassword } = require("../lib/access-api");
+    const accessPassword = "Test-only-" + crypto.randomUUID();
+    const admin = await pool.query("select id,email from app_users where role='admin' order by created_at limit 1");
+    await pool.query("update app_users set password_hash=$2,username='admin.test',must_change_password=false where id=$1",
+      [admin.rows[0].id, await hashPassword(accessPassword)]);
+    async function access(route, body, cookie = "", method = body ? "POST" : "GET") {
+      const response = await fetch(base + "/api/access/" + route, { method,
+        headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}) });
+      return { response, data: await response.json(), cookie: response.headers.get("set-cookie")?.split(";")[0] || "" };
+    }
+    assert.equal((await access("me")).response.status, 401);
+    assert.equal((await access("login", { email: admin.rows[0].email, password: accessPassword })).response.status, 400);
+    assert.equal((await access("login", { username: "admin.test", password: "Wrong password" })).response.status, 401);
+    const accessLogin = await access("login", { username: "ADMIN.TEST", password: accessPassword, remember: true });
+    assert.equal(accessLogin.response.status, 200);
+    assert.ok(accessLogin.response.headers.get("set-cookie").includes("HttpOnly"));
+    assert.ok(!accessLogin.data.user.password_hash);
+    assert.equal((await access("me", null, accessLogin.cookie)).data.user.id, admin.rows[0].id);
+    assert.equal((await access("users", { fullName: "Denied", email: "denied@test.local", role: "admin" })).response.status, 401);
+    const newAccessUser = await access("users", { fullName: "Access Test", username: "david.souza", email: "access-user@test.local", role: "auditor" }, accessLogin.cookie);
+    assert.equal(newAccessUser.response.status, 201);
+    assert.equal(newAccessUser.data.user.must_change_password, true);
+    assert.match(newAccessUser.data.temporaryCode, /^[A-HJ-NP-Z2-9]{10}$/);
+    assert.equal((await access("users", { fullName: "Access Test", username: "david.souza", email: "another@test.local", role: "auditor" }, accessLogin.cookie)).response.status, 409);
+    const newLogin = await access("login", { username: "david.souza", password: newAccessUser.data.temporaryCode });
+    assert.equal(newLogin.response.status, 200);
+    assert.equal((await access("users", { fullName: "Denied", email: "denied@test.local", role: "admin" }, newLogin.cookie)).response.status, 403);
+    const finalPassword = "Definitive-" + crypto.randomUUID();
+    assert.equal((await access("password", { currentPassword: newAccessUser.data.temporaryCode, password: finalPassword }, newLogin.cookie)).response.status, 200);
+    assert.equal((await access("me", null, newLogin.cookie)).response.status, 401);
+    assert.equal((await access("login", { username: "david.souza", password: newAccessUser.data.temporaryCode })).response.status, 401);
+    const finalLogin = await access("login", { username: "david.souza", password: finalPassword });
+    assert.equal(finalLogin.data.user.must_change_password, false);
+    assert.equal((await access("forgot-password", { username: "david.souza" })).response.status, 200);
+    const usersAfterRequest = await access("users", null, accessLogin.cookie);
+    assert.equal(usersAfterRequest.data.users.find((item) => item.username === "david.souza").reset_pending, true);
+    const reset = await access(`users/${newAccessUser.data.user.id}/reset-password`, {}, accessLogin.cookie);
+    assert.equal(reset.response.status, 200);
+    assert.match(reset.data.temporaryCode, /^[A-HJ-NP-Z2-9]{10}$/);
+    assert.equal((await access("login", { username: "david.souza", password: finalPassword })).response.status, 401);
+    assert.equal((await access("login", { username: "david.souza", password: reset.data.temporaryCode })).data.user.must_change_password, true);
+    const csrf = await fetch(base + "/api/access/users", { method: "POST", headers: { cookie: accessLogin.cookie, origin: "https://untrusted.test", "content-type": "application/json" }, body: "{}" });
+    assert.equal(csrf.status, 403);
+    assert.equal((await access("logout", {}, accessLogin.cookie)).response.status, 200);
+    assert.equal((await access("me", null, accessLogin.cookie)).response.status, 401);
+    console.log("PASS: password login, private cookie session, administrator-only registration, generated first-access code, password request/reset, mandatory password change, revocation, logout and cross-origin rejection.");
     const session = await json("/api/auth/login", { email: user.user.email });
     const token = session.token;
     const deviceUid = crypto.randomUUID();

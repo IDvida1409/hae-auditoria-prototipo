@@ -12,7 +12,7 @@
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
     "build:sites": "node tools/build-sites-worker.js",
     "check": "node --check app.js && node --check server.js && node --check offline-store.js && node --check lib/sync-service.js && node --check lib/file-storage.js && node --check lib/operational-api.js && node --check tools/build-sites-worker.js && node --check tools/build-android-web.js && node --check tools/import-checklist-data.js",
-    "test:backend": "node --test tests/backend-infrastructure.test.js",
+    "test:backend": "node --test tests/backend-infrastructure.test.js tests/access-api.test.js",
     "test:postgres": "node tools/test-postgres.js",
     "db:migrate": "node tools/migrate-db.js",
     "db:import-checklist": "node tools/import-checklist-data.js"
@@ -21,6 +21,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "lucide": "^1.47.0",
     "pg": "^8.16.3",
     "playwright": "^1.63.0"
   },

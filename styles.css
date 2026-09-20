@@ -11755,6 +11755,11 @@ h3 {
 .fichario-user-line small { margin-top: 2px; color: var(--ink-500); font-size: 12px; }
 .fichario-status-pill { display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 26px; padding: 0 12px; border-radius: 999px; color: #207333; background: #eaf7ee; font-size: 12px; }
 .fichario-status-pill.is-inactive { color: #9a3b25; background: #fff0e9; }
+.fichario-status-pill.is-reset { color: #875800; background: #fff5d8; }
+.access-admin-notice { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 14px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid #b8dfc4; border-radius: 8px; color: #17622b; background: #f0faf3; font-size: 13px; }
+.access-admin-notice strong { grid-row: span 2; padding: 7px 10px; border: 1px dashed currentColor; border-radius: 6px; font-size: 16px; letter-spacing: 1px; }
+.access-admin-notice small { color: #477354; font-size: 11px; }
+.access-admin-notice.is-error { border-color: #efc0c0; color: #9d2727; background: #fff4f4; }
 .fichario-line-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .fichario-line-actions button { min-height: 34px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-950); background: #fff; font-size: 12px; }
 .fichario-collapsed-copy { min-height: 54px; padding: 16px; color: var(--ink-500); font-size: 12.5px; }

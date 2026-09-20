@@ -8,6 +8,7 @@ const operationalApi = require("./lib/operational-api");
 const resourceApi = require("./lib/resource-api");
 const { migrate: runMigrations } = require("./lib/database");
 const reportWorker = require("./lib/report-worker");
+const accessApi = require("./lib/access-api");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
@@ -83,7 +84,10 @@ async function getPool() {
         connectionString: databaseUrl,
         ssl: useSslForPostgres() ? { rejectUnauthorized: false } : false
       });
-      try { await runMigrations(pool); }
+      try {
+        await runMigrations(pool);
+        await accessApi.ensureBootstrapAdmin(pool);
+      }
       catch (error) { await pool.end(); throw error; }
       return pool;
     })().catch((error) => {
@@ -343,7 +347,7 @@ function storageKeyFor(fileType, originalFilename = "") {
 function staticPathFor(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js"]);
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js"]);
   if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;
@@ -371,6 +375,7 @@ function readStaticReports() {
 }
 
 async function handleApi(request, response, url) {
+  if (await accessApi.handle(request, response, url, { getPool, sendJson, readJsonBody, requireDatabase })) return true;
   const structuredApisEnabled = process.env.STRUCTURED_APIS_ENABLED !== "false" &&
     !(process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true");
   if (!structuredApisEnabled && url.pathname.startsWith("/api/") &&

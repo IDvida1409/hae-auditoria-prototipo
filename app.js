@@ -281,16 +281,54 @@ const settingsSections = [
   { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." }
 ];
 
-const settingsUsers = [
-  { name: "Qualidade / Segurança dos Alimentos", email: "qualidade@hospital.local", profile: "Qualidade/Admin", area: "Todas as áreas", status: "Ativo" },
-  { name: "Auditor HAE", email: "auditor@hospital.local", profile: "Auditor", area: "Auditorias mensais", status: "Ativo" },
-  { name: "Liderança Cozinha Catering", email: "cozinha.catering@hospital.local", profile: "Responsável da área", area: "Cozinha Catering", status: "Ativo" },
-  { name: "Gestão Morumbi", email: "gestao.morumbi@hospital.local", profile: "Visualizador", area: "Relatórios e indicadores", status: "Ativo" }
-];
+let settingsUsers = [];
+let settingsInactiveUsers = [];
+let settingsAccessAreas = [];
+let currentAccessUser = null;
+let accessNotice = null;
 
-const settingsInactiveUsers = [
-  { name: "Responsável teste inativo", email: "inativo@hospital.local", profile: "Responsável da área", area: "Área exemplo", status: "Inativo" }
-];
+const accessRoleLabels = {
+  admin: "Administrador",
+  quality: "Qualidade",
+  auditor: "Auditor",
+  area_responsible: "Responsável da área",
+  restaurant_responsible: "Responsável do restaurante",
+  viewer: "Visualizador"
+};
+
+function normalizeAccessUser(user) {
+  return {
+    ...user,
+    name: user.full_name,
+    profile: accessRoleLabels[user.role] || user.role,
+    area: user.area_name || (["admin", "quality"].includes(user.role) ? "Todas as áreas" : "Área a definir"),
+    status: user.active ? (user.reset_pending ? "Reset solicitado" : user.must_change_password ? "Primeiro acesso" : "Ativo") : "Inativo"
+  };
+}
+
+async function accessRequest(path, options = {}) {
+  const response = await fetch(`/api/access/${path}`, {
+    credentials: "same-origin",
+    ...options,
+    headers: { "content-type": "application/json", ...options.headers }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || "Não foi possível concluir a operação.");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+async function loadAccessUsers() {
+  if (currentAccessUser?.role !== "admin") return;
+  const data = await accessRequest("users");
+  const users = (data.users || []).map(normalizeAccessUser);
+  settingsUsers = users.filter((user) => user.active);
+  settingsInactiveUsers = users.filter((user) => !user.active);
+  settingsAccessAreas = data.areas || [];
+}
 
 const settingsPermissionProfiles = [
   { profile: "Qualidade/Admin", scope: "Acesso total", actions: "Usuários, metas, auditorias, relatórios, planos e aprovações." },
@@ -1039,6 +1077,9 @@ function topbarMeta() {
 }
 
 function topbar() {
+  const displayName = currentAccessUser?.full_name || "Usuário";
+  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "US";
+  const roleLabel = accessRoleLabels[currentAccessUser?.role] || "Acesso offline";
   return `
     <header class="topbar fichario-topbar">
       <div class="brand-row">
@@ -1058,14 +1099,14 @@ function topbar() {
       </button>
       <div class="user-mini" data-user-menu>
         <button class="user-menu-trigger" type="button" data-user-menu-trigger aria-expanded="false">
-          <span class="user-avatar">JS</span>
-          <span class="user-name-block"><strong>João Silva</strong><span>Administrativo</span></span>
+          <span class="user-avatar">${escapeHtml(initials)}</span>
+          <span class="user-name-block"><strong>${escapeHtml(displayName)}</strong><span>${escapeHtml(roleLabel)}</span></span>
           ${icons.chevron}
         </button>
         <div class="user-menu hidden" data-user-menu-panel>
-          <button type="button" data-nav="users">Perfil</button>
+          ${currentAccessUser?.role === "admin" ? '<button type="button" data-nav="users">Usuários</button>' : ""}
           <button type="button" data-nav="settings">Alterar senha</button>
-          <button type="button" data-nav="home">Sair</button>
+          <button type="button" data-access-logout>Sair</button>
         </div>
       </div>
     </header>
@@ -1081,7 +1122,7 @@ function ficharioTabs() {
     ["reports", "Relatórios", "reports"],
     ["settings", "Configuração", "settings"],
     ["users", "Usuários", "users"]
-  ];
+  ].filter(([id]) => id !== "users" || currentAccessUser?.role === "admin");
   return `
     <nav class="fichario-tabs" aria-label="Navegação principal">
       ${tabs.map(([id, label, icon]) => `
@@ -4882,16 +4923,18 @@ function ficharioUsersContent() {
   if (state.settingsUserView === "new") {
     return `
       <div class="fichario-sub-panel">
-        <div class="fichario-sub-head"><div><h2>Cadastrar usuário</h2><p>Ao informar o nome, o sistema sugere um login. A permissão já é definida no próprio cadastro.</p></div><button class="fichario-sub-action is-primary" type="button">Salvar usuário</button></div>
-        <div class="fichario-form-grid">
-          <label><span>Nome completo</span><input value="David Souza" /></label>
-          <label><span>Login sugerido</span><input value="david.souza" /></label>
-          <label><span>Senha provisória</span><input value="HAE@2026" /></label>
-          <label><span>Perfil</span><select><option>Qualidade/Admin</option><option>Auditor</option><option>Responsável da área</option><option>Visualizador</option></select></label>
-          <label><span>Área vinculada</span><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></label>
-          <label><span>Status</span><select><option>Ativo</option><option>Inativo</option></select></label>
-          <div class="fichario-hint">Sugestões disponíveis: david.souza, david.souza2, d.souza</div>
-        </div>
+        <form data-access-user-form>
+          <div class="fichario-sub-head"><div><h2>Cadastrar usuário</h2><p>O administrador informa os dados e o sistema gera um código de primeiro acesso. A senha definitiva será criada pelo próprio usuário.</p></div><button class="fichario-sub-action is-primary" type="submit">Salvar usuário</button></div>
+          ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
+          <div class="fichario-form-grid">
+            <label><span>Nome completo</span><input name="fullName" autocomplete="name" placeholder="David Souza" required maxlength="250" /></label>
+            <label><span>Login de acesso</span><input name="username" autocomplete="off" placeholder="david.souza" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /></label>
+            <label><span>E-mail de contato (opcional)</span><input name="email" type="email" autocomplete="email" placeholder="usuario@hospital.com.br" maxlength="250" /></label>
+            <label><span>Perfil</span><select name="role" required><option value="auditor">Auditor</option><option value="area_responsible">Responsável da área</option><option value="viewer">Visualizador</option><option value="quality">Qualidade</option><option value="admin">Administrador</option></select></label>
+            <label><span>Área vinculada</span><select name="areaId"><option value="">Todas / definir depois</option>${settingsAccessAreas.map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}</option>`).join("")}</select></label>
+            <div class="fichario-hint">Não há campo de senha. O código temporário será gerado automaticamente e exigirá troca no primeiro login.</div>
+          </div>
+        </form>
       </div>
     `;
   }
@@ -4900,9 +4943,10 @@ function ficharioUsersContent() {
   const inactive = state.settingsUserView === "inactive";
   return `
     <div class="fichario-sub-panel">
-      <div class="fichario-sub-head"><div><h2>${inactive ? "Usuários inativos" : "Logins cadastrados"}</h2><p>${inactive ? "Histórico de acessos bloqueados, com possibilidade de reativação quando autorizado." : "A lista abre fechada, com busca e expansão para edição, inativação ou troca de permissões."}</p></div><button class="fichario-sub-action${inactive ? "" : " is-primary"}" type="button">${inactive ? "Reativar usuário" : "Novo usuário"}</button></div>
+      <div class="fichario-sub-head"><div><h2>${inactive ? "Usuários inativos" : "Logins cadastrados"}</h2><p>${inactive ? "Histórico de acessos bloqueados, com possibilidade de reativação quando autorizado." : "Cadastros reais desta unidade, incluindo primeiro acesso e solicitações de redefinição."}</p></div><button class="fichario-sub-action${inactive ? "" : " is-primary"}" data-open-new-user type="button">${inactive ? "Ver cadastros" : "Novo usuário"}</button></div>
+      ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
       <div class="fichario-search-line"><label><span>${icons.search}</span><input placeholder="Pesquisar usuário ou login..." /></label><button class="fichario-sub-action" data-toggle-users-list type="button">${state.settingsUsersExpanded ? "Ocultar lista" : "Expandir lista"}</button></div>
-      <div class="fichario-user-accordion"><div class="fichario-accordion-title"><strong>${inactive ? "Usuários inativos" : "Usuários ativos"}</strong><small>${users.length} registros</small></div>${state.settingsUsersExpanded ? `<div class="fichario-user-list">${users.map((user) => `<div class="fichario-user-line"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small></div><span>${escapeHtml(user.profile)}</span><span>${escapeHtml(user.area)}</span><span class="fichario-status-pill ${inactive ? "is-inactive" : ""}">${escapeHtml(user.status)}</span><div class="fichario-line-actions"><button type="button">Editar</button><button type="button">${inactive ? "Reativar" : "Inativar"}</button></div></div>`).join("")}</div>` : `<div class="fichario-collapsed-copy">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>`}</div>
+      <div class="fichario-user-accordion"><div class="fichario-accordion-title"><strong>${inactive ? "Usuários inativos" : "Usuários ativos"}</strong><small>${users.length} registros</small></div>${state.settingsUsersExpanded ? `<div class="fichario-user-list">${users.map((user) => `<div class="fichario-user-line"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.username)} · ${escapeHtml(user.email)}</small></div><span>${escapeHtml(user.profile)}</span><span>${escapeHtml(user.area)}</span><span class="fichario-status-pill ${inactive ? "is-inactive" : user.reset_pending ? "is-reset" : ""}">${escapeHtml(user.status)}</span><div class="fichario-line-actions">${!inactive ? `<button type="button" data-reset-user="${escapeHtml(user.id)}">Redefinir senha</button>` : ""}<button type="button" data-user-status="${escapeHtml(user.id)}" data-active="${inactive}">${inactive ? "Reativar" : "Inativar"}</button></div></div>`).join("") || '<div class="fichario-collapsed-copy">Nenhum usuário nesta lista.</div>'}</div>` : `<div class="fichario-collapsed-copy">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>`}</div>
     </div>
   `;
 }
@@ -5455,6 +5499,51 @@ function exitChartPresentationMode() {
 }
 
 document.addEventListener("click", (event) => {
+  const logout = event.target.closest("[data-access-logout]");
+  if (logout) {
+    accessRequest("logout", { method: "POST", body: "{}" }).catch(() => {}).finally(() => {
+      sessionStorage.removeItem("idauditor-user");
+      localStorage.removeItem("idauditor-offline-user");
+      location.replace("/login.html");
+    });
+    return;
+  }
+
+  const newUser = event.target.closest("[data-open-new-user]");
+  if (newUser) {
+    accessNotice = null;
+    state.settingsUserView = newUser.textContent.includes("cadastros") ? "active" : "new";
+    render();
+    return;
+  }
+
+  const resetUser = event.target.closest("[data-reset-user]");
+  if (resetUser) {
+    resetUser.disabled = true;
+    accessRequest(`users/${resetUser.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" })
+      .then(async (data) => {
+        accessNotice = { type: "success", text: `Novo código de primeiro acesso para ${data.user.full_name}:`, code: data.temporaryCode };
+        await loadAccessUsers();
+        render();
+      })
+      .catch((error) => { accessNotice = { type: "error", text: error.message }; render(); });
+    return;
+  }
+
+  const userStatus = event.target.closest("[data-user-status]");
+  if (userStatus) {
+    userStatus.disabled = true;
+    const active = userStatus.dataset.active === "true";
+    accessRequest(`users/${userStatus.dataset.userStatus}/status`, { method: "PATCH", body: JSON.stringify({ active }) })
+      .then(async (data) => {
+        accessNotice = { type: "success", text: `${data.user.full_name} foi ${active ? "reativado" : "inativado"}.` };
+        await loadAccessUsers();
+        render();
+      })
+      .catch((error) => { accessNotice = { type: "error", text: error.message }; render(); });
+    return;
+  }
+
   const userTrigger = event.target.closest("[data-user-menu-trigger]");
   if (userTrigger) {
     const userMenu = userTrigger.closest("[data-user-menu]");
@@ -5895,11 +5984,48 @@ document.addEventListener("change", (event) => {
 
 });
 
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-access-user-form]");
+  if (!form) return;
+  event.preventDefault();
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  const body = Object.fromEntries(new FormData(form));
+  accessRequest("users", { method: "POST", body: JSON.stringify(body) })
+    .then(async (data) => {
+      accessNotice = { type: "success", text: `Usuário ${data.user.username} criado. Código de primeiro acesso:`, code: data.temporaryCode };
+      await loadAccessUsers();
+      form.reset();
+      render();
+    })
+    .catch((error) => { accessNotice = { type: "error", text: error.message }; render(); });
+});
+
 const reportRequest = reportFileRequest();
 if (reportRequest) {
   renderReportFileRequest(reportRequest);
 } else {
-  render();
-  hydrateStateFromBackend();
-  registerServiceWorker();
+  (async function bootstrapAuthenticatedApp() {
+    if (location.protocol === "file:") {
+      currentAccessUser = { full_name: "Administrador local", role: "admin" };
+      render();
+      return;
+    }
+    try {
+      const data = await accessRequest("me");
+      currentAccessUser = data.user;
+      if (currentAccessUser.must_change_password) { location.replace("/login.html"); return; }
+      localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
+      if (currentAccessUser.role === "admin") await loadAccessUsers();
+    } catch (error) {
+      const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");
+      if (error.status === 401 || !cached) { location.replace("/login.html"); return; }
+      currentAccessUser = cached;
+      accessNotice = { type: "success", text: "Modo offline: os dados coletados serão sincronizados quando a conexão voltar." };
+    }
+    if (state.view === "users" && currentAccessUser.role !== "admin") state.view = "home";
+    render();
+    hydrateStateFromBackend();
+    registerServiceWorker();
+  })();
 }

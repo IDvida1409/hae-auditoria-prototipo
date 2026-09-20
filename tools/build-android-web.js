@@ -12,6 +12,9 @@ const files = [
   "app.js",
   "manifest.webmanifest",
   "sw.js",
+  "login.html",
+  "login.css",
+  "login.js",
 ];
 
 function copyDir(source, target) {
