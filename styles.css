@@ -10923,8 +10923,8 @@ h3 {
   transform-origin: center;
 }
 
-.fichario-topbar .message-btn::after {
-  content: "3";
+.fichario-topbar .notifications-anchor { position: relative; flex: 0 0 auto; }
+.fichario-topbar .message-count {
   position: absolute;
   top: -8px;
   right: -7px;
@@ -10939,6 +10939,27 @@ h3 {
   font-size: 11px;
   font-weight: 700;
 }
+
+.notifications-popover { position: absolute; z-index: 80; top: calc(100% + 10px); right: -58px; width: min(390px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-950); background: #fff; box-shadow: 0 20px 48px rgba(7,26,61,.22); }
+.notifications-popover > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.notifications-popover > header div { display: grid; gap: 2px; }
+.notifications-popover > header strong { font-size: 16px; }
+.notifications-popover > header span { color: var(--ink-500); font-size: 11px; }
+.notifications-popover > header button { padding: 6px 0; border: 0; color: var(--blue-700); background: transparent; font-size: 11px; font-weight: 650; }
+.notifications-list { max-height: min(430px, calc(100vh - 160px)); overflow-y: auto; }
+.notification-item { display: grid; grid-template-columns: 30px minmax(0,1fr) 8px; align-items: start; gap: 10px; width: 100%; min-height: 78px; padding: 13px 14px; border: 0; border-bottom: 1px solid var(--line); text-align: left; color: var(--ink-800); background: #f8fbff; }
+.notification-item:last-child { border-bottom: 0; }
+.notification-item:hover { background: #edf5ff; }
+.notification-item.is-read { background: #fff; }
+.notification-direction { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; font-size: 17px; font-weight: 760; }
+.notification-direction.is-received { color: #087d3d; background: #e8f7ed; }
+.notification-direction.is-sent { color: var(--blue-700); background: #eaf3ff; }
+.notification-copy { display: grid; gap: 3px; min-width: 0; }
+.notification-copy strong { font-size: 12.5px; line-height: 1.25; }
+.notification-copy span { color: var(--ink-600); font-size: 11.5px; line-height: 1.3; }
+.notification-copy small { color: var(--ink-500); font-size: 10px; }
+.notification-unread { align-self: center; width: 7px; height: 7px; border-radius: 50%; background: #20a64a; }
+.notifications-empty { padding: 28px 18px; color: var(--ink-500); text-align: center; font-size: 12px; }
 
 .fichario-topbar .user-mini {
   position: relative;
@@ -12674,13 +12695,15 @@ button.planning-kpi:hover {
     height: 23px;
   }
 
-  .fichario-topbar .message-btn::after {
+  .fichario-topbar .message-count {
     top: -7px;
     right: -6px;
     width: 20px;
     height: 20px;
     font-size: 10.5px;
   }
+
+  .notifications-popover { position: fixed; top: 70px; right: 12px; left: 12px; width: auto; }
 
   .fichario-topbar .user-mini {
     flex: 0 0 auto;

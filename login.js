@@ -5,12 +5,13 @@
   const logo = document.querySelector(".product-logo");
   const defaultLogo = "assets/idvida-login-logo.png";
   function applyBranding(branding) {
-    if (!branding?.logoPath) return;
+    if (!branding?.logoPath) { logo.classList.remove("is-unit-logo"); return; }
     const url = new URL(branding.logoPath, location.href);
     if (url.origin !== location.origin || !url.pathname.startsWith("/assets/")) return;
     logo.onerror = () => { logo.onerror = null; logo.src = defaultLogo; logo.alt = "IDvida"; };
     logo.src = url.href;
     logo.alt = branding.name || "Hospital";
+    logo.classList.add("is-unit-logo");
   }
   const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form") };
   const icons = () => window.lucide?.createIcons();
@@ -71,13 +72,13 @@
   forms.login.elements.username.addEventListener("input", () => {
     clearTimeout(brandingTimer);
     const username = forms.login.elements.username.value.trim();
-    if (username.length < 3) { logo.src = defaultLogo; logo.alt = "IDvida"; return; }
+    if (username.length < 3) { logo.src = defaultLogo; logo.alt = "IDvida"; logo.classList.remove("is-unit-logo"); return; }
     brandingTimer = setTimeout(async () => {
       try {
         const data = await api("branding", { method: "POST", body: JSON.stringify({ username }) });
         if (forms.login.elements.username.value.trim() !== username) return;
         if (data.branding) applyBranding(data.branding);
-        else { logo.src = defaultLogo; logo.alt = "IDvida"; }
+        else { logo.src = defaultLogo; logo.alt = "IDvida"; logo.classList.remove("is-unit-logo"); }
       } catch { /* A marca padrão permanece quando não houver conexão. */ }
     }, 300);
   });

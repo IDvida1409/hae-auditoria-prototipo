@@ -286,6 +286,8 @@ let settingsInactiveUsers = [];
 let settingsAccessAreas = [];
 let currentAccessUser = null;
 let accessNotice = null;
+let accessNotifications = [];
+let notificationsOpen = false;
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -328,6 +330,53 @@ async function loadAccessUsers() {
   settingsUsers = users.filter((user) => user.active);
   settingsInactiveUsers = users.filter((user) => !user.active);
   settingsAccessAreas = data.areas || [];
+}
+
+async function loadAccessNotifications() {
+  const data = await accessRequest("notifications");
+  accessNotifications = data.notifications || [];
+}
+
+function notificationDestination(item) {
+  if (item.notification_type === "password_reset" || item.entity_type === "user") return "users";
+  if (item.entity_type === "action_plan" || /action|feedback|devolutiva|plano/i.test(item.notification_type)) return "actions";
+  if (item.entity_type === "report" || /report/i.test(item.notification_type)) return "reports";
+  if (item.entity_type === "audit" || /audit/i.test(item.notification_type)) return "audits";
+  return "home";
+}
+
+function relativeNotificationTime(value) {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `há ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days} ${days === 1 ? "dia" : "dias"}`;
+}
+
+function notificationDirection(item) {
+  return /sent|enviado|submitted|solicitado/i.test(`${item.notification_type} ${item.title}`) ? "sent" : "received";
+}
+
+function notificationsPanel() {
+  if (!notificationsOpen) return "";
+  const unread = accessNotifications.filter((item) => !item.read_at).length;
+  return `
+    <section class="notifications-popover" aria-label="Notificações">
+      <header><div><strong>Notificações</strong><span>${unread ? `${unread} ${unread === 1 ? "nova" : "novas"}` : "Tudo em dia"}</span></div>${unread ? '<button type="button" data-notifications-read-all>Marcar como lidas</button>' : ""}</header>
+      <div class="notifications-list">
+        ${accessNotifications.length ? accessNotifications.map((item) => {
+          const direction = notificationDirection(item);
+          return `<button class="notification-item ${item.read_at ? "is-read" : ""}" type="button" data-notification-id="${escapeHtml(item.id)}" data-notification-view="${notificationDestination(item)}">
+            <span class="notification-direction is-${direction}" aria-hidden="true">${direction === "sent" ? "↑" : "↓"}</span>
+            <span class="notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body || "Abra para consultar os detalhes.")}</span><small>${relativeNotificationTime(item.created_at)}</small></span>
+            ${item.read_at ? "" : '<i class="notification-unread" aria-label="Não lida"></i>'}
+          </button>`;
+        }).join("") : '<div class="notifications-empty">Nenhuma notificação por enquanto.</div>'}
+      </div>
+    </section>`;
 }
 
 const settingsPermissionProfiles = [
@@ -1080,6 +1129,7 @@ function topbar() {
   const displayName = currentAccessUser?.full_name || "Usuário";
   const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "US";
   const roleLabel = accessRoleLabels[currentAccessUser?.role] || "Acesso offline";
+  const unreadNotifications = accessNotifications.filter((item) => !item.read_at).length;
   return `
     <header class="topbar fichario-topbar">
       <div class="brand-row">
@@ -1094,9 +1144,13 @@ function topbar() {
         ${icons.search}
         <input type="search" placeholder="Buscar área ou relatório..." aria-label="Buscar área ou relatório" />
       </label>
-      <button class="message-btn" type="button" aria-label="Mensagens">
+      <div class="notifications-anchor">
+      <button class="message-btn" type="button" data-notifications-toggle aria-label="Notificações" aria-expanded="${notificationsOpen}">
         <img src="assets/fichario-icons/message.png?v=fichario-shell-1" alt="" />
+        ${unreadNotifications ? `<span class="message-count">${Math.min(unreadNotifications, 99)}</span>` : ""}
       </button>
+      ${notificationsPanel()}
+      </div>
       <div class="user-mini" data-user-menu>
         <button class="user-menu-trigger" type="button" data-user-menu-trigger aria-expanded="false">
           <span class="user-avatar">${escapeHtml(initials)}</span>
@@ -5499,6 +5553,45 @@ function exitChartPresentationMode() {
 }
 
 document.addEventListener("click", (event) => {
+  const notificationsToggle = event.target.closest("[data-notifications-toggle]");
+  if (notificationsToggle) {
+    notificationsOpen = !notificationsOpen;
+    if (notificationsOpen) {
+      loadAccessNotifications().catch(() => {}).finally(() => render());
+    } else render();
+    return;
+  }
+
+  const notificationItem = event.target.closest("[data-notification-id]");
+  if (notificationItem) {
+    const id = notificationItem.dataset.notificationId;
+    const item = accessNotifications.find((entry) => entry.id === id);
+    if (item && !item.read_at) item.read_at = new Date().toISOString();
+    accessRequest(`notifications/${id}/read`, { method: "POST", body: "{}" }).catch(() => {});
+    const destination = notificationItem.dataset.notificationView || "home";
+    if (destination === "users" && currentAccessUser?.role !== "admin") state.view = "home";
+    else state.view = destination;
+    if (state.view === "users") { state.settingsUserView = "active"; state.settingsUsersExpanded = true; }
+    if (state.view === "actions") state.planningView = "plans";
+    notificationsOpen = false;
+    syncHashWithView(state.view);
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-notifications-read-all]")) {
+    accessNotifications.forEach((item) => { item.read_at ||= new Date().toISOString(); });
+    accessRequest("notifications/read-all", { method: "POST", body: "{}" }).catch(() => {});
+    render();
+    return;
+  }
+
+  if (notificationsOpen && !event.target.closest(".notifications-popover")) {
+    notificationsOpen = false;
+    render();
+    return;
+  }
+
   const logout = event.target.closest("[data-access-logout]");
   if (logout) {
     accessRequest("logout", { method: "POST", body: "{}" }).catch(() => {}).finally(() => {
@@ -6016,7 +6109,10 @@ if (reportRequest) {
       currentAccessUser = data.user;
       if (currentAccessUser.must_change_password) { location.replace("/login.html"); return; }
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
-      if (currentAccessUser.role === "admin") await loadAccessUsers();
+      await Promise.all([
+        currentAccessUser.role === "admin" ? loadAccessUsers() : Promise.resolve(),
+        loadAccessNotifications()
+      ]);
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");
       if (error.status === 401 || !cached) { location.replace("/login.html"); return; }
