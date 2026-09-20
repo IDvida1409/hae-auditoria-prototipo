@@ -335,8 +335,27 @@ async function loadAccessUsers() {
 }
 
 async function loadAccessNotifications() {
-  const data = await accessRequest("notifications");
-  accessNotifications = data.notifications || [];
+  const data = await accessRequest("notifications").catch(() => ({ notifications: [] }));
+  const existing = data.notifications || [];
+  const demo = planningDemoNotifications();
+  accessNotifications = [...existing, ...demo.filter((item) => !existing.some((current) => current.id === item.id))]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function planningDemoNotifications() {
+  const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
+  return [
+    { id: "plan-feedback-residuos", notification_type: "action_plan_feedback", entity_type: "action_plan", entity_id: "area-residuos-auto", title: "Devolutiva recebida - Área de Resíduos", body: "Carlos Lima enviou respostas e três evidências para análise.", created_at: ago(8), read_at: null },
+    { id: "plan-deadline-cubas", notification_type: "action_plan_deadline_requested", entity_type: "action_plan", entity_id: "higienizacao-cubas-auto", title: "Novo prazo solicitado - Higienização de Cubas", body: "O responsável solicitou prazo até 15/12/2026 e anexou uma justificativa.", created_at: ago(31), read_at: null },
+    { id: "plan-sent-catering", notification_type: "action_plan_sent", entity_type: "action_plan", entity_id: "cozinha-catering-auto", title: "Plano enviado - Cozinha Catering", body: "Plano de ação disponibilizado ao responsável da área.", created_at: ago(74), read_at: new Date().toISOString() },
+    { id: "plan-approved-docs", notification_type: "action_plan_approved", entity_type: "action_plan", entity_id: "hist-documentacao-ago", title: "Devolutiva aprovada - Documentação", body: "As evidências foram aprovadas e o plano foi encerrado.", created_at: ago(180), read_at: new Date().toISOString() }
+  ];
+}
+
+function planningNotificationView(item) {
+  if (/feedback|devolutiva|deadline|prazo/i.test(`${item.notification_type} ${item.title}`)) return "feedback";
+  if (/approved|rejected|aprovad|reprovad/i.test(`${item.notification_type} ${item.title}`)) return "history";
+  return "plans";
 }
 
 function notificationDestination(item) {
@@ -359,7 +378,9 @@ function relativeNotificationTime(value) {
 }
 
 function notificationDirection(item) {
-  return /sent|enviado|submitted|solicitado/i.test(`${item.notification_type} ${item.title}`) ? "sent" : "received";
+  const content = `${item.notification_type} ${item.title}`;
+  if (/feedback|devolutiva recebida|deadline_requested|novo prazo solicitado|received/i.test(content)) return "received";
+  return /sent|enviado|submitted|approved|rejected|aprovad|reprovad/i.test(content) ? "sent" : "received";
 }
 
 function notificationsPanel() {
@@ -371,7 +392,7 @@ function notificationsPanel() {
       <div class="notifications-list">
         ${accessNotifications.length ? accessNotifications.map((item) => {
           const direction = notificationDirection(item);
-          return `<button class="notification-item ${item.read_at ? "is-read" : ""}" type="button" data-notification-id="${escapeHtml(item.id)}" data-notification-view="${notificationDestination(item)}">
+          return `<button class="notification-item ${item.read_at ? "is-read" : ""}" type="button" data-notification-id="${escapeHtml(item.id)}" data-notification-view="${notificationDestination(item)}" data-notification-planning-view="${planningNotificationView(item)}" data-notification-plan-id="${escapeHtml(item.entity_id || "")}">
             <span class="notification-direction is-${direction}" aria-hidden="true">${direction === "sent" ? "↑" : "↓"}</span>
             <span class="notification-copy"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.body || "Abra para consultar os detalhes.")}</span><small>${relativeNotificationTime(item.created_at)}</small></span>
             ${item.read_at ? "" : '<i class="notification-unread" aria-label="Não lida"></i>'}
@@ -691,6 +712,9 @@ function defaultState() {
     planningAreaId: "",
     planningStatusFilter: "",
     planningMonthFilter: "",
+    planningPlanId: "",
+    planningPlanOverrides: {},
+    planningNotice: "",
     actionPlanPreview: false,
     actionDeadlineModal: false,
     feedbackExpanded: false,
@@ -724,6 +748,7 @@ function persistableState(source = state) {
     planningAreaId: source.planningAreaId,
     planningStatusFilter: source.planningStatusFilter,
     planningMonthFilter: source.planningMonthFilter,
+    planningPlanOverrides: source.planningPlanOverrides,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -766,6 +791,9 @@ function normalizeSavedState(saved = {}) {
     planningAreaId: validAreaIds.has(merged.planningAreaId) || merged.planningAreaId === "" ? merged.planningAreaId : base.planningAreaId,
     planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
     planningMonthFilter: ["", "2026-09", "2026-08", "2026-07"].includes(merged.planningMonthFilter) ? merged.planningMonthFilter : "",
+    planningPlanId: "",
+    planningPlanOverrides: merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
+    planningNotice: "",
     actionPlanPreview: false,
     actionDeadlineModal: false,
     feedbackExpanded: false,
@@ -5233,7 +5261,9 @@ function planningActionRows() {
       due: `${18 + index}/09/2026`,
       ncs: area.ncs,
       attempts: area.score < 7 ? 2 : 1,
-      source: "Auditoria atual"
+      source: "Auditoria atual",
+      deadlineRequested: area.id === "higienizacao-cubas",
+      requestedDue: area.id === "higienizacao-cubas" ? "15/12/2026" : ""
     }));
 
   const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
@@ -5275,7 +5305,9 @@ function planningActionRows() {
     };
   }).filter(Boolean);
 
-  return [...configuredPlans, ...fallbackPlans, ...historicalPlans];
+  return [...configuredPlans, ...fallbackPlans, ...historicalPlans]
+    .filter((row) => row.area)
+    .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }));
 }
 
 function planningActiveRows(rows = planningActionRows()) {
@@ -5283,7 +5315,7 @@ function planningActiveRows(rows = planningActionRows()) {
 }
 
 function planningFeedbackRows(rows = planningActionRows()) {
-  return rows.filter((row) => row.status === "pending_review");
+  return rows.filter((row) => row.status === "pending_review" || row.deadlineRequested);
 }
 
 function planningHistoryRows(rows = planningActionRows()) {
@@ -5295,6 +5327,7 @@ function planningStatusMeta(status) {
     approved: ["Aprovado", "good"],
     rejected: ["Reprovado", "danger"],
     pending_review: ["Devolutiva recebida", "purple"],
+    extension_requested: ["Novo prazo solicitado", "warning"],
     awaiting_send: ["Aguardando envio", "warning"],
     in_progress: ["Em andamento", "blue"],
     reopened: ["Reaberto", "warning"],
@@ -5305,10 +5338,10 @@ function planningStatusMeta(status) {
 function planningTotals(rows = planningActionRows()) {
   const approved = rows.filter((row) => row.status === "approved").length;
   const rejected = rows.filter((row) => row.status === "rejected").length;
-  const waiting = rows.filter((row) => row.status === "pending_review").length;
+  const waiting = rows.filter((row) => row.status === "pending_review" || row.deadlineRequested).length;
   const overdue = rows.filter((row) => row.status === "overdue").length;
   const awaiting = rows.filter((row) => row.status === "awaiting_send").length;
-  const active = rows.filter((row) => ["in_progress", "reopened"].includes(row.status)).length;
+  const active = rows.filter((row) => ["in_progress", "reopened"].includes(row.status) && !row.deadlineRequested).length;
   return { total: rows.length, approved, rejected, waiting, overdue, active, awaiting };
 }
 
@@ -5354,7 +5387,7 @@ function planningAreaRanking(rows) {
         area,
         total: areaRows.length,
         rejected: areaRows.filter((row) => row.status === "rejected").length,
-        waiting: areaRows.filter((row) => row.status === "pending_review").length,
+        waiting: areaRows.filter((row) => row.status === "pending_review" || row.deadlineRequested).length,
         overdue: areaRows.filter((row) => row.status === "overdue").length
       };
     })
@@ -5400,9 +5433,9 @@ function planningAreaSummaries(rows = planningActionRows()) {
         total: areaRows.length,
         approved: areaRows.filter((row) => row.status === "approved").length,
         rejected: areaRows.filter((row) => row.status === "rejected").length,
-        waiting: areaRows.filter((row) => row.status === "pending_review").length,
+        waiting: areaRows.filter((row) => row.status === "pending_review" || row.deadlineRequested).length,
         awaiting: areaRows.filter((row) => row.status === "awaiting_send").length,
-        active: areaRows.filter((row) => ["in_progress", "reopened"].includes(row.status)).length,
+        active: areaRows.filter((row) => ["in_progress", "reopened"].includes(row.status) && !row.deadlineRequested).length,
         overdue: areaRows.filter((row) => row.status === "overdue").length
       };
     })
@@ -5487,12 +5520,31 @@ function planningFolderCards(rows = planningActionRows(), dataAttr = "planning-f
   `;
 }
 
+function planningRecentList(title, description, rows, emptyText) {
+  return `
+    <section class="planning-recent-card">
+      <div class="planning-card-head"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p></div>
+      <div class="planning-recent-list">
+        ${rows.length ? rows.map((row, index) => {
+          const [label, tone] = planningStatusMeta(row.deadlineRequested ? "extension_requested" : row.status);
+          return `<button class="planning-recent-row" data-open-action-plan-preview="${escapeHtml(row.id)}" type="button">
+            <span class="planning-recent-icon">${index + 1}</span>
+            <span><strong>${escapeHtml(row.area.name)}</strong><small>${escapeHtml(row.title)} · ${escapeHtml(row.owner)}</small></span>
+            <span class="planning-status is-${tone}">${escapeHtml(label)}</span>
+          </button>`;
+        }).join("") : `<div class="planning-empty-state">${escapeHtml(emptyText)}</div>`}
+      </div>
+    </section>`;
+}
+
 function planningOverview() {
   const activeRows = planningActiveRows();
   const feedbackRows = planningFeedbackRows();
-  const cycleRows = [...activeRows, ...feedbackRows];
+  const cycleRows = [...new Map([...activeRows, ...feedbackRows].map((row) => [row.id, row])).values()];
   const totals = planningTotals(cycleRows);
   const ranking = planningAreaRanking(cycleRows);
+  const recentSent = activeRows.filter((row) => ["in_progress", "reopened"].includes(row.status)).slice(0, 4);
+  const recentReturns = [...feedbackRows, ...planningHistoryRows()].slice(0, 4);
   return `
     <div class="fichario-sub-panel">
       <div class="planning-kpi-grid">
@@ -5516,6 +5568,10 @@ function planningOverview() {
             `).join("")}
           </div>
         </div>
+      </div>
+      <div class="planning-recent-grid">
+        ${planningRecentList("Últimos planos enviados", "Planos já bloqueados para edição e aguardando o responsável.", recentSent, "Nenhum plano enviado neste ciclo.")}
+        ${planningRecentList("Últimas devolutivas", "Retornos recentes dos responsáveis e decisões do auditor.", recentReturns, "Nenhuma devolutiva recebida.")}
       </div>
     </div>
   `;
@@ -5541,7 +5597,7 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
                 <td>${row.ncs}</td>
                 <td><span class="planning-status is-${tone}">${escapeHtml(label)}</span></td>
                 <td>${escapeHtml(row.due)}</td>
-                <td><button class="fichario-sub-action" data-open-action-plan-preview="${escapeHtml(row.area.id)}" type="button">${actionLabel}</button></td>
+                <td><div class="planning-table-actions"><button class="fichario-sub-action" data-open-action-plan-preview="${escapeHtml(row.id)}" type="button">${actionLabel}</button>${row.status === "awaiting_send" ? `<button class="fichario-sub-action is-primary" data-send-action-plan="${escapeHtml(row.id)}" type="button">Enviar agora</button>` : ""}</div></td>
               </tr>
             `;
           }).join("")}
@@ -5592,75 +5648,56 @@ function planningDeadlineModal() {
   `;
 }
 
+function planningPreviewFooter(plan) {
+  if (plan.status === "awaiting_send") {
+    return `<footer class="action-plan-submit-footer"><div><strong>Rascunho do auditor</strong><span>Somente observação e ação orientada podem ser alteradas antes do envio.</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-save-action-plan="${escapeHtml(plan.id)}" type="button">Salvar rascunho</button><button class="primary-btn" data-send-action-plan="${escapeHtml(plan.id)}" type="button">Salvar e enviar ao responsável</button></div></footer>`;
+  }
+  if (plan.status === "pending_review") {
+    return `<footer class="action-plan-submit-footer is-review"><div><strong>Devolutiva recebida</strong><span>Revise as respostas, evidências e assinatura antes de decidir.</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Reprovar devolutiva</button><button class="primary-btn" data-plan-decision="approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar evidências</button></div></footer>`;
+  }
+  if (plan.deadlineRequested) {
+    return `<footer class="action-plan-submit-footer is-review"><div><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong><span>Motivo: compra de peça e agendamento de manutenção especializada.</span></div><div class="action-plan-admin-actions"><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></footer>`;
+  }
+  const [label] = planningStatusMeta(plan.status);
+  return `<footer class="action-plan-submit-footer"><div><strong>${escapeHtml(label)}</strong><span>${plan.status === "in_progress" ? "Plano enviado e bloqueado para edição. Aguardando devolutiva do responsável." : "Documento encerrado e mantido no histórico da área."}</span></div><div class="action-plan-admin-actions"><span class="planning-status is-${plan.status === "approved" ? "good" : plan.status === "rejected" ? "danger" : "blue"}">${escapeHtml(label)}</span></div></footer>`;
+}
+
 function planningPlanPreview() {
-  const area = areaById(state.planningAreaId || "cozinha-catering");
+  const plan = planningActionRows().find((row) => row.id === state.planningPlanId) || planningActionRows().find((row) => row.area.id === state.planningAreaId) || planningActionRows()[0];
+  const area = plan.area;
   const items = actionPlanPreviewItems(area);
+  const isDraft = plan.status === "awaiting_send";
+  const hasResponse = ["pending_review", "approved", "rejected"].includes(plan.status) || plan.deadlineRequested;
+  const effectiveStatus = plan.deadlineRequested ? "extension_requested" : plan.status;
+  const [statusLabel, statusTone] = planningStatusMeta(effectiveStatus);
+  const responseCopy = [
+    "A equipe realizou a higienização completa, revisou o utensílio e atualizou a rotina de conferência antes do uso.",
+    "O registro foi corrigido, a liderança orientou o turno e incluiu uma dupla checagem no encerramento.",
+    "O item foi identificado e os demais recipientes do setor foram revisados conforme o padrão orientado."
+  ];
   return `
     <div class="fichario-sub-panel action-plan-preview-shell">
+      ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="action-plan-preview-toolbar">
         <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
-        <span class="planning-status is-blue">Plano vigente</span>
-        <a class="fichario-sub-action" href="/plano-acao-preview.html" target="_blank" rel="noopener">${svgIcon("document")} Visualizar PDF</a>
+        <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
+        <a class="fichario-sub-action" href="/plano-acao-preview.html" target="_blank" rel="noopener">${svgIcon("document")} Visualizar impressão</a>
       </div>
+      ${isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
-        <header class="action-plan-doc-header">
-          <div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div>
-          <div><span>PLANO DE AÇÃO VIGENTE</span><strong>PA-2026-CT-009</strong></div>
-        </header>
-        <section class="action-plan-title-block">
-          <div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano independente da área · Auditoria de setembro/2026</p></div>
-          <img src="assets/icons/${area.icon}" alt="" />
-        </section>
-        <section class="action-plan-meta-grid">
-          <div><span>Responsável</span><strong>Juliana Martins</strong></div>
-          <div><span>Auditor</span><strong>José da Silva</strong></div>
-          <div><span>Emitido em</span><strong>20/09/2026</strong></div>
-          <div><span>Prazo atual</span><strong>15/10/2026</strong></div>
-        </section>
-        <section class="action-plan-instructions">
-          <div class="action-plan-section-icon">${svgIcon("idea")}</div>
-          <div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação registrada pelo auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data e informe o motivo.</li><li>Revise as três respostas antes de assinar e enviar a devolutiva.</li></ol></div>
-        </section>
-        <section class="action-plan-summary-row">
-          <div><strong>3</strong><span>não conformidades</span></div>
-          <div><strong>3</strong><span>evidências originais</span></div>
-          <div><strong>25 dias</strong><span>prazo para resposta</span></div>
-          <button class="outline-btn" data-open-deadline-modal type="button">${svgIcon("clock")} Solicitar novo prazo</button>
-        </section>
+        <header class="action-plan-doc-header"><div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div><div><span>PLANO DE AÇÃO VIGENTE</span><strong>PA-2026-${escapeHtml(area.id.slice(0, 2).toUpperCase())}-${escapeHtml(plan.id.slice(-3).toUpperCase())}</strong></div></header>
+        <section class="action-plan-title-block"><div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano emitido em 20/09/2026 às 16:42 · Auditoria de setembro/2026</p></div><img src="assets/icons/${area.icon}" alt="" /></section>
+        <section class="action-plan-meta-grid"><div><span>Responsável</span><strong>${escapeHtml(plan.owner)}</strong></div><div><span>Auditor</span><strong>teste.01</strong></div><div><span>Emitido em</span><strong>20/09/2026</strong></div><div><span>Prazo atual</span><strong>${escapeHtml(plan.due)}</strong></div></section>
+        <section class="action-plan-instructions"><div class="action-plan-section-icon">${svgIcon("idea")}</div><div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação registrada pelo auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data e informe o motivo.</li><li>Revise as três respostas antes de assinar e enviar a devolutiva.</li></ol></div></section>
+        <section class="action-plan-summary-row"><div><strong>${Math.max(3, plan.ncs)}</strong><span>não conformidades</span></div><div><strong>3</strong><span>evidências originais</span></div><div><strong>${hasResponse ? "Respondido" : "25 dias"}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" type="button" ${hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `
-            <section class="action-plan-nc-card">
-              <div class="action-plan-nc-heading">
-                <span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span>
-                <div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>
-                ${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}
-              </div>
-              <div class="action-plan-nc-body">
-                <figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>
-                <div class="action-plan-auditor-copy">
-                  <label><span>Observação do auditor</span><textarea>${escapeHtml(reportObservationForQuestion(row))}</textarea></label>
-                  <label><span>Ação orientada</span><textarea>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label>
-                </div>
-              </div>
-              <div class="action-plan-response-box">
-                <label class="action-plan-field is-wide"><span>O que foi realizado?</span><textarea placeholder="Descreva a correção realizada para este item..."></textarea></label>
-                <div class="action-plan-evidence-actions"><label class="outline-btn">${svgIcon("camera")} Tirar foto<input type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input type="file" accept="image/*,.pdf" hidden /></label><small>Nenhuma evidência adicionada</small></div>
-              </div>
-            </section>
-          `).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}</div><div class="action-plan-nc-body"><figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure><div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(reportObservationForQuestion(row))}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea readonly placeholder="Aguardando resposta do responsável...">${hasResponse ? escapeHtml(responseCopy[index]) : ""}</textarea></label><div class="action-plan-evidence-actions">${hasResponse ? `<figure class="action-plan-return-evidence"><img src="assets/report-evidence-utensilios.png" alt="Evidência enviada pelo responsável" /><figcaption>Evidência enviada · 19/09/2026</figcaption></figure>` : `<small class="action-plan-awaiting-copy">A evidência será adicionada pelo responsável após o envio.</small>`}</div></div></section>`).join("")}
         </div>
-        <section class="action-plan-signature-section">
-          <div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>José da Silva</strong><span>Auditor responsável · ID 0048</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>
-          <label class="action-plan-field"><span>Assinatura do responsável na devolutiva</span><input placeholder="Nome completo do responsável" /></label>
-        </section>
-        <footer class="action-plan-submit-footer">
-          <div><strong>Revise antes de enviar</strong><span>As três NCs precisam de resposta e evidência.</span></div>
-          <button class="primary-btn" type="button" disabled title="Envio desativado nesta prévia">Confirmar, assinar e enviar</button>
-        </footer>
+        <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>${hasResponse ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(plan.owner)}</strong><span>Responsável pela área</span><small>Ciência e assinatura registradas em 19/09/2026 às 14:13</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito automaticamente quando o responsável confirmar o recebimento.</small></div>`}</section>
+        ${planningPreviewFooter(plan)}
       </article>
       ${planningDeadlineModal()}
-    </div>
-  `;
+    </div>`;
 }
 
 function planningPlansContent() {
@@ -5676,6 +5713,7 @@ function planningPlansContent() {
   const isFolderView = !state.planningStatusFilter && !selectedArea;
   return `
     <div class="fichario-sub-panel">
+      ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="fichario-sub-head"><div><h2>Planos de ação</h2><p>Pastas dos planos gerados no ciclo atual. Use os filtros para abrir um status ou uma área específica.</p></div>${state.planningStatusFilter || selectedArea ? `<button class="fichario-sub-action" data-clear-planning-filter type="button">Limpar filtro</button>` : ""}</div>
       <div class="planning-filter-line">
         <label><span>${icons.search}</span><input placeholder="Pesquisar plano, área ou responsável..." /></label>
@@ -5699,16 +5737,17 @@ function planningFeedbackContent() {
   const rows = planningFeedbackRows();
   return `
     <div class="fichario-sub-panel">
+      ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="fichario-sub-head"><div><h2>Devolutivas</h2><p>Fila do auditor para revisar evidências, justificar reprovação e reabrir o plano quando a regra permitir.</p></div><button class="fichario-sub-action is-primary" type="button">Ver todas</button></div>
       <div class="planning-feedback-list">
         ${rows.map((row) => {
-          const [label, tone] = planningStatusMeta(row.status);
+          const [label, tone] = planningStatusMeta(row.deadlineRequested ? "extension_requested" : row.status);
           return `
             <div class="planning-feedback-row">
               <div class="planning-feedback-icon">${assetIcon("action", "blue", "planning-icon")}</div>
               <div><strong>${escapeHtml(row.title)}</strong><span>${escapeHtml(row.area.name)} · ${escapeHtml(row.owner)} · ${row.attempts} tentativa(s)</span></div>
               <span class="planning-status is-${tone}">${escapeHtml(label)}</span>
-              <button class="fichario-sub-action" type="button">Analisar</button>
+              <button class="fichario-sub-action" data-open-action-plan-preview="${escapeHtml(row.id)}" type="button">${row.deadlineRequested ? "Analisar prazo" : "Analisar"}</button>
             </div>
           `;
         }).join("")}
@@ -5723,6 +5762,7 @@ function planningHistoryContent() {
   const visibleRows = selectedArea ? rows.filter((row) => row.area.id === selectedArea.id) : [];
   return `
     <div class="fichario-sub-panel">
+      ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="fichario-sub-head planning-history-head">
         <div><h2>Histórico por área</h2><p>Selecione uma área para consultar planos aprovados, reprovados e vencidos.</p></div>
         <div class="planning-head-actions">${planningAreaSelect(state.planningAreaId, "planning-history-option")}${planningMonthSelect()}<button class="fichario-sub-action" type="button">Exportar</button></div>
@@ -5750,6 +5790,7 @@ function planningRulesContent() {
 }
 
 function planningContent() {
+  if (state.actionPlanPreview) return planningPlanPreview();
   const panels = {
     overview: planningOverview,
     plans: planningPlansContent,
@@ -5768,6 +5809,26 @@ function planningPage() {
       ${planningContent()}
     </section>
   `;
+}
+
+function addPlanningNotification(type, plan, title, body, direction = "received") {
+  accessNotifications = [{
+    id: `local-${type}-${plan.id}-${Date.now()}`,
+    notification_type: direction === "sent" ? `${type}_sent` : type,
+    entity_type: "action_plan",
+    entity_id: plan.id,
+    title,
+    body,
+    created_at: new Date().toISOString(),
+    read_at: null
+  }, ...accessNotifications];
+}
+
+function updatePlanningPlan(planId, values) {
+  state.planningPlanOverrides = {
+    ...(state.planningPlanOverrides || {}),
+    [planId]: { ...(state.planningPlanOverrides?.[planId] || {}), ...values }
+  };
 }
 
 function viewContent() {
@@ -5842,7 +5903,16 @@ document.addEventListener("click", (event) => {
     if (destination === "users" && currentAccessUser?.role !== "admin") state.view = "home";
     else state.view = destination;
     if (state.view === "users") { state.settingsUserView = "active"; state.settingsUsersExpanded = true; }
-    if (state.view === "actions") state.planningView = "plans";
+    if (state.view === "actions") {
+      state.planningView = notificationItem.dataset.notificationPlanningView || "plans";
+      const planId = notificationItem.dataset.notificationPlanId;
+      const plan = planningActionRows().find((row) => row.id === planId);
+      if (plan) {
+        state.planningPlanId = plan.id;
+        state.planningAreaId = plan.area.id;
+        state.actionPlanPreview = true;
+      }
+    }
     notificationsOpen = false;
     syncHashWithView(state.view);
     render();
@@ -6118,11 +6188,62 @@ document.addEventListener("click", (event) => {
 
   const openActionPlanPreview = event.target.closest("[data-open-action-plan-preview]");
   if (openActionPlanPreview) {
-    state.planningAreaId = openActionPlanPreview.dataset.openActionPlanPreview || "cozinha-catering";
+    const plan = planningActionRows().find((row) => row.id === openActionPlanPreview.dataset.openActionPlanPreview) || planningActionRows()[0];
+    state.planningPlanId = plan.id;
+    state.planningAreaId = plan.area.id;
+    state.planningNotice = "";
     state.actionPlanPreview = true;
     state.actionDeadlineModal = false;
     render();
     requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
+    return;
+  }
+
+  const saveActionPlan = event.target.closest("[data-save-action-plan]");
+  if (saveActionPlan) {
+    const plan = planningActionRows().find((row) => row.id === saveActionPlan.dataset.saveActionPlan);
+    if (plan) state.planningNotice = `Rascunho de ${plan.area.name} salvo. O plano continua aguardando envio.`;
+    render();
+    return;
+  }
+
+  const sendActionPlan = event.target.closest("[data-send-action-plan]");
+  if (sendActionPlan) {
+    const plan = planningActionRows().find((row) => row.id === sendActionPlan.dataset.sendActionPlan);
+    if (plan) {
+      updatePlanningPlan(plan.id, { status: "in_progress", source: "Enviado em 20/09/2026 às 16:55" });
+      state.planningPlanId = plan.id;
+      state.planningAreaId = plan.area.id;
+      state.actionPlanPreview = true;
+      state.planningNotice = `Plano de ${plan.area.name} enviado ao responsável e bloqueado para edição.`;
+      addPlanningNotification("action_plan", plan, `Plano enviado - ${plan.area.name}`, `O plano foi disponibilizado para ${plan.owner}.`, "sent");
+    }
+    render();
+    return;
+  }
+
+  const planDecision = event.target.closest("[data-plan-decision]");
+  if (planDecision) {
+    const plan = planningActionRows().find((row) => row.id === planDecision.dataset.planId);
+    const decision = planDecision.dataset.planDecision;
+    if (plan) {
+      if (decision === "approved" || decision === "rejected") {
+        updatePlanningPlan(plan.id, { status: decision, source: `Decidido em 20/09/2026` });
+        state.planningNotice = `Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e registrada no histórico"}.`;
+        addPlanningNotification(`action_plan_${decision}`, plan, `Devolutiva ${decision === "approved" ? "aprovada" : "reprovada"} - ${plan.area.name}`, "A decisão do auditor foi registrada no histórico do plano.", "sent");
+        state.planningView = "history";
+      } else {
+        const approved = decision === "deadline_approved";
+        updatePlanningPlan(plan.id, { status: "in_progress", deadlineRequested: false, due: approved ? (plan.requestedDue || "15/12/2026") : plan.due, source: approved ? "Novo prazo aprovado" : "Novo prazo recusado" });
+        state.planningNotice = `Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada"}.`;
+        addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : "O prazo original foi mantido.", "sent");
+        state.planningView = "plans";
+      }
+      state.actionPlanPreview = false;
+      state.actionDeadlineModal = false;
+      state.planningAreaId = "";
+    }
+    render();
     return;
   }
 
