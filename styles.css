@@ -15489,6 +15489,62 @@ button.planning-kpi:hover {
   background: #edf8f1;
 }
 
+.action-plan-item-review {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 16px;
+  border-top: 1px solid #d8e2ec;
+  background: #f7f9fb;
+}
+
+.action-plan-item-review.is-approved {
+  border-left: 4px solid #25a24f;
+  background: #edf8f1;
+}
+
+.action-plan-item-review.is-rejected {
+  border-left: 4px solid #d73543;
+  background: #fff1f2;
+}
+
+.action-plan-item-review > div:first-child > span,
+.action-plan-item-review > div:first-child > strong {
+  display: block;
+}
+
+.action-plan-item-review > div:first-child > span {
+  color: #657a8f;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.action-plan-item-review > div:first-child > strong {
+  margin-top: 2px;
+  color: #173451;
+  font-size: 11px;
+}
+
+.action-plan-item-review p {
+  margin-top: 5px;
+  color: #4b6074;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.action-plan-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.action-plan-item-actions button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
 .action-plan-return-evidence {
   position: relative;
   width: 100%;
@@ -15700,4 +15756,6 @@ button.planning-kpi:hover {
   .action-plan-admin-actions .planning-status { align-self: flex-start; }
   .action-plan-deadline-head { align-items: flex-start; flex-direction: column; }
   .action-plan-deadline-grid { grid-template-columns: 1fr; }
+  .action-plan-item-review { align-items: stretch; flex-direction: column; }
+  .action-plan-item-actions { align-items: stretch; flex-direction: column; }
 }
