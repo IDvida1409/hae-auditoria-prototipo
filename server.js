@@ -216,57 +216,13 @@ async function defaultUnitId(pool) {
 }
 
 async function currentUser(pool, request, unitId) {
-  const authorization = String(request.headers.authorization || "");
-  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearer) {
-    const byToken = await pool.query(
-      `
-        select u.*
-        from user_sessions s
-        join app_users u on u.id = s.user_id
-        where s.token_hash = $1
-          and s.revoked_at is null
-          and s.expires_at > now()
-          and u.active = true
-        limit 1
-      `,
-      [hashToken(bearer)]
-    );
-    if (byToken.rows[0]) {
-      await pool.query(
-        "update user_sessions set last_seen_at = now() where token_hash = $1",
-        [hashToken(bearer)]
-      );
-      return byToken.rows[0];
-    }
+  const user = request.accessUser || await accessApi.authenticated(pool, request);
+  if (!user) {
+    const error = new Error("Entre na sua conta para continuar.");
+    error.status = 401;
+    throw error;
   }
-
-  const headerUserId = request.headers["x-user-id"];
-  if (headerUserId) {
-    const byHeader = await pool.query("select * from app_users where id = $1", [headerUserId]);
-    if (byHeader.rows[0]) return byHeader.rows[0];
-  }
-
-  const existing = await pool.query(
-    "select * from app_users where role in ('admin', 'quality', 'auditor') order by created_at asc limit 1"
-  );
-  if (existing.rows[0]) return existing.rows[0];
-
-  const existingAdmin = await pool.query(
-    "select * from app_users where lower(email) = lower($1) limit 1",
-    ["admin@idauditor.local"]
-  );
-  if (existingAdmin.rows[0]) return existingAdmin.rows[0];
-
-  const inserted = await pool.query(
-    `
-      insert into app_users (unit_id, full_name, email, role, platform_scope)
-      values ($1, $2, $3, 'admin', 'all_units')
-      returning *
-    `,
-    [unitId, "Administrador", "admin@idauditor.local"]
-  );
-  return inserted.rows[0] || null;
+  return user;
 }
 
 async function ensureCycle(pool, unitId, monthStart = currentMonthStart()) {
@@ -382,6 +338,20 @@ async function handleApi(request, response, url) {
       !["/api/health", "/api/state"].includes(url.pathname)) {
     sendJson(response, 503, { error: "APIs estruturadas aguardam ativacao do controle de acesso." });
     return true;
+  }
+  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/health") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      request.accessUser = await accessApi.authenticated(pool, request);
+      if (!request.accessUser) {
+        sendJson(response, 401, { error: "Entre na sua conta para continuar." });
+        return true;
+      }
+    } catch (error) {
+      sendJson(response, 500, { error: "Não foi possível validar a sessão." });
+      return true;
+    }
   }
   const conflictMatch = pathMatch(url.pathname, /^\/api\/sync-queue\/(?<operationId>[^/]+)\/resolve$/);
   if (conflictMatch && request.method === "POST") {

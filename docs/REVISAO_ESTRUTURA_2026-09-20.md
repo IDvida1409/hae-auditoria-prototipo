@@ -51,8 +51,8 @@ unificar a finalizacao da auditoria e completar o plano de acao.
 ## Pendencias bloqueadoras
 
 1. Definir e implementar a matriz de acesso por perfil, unidade, area e operacao.
-2. Remover o usuario privilegiado automatico das APIs antigas e exigir a sessao nova.
-3. Proteger ou aposentar `/api/state`, que hoje e um estado global compartilhado.
+2. Substituir o snapshot global `/api/state` pelas entidades operacionais; o endpoint
+   ja exige a sessao nova, mas continua compartilhando um unico documento entre usuarios.
 4. Ativar as APIs estruturadas somente depois dessa autorizacao; hoje o Render retorna
    503 intencionalmente para elas (`STRUCTURED_APIS_ENABLED=false`).
 5. Fazer checklist, fotos e finalizacao usarem banco/IndexedDB em vez do estado demonstrativo.
@@ -71,7 +71,7 @@ unificar a finalizacao da auditoria e completar o plano de acao.
 - `/api/health`: PostgreSQL ativo; 11 migrations; ultima `011_user_access_workflow.sql`.
 - `/api/access/me`: exige login e retorna 401 sem sessao.
 - `/api/bootstrap`: retorna 503 porque as APIs operacionais continuam desativadas.
-- `/api/state`: permanece publico e contem o snapshot demonstrativo compartilhado.
+- `/api/state`: exige a sessao nova, mas ainda contem um snapshot demonstrativo compartilhado.
 
 ## Ordem recomendada
 

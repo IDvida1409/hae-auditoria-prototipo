@@ -72,9 +72,10 @@ async function main() {
       if (api.exitCode != null) throw new Error(apiLog);
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    let authenticatedCookie = "";
     async function json(route, body, method = body ? "POST" : "GET", token = "") {
       const response = await fetch(base + route, {
-        method, headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) },
+        method, headers: { "content-type": "application/json", ...(authenticatedCookie ? { cookie: authenticatedCookie } : {}), ...(token ? { authorization: "Bearer " + token } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {})
       });
       const result = await response.json();
@@ -83,12 +84,6 @@ async function main() {
     }
     const health = await json("/api/health");
     assert.equal(health.storage, "postgres");
-    const bootstrap = await json("/api/offline-bootstrap");
-    assert.equal(bootstrap.areas.length, 12);
-    const checklist = bootstrap.checklists[0];
-    const area = bootstrap.areas.find((item) => item.id === checklist.area_id);
-    const question = checklist.blocks.flatMap((block) => block.questions)[0];
-    const user = await json("/api/users", { fullName: "Integration Auditor", email: "integration@idauditor.test", role: "auditor" });
     const { hashPassword } = require("../lib/access-api");
     const accessPassword = "Test-only-" + crypto.randomUUID();
     const admin = await pool.query("select id,email from app_users where role='admin' order by created_at limit 1");
@@ -100,6 +95,15 @@ async function main() {
         ...(body ? { body: JSON.stringify(body) } : {}) });
       return { response, data: await response.json(), cookie: response.headers.get("set-cookie")?.split(";")[0] || "" };
     }
+    const initialAccessLogin = await access("login", { username: "admin.test", password: accessPassword, remember: true });
+    assert.equal(initialAccessLogin.response.status, 200);
+    authenticatedCookie = initialAccessLogin.cookie;
+    const bootstrap = await json("/api/offline-bootstrap");
+    assert.equal(bootstrap.areas.length, 12);
+    const checklist = bootstrap.checklists[0];
+    const area = bootstrap.areas.find((item) => item.id === checklist.area_id);
+    const question = checklist.blocks.flatMap((block) => block.questions)[0];
+    const user = await json("/api/users", { fullName: "Integration Auditor", email: "integration@idauditor.test", role: "auditor" });
     assert.equal((await access("me")).response.status, 401);
     assert.equal((await access("login", { email: admin.rows[0].email, password: accessPassword })).response.status, 400);
     assert.equal((await access("login", { username: "admin.test", password: "Wrong password" })).response.status, 401);
@@ -136,8 +140,10 @@ async function main() {
     assert.equal((await access("logout", {}, accessLogin.cookie)).response.status, 200);
     assert.equal((await access("me", null, accessLogin.cookie)).response.status, 401);
     console.log("PASS: password login, private cookie session, administrator-only registration, generated first-access code, password request/reset, mandatory password change, revocation, logout and cross-origin rejection.");
-    const session = await json("/api/auth/login", { email: user.user.email });
-    const token = session.token;
+    const operationalLogin = await access("login", { username: "admin.test", password: accessPassword });
+    assert.equal(operationalLogin.response.status, 200);
+    authenticatedCookie = operationalLogin.cookie;
+    const token = "";
     const deviceUid = crypto.randomUUID();
     const localAuditId = crypto.randomUUID();
     const creation = { clientOperationId: "create-" + localAuditId, clientSequence: 1, entityType: "audit", operation: "create", payload: { localAuditId, areaSlug: area.slug } };
@@ -151,7 +157,7 @@ async function main() {
     assert.equal(original.answers.length, 1);
     assert.equal(original.answers[0].answer, "NC");
     const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6xT0AAAAASUVORK5CYII=", "base64");
-    const headers = { authorization: "Bearer " + token, "content-type": "image/png", "x-device-uid": deviceUid, "x-local-file-id": "photo-1", "x-file-name": "photo.png" };
+    const headers = { cookie: authenticatedCookie, "content-type": "image/png", "x-device-uid": deviceUid, "x-local-file-id": "photo-1", "x-file-name": "photo.png" };
     const upload = await fetch(base + "/api/offline-files", { method: "POST", headers, body: bytes });
     assert.ok(upload.ok);
     const file = (await upload.json()).file;
@@ -159,7 +165,7 @@ async function main() {
     assert.equal((await secondUpload.json()).file.id, file.id);
     const photoOp = { clientOperationId: "photo-" + localAuditId, clientSequence: 3, entityType: "stored_file", operation: "upload", dependsOn: [answer.clientOperationId], payload: { localAuditId, localFileId: "photo-1", entityType: "audit_answer", questionId: question.id } };
     await json("/api/sync-queue", { deviceUid, operations: [photoOp] }, "POST", token);
-    const download = await fetch(base + "/api/files/" + file.id + "/content", { headers: { authorization: "Bearer " + token } });
+    const download = await fetch(base + "/api/files/" + file.id + "/content", { headers: { cookie: authenticatedCookie } });
     assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
     const updated = await json("/api/audits/" + auditId, null, "GET", token);
     assert.equal(updated.files.length, 1);
@@ -194,7 +200,7 @@ async function main() {
     assert.equal(completed.status, "completed", completed.error_message || "PDF generation did not complete");
     const reports = await json("/api/reports", null, "GET", token);
     assert.equal(reports.reports.length, 1);
-    const pdfResponse = await fetch(base + reports.reports[0].file_url, { headers: { authorization: "Bearer " + token } });
+    const pdfResponse = await fetch(base + reports.reports[0].file_url, { headers: { cookie: authenticatedCookie } });
     const pdf = Buffer.from(await pdfResponse.arrayBuffer());
     assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
     const versions = await json("/api/reports/" + completed.report_id + "/versions", null, "GET", token);

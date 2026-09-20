@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { hashPassword, verifyPassword, validPassword, temporaryCode } = require("../lib/access-api");
+const { hashPassword, verifyPassword, validPassword, temporaryCode, authenticated } = require("../lib/access-api");
 test("passwords are salted, hashed and verified without accepting missing credentials", async () => {
   const first = await hashPassword("A strong test password");
   const second = await hashPassword("A strong test password");
@@ -22,4 +22,12 @@ test("temporary first-access codes are unambiguous and not repeated", () => {
   const second = temporaryCode();
   assert.match(first, /^[A-HJ-NP-Z2-9]{10}$/);
   assert.notEqual(first, second);
+});
+test("authenticated accepts the protected cookie or bearer token and rejects prototype identity headers", async () => {
+  const user = { id: "user-1", role: "admin", active: true };
+  const pool = { query: async (_sql, values) => ({ rows: values?.length ? [user] : [] }) };
+  const token = "a".repeat(64);
+  assert.equal((await authenticated(pool, { headers: { cookie: `idvida_access=${token}` } })).id, user.id);
+  assert.equal((await authenticated(pool, { headers: { authorization: `Bearer ${token}` } })).id, user.id);
+  assert.equal(await authenticated(pool, { headers: { "x-user-id": user.id } }), null);
 });
