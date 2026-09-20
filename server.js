@@ -87,6 +87,7 @@ async function getPool() {
       try {
         await runMigrations(pool);
         await accessApi.ensureBootstrapAdmin(pool);
+        await accessApi.ensureDemoResponsible(pool);
       }
       catch (error) { await pool.end(); throw error; }
       return pool;

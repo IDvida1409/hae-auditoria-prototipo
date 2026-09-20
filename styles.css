@@ -3095,6 +3095,72 @@ h3 {
   .action-plan-upload.is-wide { grid-column: auto; }
 }
 
+/* Restricted area-responsible view */
+.fichario-tab.is-locked {
+  --tab-color: #d7dde5;
+  color: #7e8b9a;
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: .72;
+}
+
+.fichario-tab-lock {
+  display: inline-grid !important;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  place-items: center;
+}
+
+.fichario-tab-lock svg,
+.area-tile.is-locked .tile-check svg,
+.report-folder-tile.is-locked svg {
+  width: 14px;
+  height: 14px;
+}
+
+.area-tile.is-locked,
+.report-folder-tile.is-locked {
+  background: #f1f3f6 !important;
+  border-color: #d4dbe4 !important;
+  color: #7b8795 !important;
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: .76;
+  transform: none !important;
+}
+
+.area-tile.is-locked .area-icon {
+  opacity: .58;
+}
+
+.area-tile.is-locked .area-score::after {
+  content: "Acesso restrito";
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.responsible-consent-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0 4px;
+  padding: 14px;
+  border: 1px solid #cdd8e4;
+  border-radius: 8px;
+  background: #f6f9fc;
+  color: #173451;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.responsible-consent-check input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: #08a44b;
+}
+
 .camera-drop small {
   display: block;
   margin-top: 4px;

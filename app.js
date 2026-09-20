@@ -29,6 +29,7 @@ const icons = {
   trendingUp: `<svg viewBox="0 0 24 24"><path d="M4 17.5 8.8 13l3.8 2.1 4.4-4.3"/><path class="accent-green" d="M15.4 5.5h5v5M20.4 5.5l-4.8 4.8"/><circle cx="8.8" cy="13" r=".9"/><circle cx="12.6" cy="15.1" r=".9"/></svg>`,
   fileWarning: `<svg viewBox="0 0 24 24"><path d="M6.6 3.8h7l3.8 3.8v12.6H6.6z"/><path d="M13.6 3.8v3.8h3.8"/><path class="accent-orange" d="m15.8 12.2 3.8 6.7H12z"/><path class="accent-red" d="M15.8 14.6v1.8M15.8 18.1h.01"/></svg>`,
   shield: `<svg viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6z"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>`
+  ,lock: `<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`
 };
 
 const areaData = [
@@ -301,6 +302,43 @@ const accessRoleLabels = {
   viewer: "Visualizador"
 };
 
+function isAreaResponsible() {
+  return currentAccessUser?.role === "area_responsible";
+}
+
+function allowedAreaIds() {
+  if (!isAreaResponsible()) return areaData.map((area) => area.id);
+  return Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : [];
+}
+
+function canAccessArea(areaId) {
+  return !isAreaResponsible() || allowedAreaIds().includes(areaId);
+}
+
+function primaryUserArea() {
+  return areaData.find((area) => canAccessArea(area.id)) || areaData[0];
+}
+
+function orderedAreasForUser() {
+  if (!isAreaResponsible()) return areaData;
+  return [...areaData].sort((a, b) => Number(canAccessArea(b.id)) - Number(canAccessArea(a.id)));
+}
+
+function moduleAllowed(view) {
+  if (!isAreaResponsible()) return view !== "users" || currentAccessUser?.role === "admin";
+  return ["home", "charts", "actions", "reports", "area"].includes(view);
+}
+
+function applyCurrentUserScope() {
+  if (!isAreaResponsible()) return;
+  const primary = primaryUserArea();
+  state.selectedArea = primary.id;
+  if (!canAccessArea(state.chartFocusArea)) state.chartFocusArea = primary.id;
+  if (!moduleAllowed(state.view)) state.view = "home";
+  if (state.planningView === "rules") state.planningView = "overview";
+  if (state.planningAreaId && !canAccessArea(state.planningAreaId)) state.planningAreaId = primary.id;
+}
+
 function normalizeAccessUser(user) {
   return {
     ...user,
@@ -347,6 +385,12 @@ async function loadAccessNotifications() {
 
 function planningDemoNotifications() {
   const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
+  if (isAreaResponsible()) {
+    return [
+      { id: "plan-assigned-residuos", notification_type: "action_plan_assigned", entity_type: "action_plan", entity_id: "area-residuos-auto", title: "Plano de ação disponível - Área de Resíduos", body: "O plano da auditoria vigente está disponível para ciência e resposta.", created_at: ago(8), read_at: null },
+      { id: "report-residuos-current", notification_type: "report_ready", entity_type: "report", entity_id: "area-residuos", title: "Relatório mensal disponível", body: "O relatório vigente da Área de Resíduos já pode ser consultado.", created_at: ago(34), read_at: null }
+    ];
+  }
   return [
     { id: "plan-feedback-residuos", notification_type: "action_plan_feedback", entity_type: "action_plan", entity_id: "area-residuos-auto", title: "Devolutiva recebida - Área de Resíduos", body: "Carlos Lima enviou respostas e três evidências para análise.", created_at: ago(8), read_at: null },
     { id: "plan-deadline-cubas", notification_type: "action_plan_deadline_requested", entity_type: "action_plan", entity_id: "higienizacao-cubas-auto", title: "Novo prazo solicitado - Higienização de Cubas", body: "O responsável solicitou prazo até 15/12/2026 e anexou uma justificativa.", created_at: ago(31), read_at: null },
@@ -722,6 +766,9 @@ function defaultState() {
     planningDecisionModal: false,
     actionPlanPreview: false,
     actionDeadlineModal: false,
+    actionPlanAcknowledgements: {},
+    actionPlanResponses: {},
+    actionPlanConsentId: "",
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
@@ -755,6 +802,8 @@ function persistableState(source = state) {
     planningStatusFilter: source.planningStatusFilter,
     planningMonthFilter: source.planningMonthFilter,
     planningPlanOverrides: source.planningPlanOverrides,
+    actionPlanAcknowledgements: source.actionPlanAcknowledgements,
+    actionPlanResponses: source.actionPlanResponses,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -801,6 +850,9 @@ function normalizeSavedState(saved = {}) {
     planningPlanId: "",
     planningDataVersion: base.planningDataVersion,
     planningPlanOverrides: planningDataIsCurrent && merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
+    actionPlanAcknowledgements: merged.actionPlanAcknowledgements && typeof merged.actionPlanAcknowledgements === "object" ? merged.actionPlanAcknowledgements : {},
+    actionPlanResponses: merged.actionPlanResponses && typeof merged.actionPlanResponses === "object" ? merged.actionPlanResponses : {},
+    actionPlanConsentId: "",
     planningNotice: "",
     planningDecisionModal: false,
     actionPlanPreview: false,
@@ -849,7 +901,7 @@ function saveState() {
     // O navegador pode bloquear storage em alguns modos; nesse caso a API ainda tenta salvar.
   }
 
-  if (!backendReady || location.protocol === "file:") return;
+  if (!backendReady || location.protocol === "file:" || currentAccessUser?.role !== "admin") return;
   clearTimeout(backendSaveTimer);
   backendSaveTimer = setTimeout(() => {
     fetch("/api/state", {
@@ -874,6 +926,7 @@ async function hydrateStateFromBackend() {
       });
       const hashView = viewFromHash();
       if (hashView) state.view = hashView;
+      applyCurrentUserScope();
       render({ skipSave: true });
     }
     backendReady = true;
@@ -1232,6 +1285,7 @@ function svgIcon(name, className = "tiny-icon", variant = "blue") {
 }
 
 function setView(view) {
+  if (!moduleAllowed(view)) return;
   state.view = view;
   if (view !== "settings") state.settingsMenuExpanded = false;
   syncHashWithView(view);
@@ -1239,11 +1293,13 @@ function setView(view) {
 }
 
 function setSelectedArea(id) {
+  if (!canAccessArea(id)) return;
   state.selectedArea = id;
   render();
 }
 
 function goAreaDetail(id = state.selectedArea) {
+  if (!canAccessArea(id)) return;
   state.selectedArea = id;
   state.detailBlock = null;
   state.detailActionsOpen = false;
@@ -1373,27 +1429,31 @@ function ficharioTabs() {
     ["reports", "Relatórios", "reports"],
     ["settings", "Configuração", "settings"],
     ["users", "Usuários", "users"]
-  ].filter(([id]) => id !== "users" || currentAccessUser?.role === "admin");
+  ].filter(([id]) => !(isAreaResponsible() && id === "audits") && (id !== "users" || currentAccessUser?.role === "admin" || isAreaResponsible()));
   return `
     <nav class="fichario-tabs" aria-label="Navegação principal">
-      ${tabs.map(([id, label, icon]) => `
-        <button class="fichario-tab ${state.view === id ? "is-active" : ""}" data-nav="${id}" type="button">
+      ${tabs.map(([id, label, icon]) => {
+        const locked = !moduleAllowed(id);
+        return `
+        <button class="fichario-tab ${state.view === id ? "is-active" : ""} ${locked ? "is-locked" : ""}" ${locked ? "data-locked-module" : `data-nav="${id}"`} type="button" title="${locked ? "Acesso exclusivo do administrador" : label}">
           <img src="assets/fichario-icons/${icon}.png?v=fichario-shell-1" alt="" aria-hidden="true" />
           <span>${label}</span>
+          ${locked ? `<span class="fichario-tab-lock">${icons.lock}</span>` : ""}
         </button>
-      `).join("")}
+      `;}).join("")}
     </nav>
   `;
 }
 
 function areaTile(area, compact = false) {
+  const locked = !canAccessArea(area.id);
   const status = statusMap[area.status];
   return `
-    <button class="area-tile ${area.id === state.selectedArea ? "is-selected" : ""}" data-area="${area.id}" style="--status-color:${status.color}" aria-label="${area.name}, nota ${formatScore(area.score)}">
-      <span class="tile-check">✓</span>
+    <button class="area-tile ${area.id === state.selectedArea ? "is-selected" : ""} ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-area="${area.id}"`} style="--status-color:${locked ? "#9ca8b7" : status.color}" aria-label="${locked ? `${area.name}, área sem permissão` : `${area.name}, nota ${formatScore(area.score)}`}">
+      <span class="tile-check">${locked ? icons.lock : "✓"}</span>
       <span class="area-icon-wrap"><img class="area-icon" src="assets/icons/${area.icon}" alt="" /></span>
       <span class="area-name">${area.name}</span>
-      <span class="area-score">${formatScore(area.score)}</span>
+      <span class="area-score">${locked ? "" : formatScore(area.score)}</span>
     </button>
   `;
 }
@@ -1713,6 +1773,11 @@ function generalAssessmentMiniChart() {
 }
 
 function graphGeneralAssessment() {
+  if (isAreaResponsible()) {
+    const area = primaryUserArea();
+    const delta = area.score - area.last;
+    return `<div class="graph-card-body graph-assessment is-panel-style"><div class="general-score-row"><div class="general-score-value">${formatScore(area.score)}</div><div><strong>${escapeHtml(area.name)}</strong><span>Agosto/2026</span></div></div>${dashboardEvolution(area)}<div class="general-delta ${delta >= 0 ? "positive" : "danger"}">${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto vs. jul/26</div></div>`;
+  }
   const currentScore = monthAverage(currentMonthId) ?? generalScore();
   const available = availableMonthIds();
   const previousId = [...available].reverse().find((monthId) => monthId !== currentMonthId);
@@ -1768,7 +1833,7 @@ function graphStatusSummary() {
 }
 
 function graphRiskSummary() {
-  const counts = ncRiskCounts();
+  const counts = ncRiskCounts(isAreaResponsible() ? primaryUserArea() : null);
   const total = Math.max(1, Object.values(counts).reduce((sum, value) => sum + value, 0));
   const rows = riskDisplayOrder.map((level) => ({
     label: riskMeta[level].label,
@@ -1805,8 +1870,8 @@ function dashboardHome() {
       <div class="fichario-panel-head">
         <div class="home-intro">
           <span class="eyebrow home-eyebrow"><img src="assets/idvida-boneco.png?v=fichario-shell-1" alt="" aria-hidden="true" />PAINEL INICIAL</span>
-          <h1>Olá, João</h1>
-          <p>Resumo operacional. Veja as notas das áreas auditadas no último fechamento.</p>
+          <h1>Olá, ${escapeHtml((currentAccessUser?.full_name || "João").split(" ")[0])}</h1>
+          <p>${isAreaResponsible() ? `Resumo operacional de ${escapeHtml(primaryUserArea().name)}.` : "Resumo operacional. Veja as notas das áreas auditadas no último fechamento."}</p>
         </div>
         <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>${formatCurrentDate()}</span></div>
       </div>
@@ -1815,12 +1880,12 @@ function dashboardHome() {
         <div class="fichario-main-left">
           <div class="fichario-summary-grid">
             <section class="fichario-summary-card">
-              <h2>Pendências gerais</h2>
+              <h2>${isAreaResponsible() ? "Pendências da área" : "Pendências gerais"}</h2>
               <div class="pending-compact-grid">
-                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>12</b><small>planos pendentes</small></span>
-                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>8</b><small>NCs de alto risco</small></span>
-                <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>1</b><small>documento vencido</small></span>
-                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>2</b><small>áreas atrasadas</small></span>
+                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>${isAreaResponsible() ? selectedArea.pending : 12}</b><small>planos pendentes</small></span>
+                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>${isAreaResponsible() ? selectedArea.critical : 8}</b><small>NCs de alto risco</small></span>
+                <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>${isAreaResponsible() ? 0 : 1}</b><small>documento vencido</small></span>
+                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>${isAreaResponsible() ? Number(selectedArea.pending > 3) : 2}</b><small>áreas atrasadas</small></span>
               </div>
             </section>
             <section class="fichario-summary-card">
@@ -1832,20 +1897,18 @@ function dashboardHome() {
               <h2>Últimas devolutivas</h2>
               <p>Retornos recentes dos responsáveis.</p>
               <div class="feedback-compact-row">
-                <div class="feedback-count"><strong>4</strong><span>retornos recentes</span></div>
+                <div class="feedback-count"><strong>${isAreaResponsible() ? 1 : 4}</strong><span>retornos recentes</span></div>
                 <button class="feedback-toggle" type="button" data-toggle-feedback>${state.feedbackExpanded ? "Ocultar devolutivas" : "Ver devolutivas"}</button>
               </div>
               <div class="feedback-list ${state.feedbackExpanded ? "" : "hidden"}">
-                <div class="feedback-item"><strong>Cozinha Catering</strong><span class="feedback-status" style="--status-color: var(--green)">Aprovado</span></div>
                 <div class="feedback-item"><strong>Área de Resíduos</strong><span class="feedback-status" style="--status-color: var(--yellow)">Em análise</span></div>
-                <div class="feedback-item"><strong>Higienização de Louça</strong><span class="feedback-status" style="--status-color: var(--orange)">Pendente</span></div>
-                <div class="feedback-item"><strong>DML - Produto Químico</strong><span class="feedback-status" style="--status-color: var(--red)">Reprovado</span></div>
+                ${isAreaResponsible() ? "" : `<div class="feedback-item"><strong>Cozinha Catering</strong><span class="feedback-status" style="--status-color: var(--green)">Aprovado</span></div><div class="feedback-item"><strong>Higienização de Louça</strong><span class="feedback-status" style="--status-color: var(--orange)">Pendente</span></div><div class="feedback-item"><strong>DML - Produto Químico</strong><span class="feedback-status" style="--status-color: var(--red)">Reprovado</span></div>`}
               </div>
             </section>
           </div>
           ${hasSelection ? selectedPanel("mobile-selected-panel") : ""}
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
-            ${areaData.map((area) => areaTile(area)).join("")}
+            ${orderedAreasForUser().map((area) => areaTile(area)).join("")}
           </div>
         </div>
         ${hasSelection ? selectedPanel("desktop-selected-panel") : ""}
@@ -1857,9 +1920,11 @@ function dashboardHome() {
 function chartSvg() {
   const expanded = state.chartExpanded;
   const selected = state.selectedMonth;
+  const chartAreas = isAreaResponsible() ? areaData.filter((area) => canAccessArea(area.id)) : areaData;
+  const chartIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
   const hasComparison = selected !== currentMonthId && Array.isArray(monthLines[selected]);
-  const lineValues = hasComparison ? monthLines[selected] : null;
-  const barValues = monthLines[currentMonthId];
+  const lineValues = hasComparison ? chartIndexes.map((index) => monthLines[selected][index]) : null;
+  const barValues = chartIndexes.map((index) => monthLines[currentMonthId][index]);
   const width = expanded ? 1320 : 1120;
   const height = expanded ? 520 : 400;
   const pad = expanded
@@ -1868,8 +1933,8 @@ function chartSvg() {
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const barGap = expanded ? 32 : 28;
-  const slotW = innerW / areaData.length;
-  const barW = Math.max(20, innerW / areaData.length - barGap);
+  const slotW = innerW / chartAreas.length;
+  const barW = Math.max(20, innerW / chartAreas.length - barGap);
   const xFor = (index) => pad.left + index * slotW + barGap / 2;
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const lineD = lineValues
@@ -1878,7 +1943,7 @@ function chartSvg() {
   const selectedColor = months.find(([id]) => id === selected)?.[1] || "#f4a000";
   const gridRight = pad.left + innerW;
   const plotBottom = pad.top + innerH;
-  const points = areaData.map((area, i) => {
+  const points = chartAreas.map((area, i) => {
     const x = xFor(i);
     const value = barValues[i];
     return {
@@ -2035,7 +2100,7 @@ function chartSvg() {
 function chartAreaLabels() {
   return `
     <div class="chart-area-labels" aria-hidden="true">
-      ${areaData
+      ${(isAreaResponsible() ? areaData.filter((area) => canAccessArea(area.id)) : areaData)
         .map(
           (area) => `
             <button class="chart-area-label ${state.chartFocusArea === area.id ? "is-active" : ""}" data-chart-area="${area.id}">
@@ -2244,10 +2309,10 @@ function chartsPage() {
               <p class="chart-note">${isImpactMode ? "Ranking combinado por nota baixa, NCs de alto risco, recorrência e andamento dos planos." : "Clique em um mês abaixo para comparar com o mês atual (Agosto/2026)."}</p>
             </div>
             <div class="chart-tools">
-              <button class="chart-mode-btn" data-toggle-chart-mode title="Ver ${nextModeLabel}">
+              ${isAreaResponsible() ? "" : `<button class="chart-mode-btn" data-toggle-chart-mode title="Ver ${nextModeLabel}">
                 <span>${nextModeLabel}</span>
                 ${icons.chevron}
-              </button>
+              </button>`}
               <button class="chart-expand-btn" data-toggle-chart-size title="${state.chartExpanded ? "Reduzir gráfico" : "Expandir gráfico"}">${state.chartExpanded ? "-" : "+"}</button>
             </div>
           </div>
@@ -4380,12 +4445,15 @@ function reportsPage() {
           </div>
         </div>
         <div class="report-folder-grid">
-          ${areaData.map((area) => `
-            <button class="report-folder-tile" data-report-folder-area="${area.id}" aria-label="Abrir relatórios de ${escapeHtml(area.name)}">
+          ${orderedAreasForUser().map((area) => {
+            const locked = !canAccessArea(area.id);
+            return `
+            <button class="report-folder-tile ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-report-folder-area="${area.id}"`} aria-label="${locked ? `Sem acesso aos relatórios de ${escapeHtml(area.name)}` : `Abrir relatórios de ${escapeHtml(area.name)}`}">
               <span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span>
               <span>${escapeHtml(area.name)}</span>
+              ${locked ? `<i class="report-folder-lock">${icons.lock}</i>` : ""}
             </button>
-          `).join("")}
+          `;}).join("")}
         </div>
       </div>
       ${reportFolderModal()}
@@ -5328,7 +5396,11 @@ function planningActionRows() {
 
   return [...configuredPlans, ...fallbackPlans, ...historicalPlans]
     .filter((row) => row.area)
-    .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }));
+    .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }))
+    .filter((row) => canAccessArea(row.area.id))
+    .map((row) => isAreaResponsible() && row.id === "area-residuos-auto" && row.status === "pending_review" && !row.responsibleSubmitted
+      ? { ...row, owner: "Carlos Lima", status: "in_progress", deadlineRequested: false, itemDecisions: {} }
+      : row);
 }
 
 function planningActiveRows(rows = planningActionRows()) {
@@ -5488,7 +5560,7 @@ function planningFilterDropdown(label, options, selectedValue, dataAttr, classNa
 function planningAreaSelect(selectedId, dataAttr = "planning-area-option") {
   return planningFilterDropdown(
     "Selecionar área",
-    [{ value: "", label: "Selecione área ou subárea" }, ...areaData.map((area) => ({ value: area.id, label: area.name }))],
+    [{ value: "", label: "Selecione área ou subárea" }, ...areaData.filter((area) => canAccessArea(area.id)).map((area) => ({ value: area.id, label: area.name }))],
     selectedId,
     dataAttr,
     "is-area"
@@ -5665,20 +5737,32 @@ function planningDeadlineModal() {
         <h2 id="deadline-modal-title">Solicitar alteração do prazo</h2>
         <p>Explique por que a ação não poderá ser concluída até 15/10/2026. O auditor analisará a justificativa antes de validar uma nova data.</p>
         <div class="action-plan-form-grid">
-          <label class="action-plan-field is-wide"><span>Motivo da solicitação</span><select><option>Manutenção ou obra</option><option>Compra de peça ou equipamento</option><option>Contratação de serviço</option><option>Outro motivo</option></select></label>
-          <label class="action-plan-field"><span>Novo prazo solicitado</span><input type="date" value="2026-12-15" /></label>
-          <label class="action-plan-field"><span>Item relacionado</span><select><option>Todos os itens do plano</option><option>NC 01</option><option>NC 02</option><option>NC 03</option></select></label>
-          <label class="action-plan-field is-wide"><span>Justificativa detalhada</span><textarea placeholder="Ex.: a substituição da cuba depende da compra da peça e do prazo de instalação do fornecedor."></textarea></label>
+          <label class="action-plan-field is-wide"><span>Motivo da solicitação</span><select data-deadline-reason-type><option>Manutenção ou obra</option><option>Compra de peça ou equipamento</option><option>Contratação de serviço</option><option>Outro motivo</option></select></label>
+          <label class="action-plan-field"><span>Novo prazo solicitado</span><input data-deadline-date type="date" value="2026-12-15" /></label>
+          <label class="action-plan-field"><span>Item relacionado</span><select data-deadline-item><option value="all">Todos os itens do plano</option><option value="0">NC 01</option><option value="1">NC 02</option><option value="2">NC 03</option></select></label>
+          <label class="action-plan-field is-wide"><span>Justificativa detalhada</span><textarea data-deadline-reason placeholder="Ex.: a substituição da cuba depende da compra da peça e do prazo de instalação do fornecedor."></textarea></label>
           <label class="action-plan-upload is-wide">${svgIcon("document")}<span><strong>Anexar comprovante</strong><small>Orçamento, ordem de serviço, foto ou outro documento</small></span><input type="file" hidden /></label>
         </div>
         <div class="action-plan-modal-actions">
           <button class="outline-btn" data-close-deadline-modal type="button">Cancelar</button>
-          <button class="primary-btn" type="button" disabled title="Envio desativado nesta prévia">Enviar solicitação</button>
+          <button class="primary-btn" ${isAreaResponsible() ? "data-submit-deadline-request" : "disabled"} type="button" ${isAreaResponsible() ? "" : "title=\"Envio desativado nesta prévia\""}>Enviar solicitação</button>
         </div>
-        <small class="action-plan-preview-note">Prévia visual: nenhuma solicitação será enviada.</small>
+        ${isAreaResponsible() ? "" : '<small class="action-plan-preview-note">Prévia visual: nenhuma solicitação será enviada.</small>'}
       </section>
     </div>
   `;
+}
+
+function responsibleAcknowledgementModal(plan) {
+  if (!isAreaResponsible() || state.actionPlanConsentId !== plan.id || state.actionPlanAcknowledgements?.[plan.id]) return "";
+  return `<div class="action-plan-modal-backdrop" role="presentation"><section class="action-plan-modal surface responsible-consent-modal" role="dialog" aria-modal="true" aria-labelledby="responsible-consent-title"><span class="eyebrow">Ciência do plano de ação</span><h2 id="responsible-consent-title">Confirme o recebimento antes de abrir</h2><p>Declaro que recebi o plano de ação da ${escapeHtml(plan.area.name)}, consultei o prazo e estou ciente das não conformidades e orientações registradas pelo auditor.</p><label class="responsible-consent-check"><input type="checkbox" data-responsible-consent-check /><span>Estou ciente e confirmo o recebimento deste plano.</span></label><div class="action-plan-modal-actions"><button class="outline-btn" data-cancel-responsible-consent type="button">Voltar</button><button class="primary-btn" data-confirm-responsible-consent="${escapeHtml(plan.id)}" type="button" disabled>Assinar e abrir plano</button></div><small class="action-plan-preview-note">A assinatura eletrônica usará o usuário ${escapeHtml(currentAccessUser?.username || "carlos.01")}.</small></section></div>`;
+}
+
+function responsiblePlanFooter(plan, items) {
+  const responses = state.actionPlanResponses?.[plan.id] || {};
+  const completed = items.filter((_, index) => String(responses[index]?.text || "").trim()).length;
+  const acknowledged = Boolean(state.actionPlanAcknowledgements?.[plan.id]);
+  return `<footer class="action-plan-submit-footer is-review"><div><strong>Preenchimento da devolutiva: ${completed}/${items.length}</strong><span>${acknowledged ? "Descreva cada correção e anexe as evidências antes de enviar." : "Confirme a ciência para responder ao plano."}</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-open-deadline-modal type="button" ${acknowledged ? "" : "disabled"}>Solicitar novo prazo</button><button class="primary-btn" data-submit-responsible-plan="${escapeHtml(plan.id)}" type="button" ${acknowledged && completed === items.length ? "" : "disabled"}>Enviar devolutiva</button></div></footer>`;
 }
 
 function planningDecisionModal() {
@@ -5765,6 +5849,9 @@ function planningPlanPreview() {
     "O registro foi corrigido, a liderança orientou o turno e incluiu uma dupla checagem no encerramento.",
     "O item foi identificado e os demais recipientes do setor foram revisados conforme o padrão orientado."
   ];
+  const responsibleView = isAreaResponsible();
+  const acknowledgement = state.actionPlanAcknowledgements?.[plan.id];
+  const responsibleResponses = state.actionPlanResponses?.[plan.id] || {};
   return `
     <div class="fichario-sub-panel action-plan-preview-shell">
       ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
@@ -5773,23 +5860,24 @@ function planningPlanPreview() {
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
         <button class="fichario-sub-action" data-print-action-plan type="button">${svgIcon("document")} Visualizar impressão</button>
       </div>
-      ${isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
+      ${responsibleView ? `<div class="action-plan-editing-note"><strong>Plano disponível para resposta</strong><span>${acknowledgement ? "Ciência confirmada. Preencha as correções e evidências de cada NC." : "Confirme a ciência para liberar o preenchimento."}</span></div>` : isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
         <header class="action-plan-doc-header"><div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div><div><span>PLANO DE AÇÃO VIGENTE</span><strong>PA-2026-${escapeHtml(area.id.slice(0, 2).toUpperCase())}-${escapeHtml(plan.id.slice(-3).toUpperCase())}</strong></div></header>
         <section class="action-plan-title-block"><div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano emitido em 20/09/2026 às 16:42 · Auditoria de setembro/2026</p></div><img src="assets/icons/${area.icon}" alt="" /></section>
         <section class="action-plan-meta-grid"><div><span>Responsável</span><strong>${escapeHtml(plan.owner)}</strong></div><div><span>Auditor</span><strong>teste.01</strong></div><div><span>Emitido em</span><strong>20/09/2026</strong></div><div><span>Prazo atual</span><strong>${escapeHtml(plan.due)}</strong></div></section>
         <section class="action-plan-instructions"><div class="action-plan-section-icon">${svgIcon("idea")}</div><div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação registrada pelo auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data vinculada à NC correspondente.</li><li>Revise todas as respostas antes de assinar e enviar a devolutiva.</li></ol></div></section>
-        <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : "25 dias"}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" type="button" ${hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
+        <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : "25 dias"}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}</div><div class="action-plan-nc-body"><figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure><div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(reportObservationForQuestion(row))}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea readonly placeholder="Aguardando resposta do responsável...">${hasResponse ? escapeHtml(responseCopy[index % responseCopy.length]) : ""}</textarea></label><div class="action-plan-evidence-actions">${hasResponse ? `<figure class="action-plan-return-evidence"><img src="assets/report-evidence-utensilios.png" alt="Evidência enviada pelo responsável" /><figcaption>Evidência enviada · 19/09/2026</figcaption></figure>` : `<small class="action-plan-awaiting-copy">A evidência será adicionada pelo responsável após o envio.</small>`}</div></div>${planningItemReview(plan, index)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}</div><div class="action-plan-nc-body"><figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure><div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(reportObservationForQuestion(row))}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : hasResponse ? escapeHtml(responseCopy[index % responseCopy.length]) : ""}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName ? `Evidência: ${escapeHtml(responsibleResponses[index].evidenceName)}` : "Nenhuma evidência selecionada"}</small>` : hasResponse ? `<figure class="action-plan-return-evidence"><img src="assets/report-evidence-utensilios.png" alt="Evidência enviada pelo responsável" /><figcaption>Evidência enviada · 19/09/2026</figcaption></figure>` : `<small class="action-plan-awaiting-copy">A evidência será adicionada pelo responsável após o envio.</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
-        <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>${hasResponse ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(plan.owner)}</strong><span>Responsável pela área</span><small>Ciência e assinatura registradas em 19/09/2026 às 14:13</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito automaticamente quando o responsável confirmar o recebimento.</small></div>`}</section>
-        ${planningPreviewFooter(plan, items.length)}
+        <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>${acknowledgement || hasResponse ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(currentAccessUser?.full_name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement?.signedAtLabel || "19/09/2026 às 14:13")}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito automaticamente quando o responsável confirmar o recebimento.</small></div>`}</section>
+        ${responsibleView ? responsiblePlanFooter(plan, items) : planningPreviewFooter(plan, items.length)}
       </article>
       ${planningDeadlineModal()}
       ${planningDecisionModal()}
+      ${responsibleAcknowledgementModal(plan)}
     </div>`;
 }
 
@@ -5895,10 +5983,11 @@ function planningContent() {
 }
 
 function planningPage() {
+  const visibleTabs = isAreaResponsible() ? planningTabs.filter(([id]) => id !== "rules") : planningTabs;
   return `
     <section class="fichario-module planning-module">
       <div class="fichario-module-head"><span class="eyebrow">Planejamento</span><h1 class="panel-title">Planos de ação</h1><p class="panel-subtitle">Gestão dos planos vigentes, devolutivas, aprovações, reprovações e regras de prazo. A visão conversa com o painel inicial, relatórios e notas por área.</p></div>
-      <div class="fichario-sub-tabs" role="tablist">${planningTabs.map(([id, label]) => `<button class="fichario-sub-tab ${state.planningView === id ? "is-active" : ""}" data-planning-view="${id}" type="button">${label}</button>`).join("")}</div>
+      <div class="fichario-sub-tabs" role="tablist">${visibleTabs.map(([id, label]) => `<button class="fichario-sub-tab ${state.planningView === id ? "is-active" : ""}" data-planning-view="${id}" type="button">${label}</button>`).join("")}</div>
       ${planningContent()}
     </section>
   `;
@@ -6020,6 +6109,12 @@ function exitChartPresentationMode() {
 }
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-locked-module], [data-locked-area]")) {
+    accessNotice = { type: "error", text: "Este acesso pertence somente ao administrador ou ao responsável da área indicada." };
+    render();
+    return;
+  }
+
   const notificationsToggle = event.target.closest("[data-notifications-toggle]");
   if (notificationsToggle) {
     notificationsOpen = !notificationsOpen;
@@ -6050,6 +6145,7 @@ document.addEventListener("click", (event) => {
         state.planningPlanId = plan.id;
         state.planningAreaId = plan.area.id;
         state.actionPlanPreview = true;
+        if (isAreaResponsible() && !state.actionPlanAcknowledgements?.[plan.id]) state.actionPlanConsentId = plan.id;
       }
     }
     notificationsOpen = false;
@@ -6134,6 +6230,7 @@ document.addEventListener("click", (event) => {
   const nav = event.target.closest("[data-nav]");
   if (nav) {
     const nextView = nav.dataset.nav;
+    if (!moduleAllowed(nextView)) return;
     if (nextView === "settings") {
       state.settingsMenuExpanded = state.view === "settings" ? !state.settingsMenuExpanded : true;
       state.view = "settings";
@@ -6342,8 +6439,81 @@ document.addEventListener("click", (event) => {
     state.actionPlanPreview = true;
     state.actionDeadlineModal = false;
     state.planningDecisionModal = false;
+    if (isAreaResponsible() && !state.actionPlanAcknowledgements?.[plan.id]) state.actionPlanConsentId = plan.id;
     render();
     requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
+    return;
+  }
+
+  if (event.target.closest("[data-cancel-responsible-consent]")) {
+    state.actionPlanConsentId = "";
+    state.actionPlanPreview = false;
+    render();
+    return;
+  }
+
+  const confirmResponsibleConsent = event.target.closest("[data-confirm-responsible-consent]");
+  if (confirmResponsibleConsent) {
+    const planId = confirmResponsibleConsent.dataset.confirmResponsibleConsent;
+    const now = new Date();
+    state.actionPlanAcknowledgements = {
+      ...state.actionPlanAcknowledgements,
+      [planId]: {
+        userId: currentAccessUser?.id || "carlos.01",
+        name: currentAccessUser?.full_name || "Carlos Lima",
+        signedAt: now.toISOString(),
+        signedAtLabel: `${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+      }
+    };
+    state.actionPlanConsentId = "";
+    setPlanningNotice("Ciência registrada. O plano está liberado para resposta.");
+    render();
+    return;
+  }
+
+  const submitDeadlineRequest = event.target.closest("[data-submit-deadline-request]");
+  if (submitDeadlineRequest) {
+    const plan = planningActionRows().find((row) => row.id === state.planningPlanId);
+    const dateValue = document.querySelector("[data-deadline-date]")?.value;
+    const reason = document.querySelector("[data-deadline-reason]")?.value.trim();
+    const itemValue = document.querySelector("[data-deadline-item]")?.value || "all";
+    if (!plan || !dateValue || !reason) {
+      document.querySelector("[data-deadline-reason]")?.focus();
+      return;
+    }
+    const [year, month, day] = dateValue.split("-");
+    const requestedDue = `${day}/${month}/${year}`;
+    updatePlanningPlan(plan.id, {
+      status: "pending_review",
+      responsibleSubmitted: true,
+      deadlineRequested: true,
+      requestedDue,
+      deadlineReason: reason,
+      deadlineItemIndex: itemValue === "all" ? null : Number(itemValue),
+      source: `Novo prazo solicitado por ${currentAccessUser?.full_name || "Carlos Lima"}`
+    });
+    state.actionDeadlineModal = false;
+    setPlanningNotice(`Solicitação de prazo até ${requestedDue} enviada ao auditor.`);
+    render();
+    return;
+  }
+
+  const submitResponsiblePlan = event.target.closest("[data-submit-responsible-plan]");
+  if (submitResponsiblePlan) {
+    const plan = planningActionRows().find((row) => row.id === submitResponsiblePlan.dataset.submitResponsiblePlan);
+    if (!plan) return;
+    const items = actionPlanPreviewItems(plan.area, plan.ncs);
+    const responses = state.actionPlanResponses?.[plan.id] || {};
+    if (items.some((_, index) => !String(responses[index]?.text || "").trim())) return;
+    updatePlanningPlan(plan.id, {
+      status: "pending_review",
+      responsibleSubmitted: true,
+      source: `Devolutiva enviada por ${currentAccessUser?.full_name || "Carlos Lima"}`
+    });
+    state.actionPlanPreview = false;
+    state.planningView = "overview";
+    setPlanningNotice(`Devolutiva de ${plan.area.name} enviada para análise do auditor.`);
+    render();
     return;
   }
 
@@ -6471,6 +6641,7 @@ document.addEventListener("click", (event) => {
     state.actionPlanPreview = false;
     state.actionDeadlineModal = false;
     state.planningDecisionModal = false;
+    state.actionPlanConsentId = "";
     render();
     return;
   }
@@ -6745,6 +6916,34 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const consent = event.target.closest("[data-responsible-consent-check]");
+  if (consent) {
+    const button = document.querySelector("[data-confirm-responsible-consent]");
+    if (button) button.disabled = !consent.checked;
+    return;
+  }
+
+  const responsibleEvidence = event.target.closest("[data-responsible-evidence]");
+  if (responsibleEvidence?.files?.[0]) {
+    const planId = state.planningPlanId;
+    const itemIndex = responsibleEvidence.dataset.responsibleEvidence;
+    const file = responsibleEvidence.files[0];
+    if (file.size > 10 * 1024 * 1024) {
+      setOfflineNotice({ phase: "error", message: "A evidência deve ter no máximo 10 MB." });
+      return;
+    }
+    state.actionPlanResponses = {
+      ...state.actionPlanResponses,
+      [planId]: {
+        ...(state.actionPlanResponses?.[planId] || {}),
+        [itemIndex]: { ...(state.actionPlanResponses?.[planId]?.[itemIndex] || {}), evidenceName: file.name, evidenceSize: file.size }
+      }
+    };
+    saveState();
+    render();
+    return;
+  }
+
   const reportArea = event.target.closest("[data-report-area-select]");
   if (reportArea) {
     state.selectedArea = reportArea.value;
@@ -6796,6 +6995,25 @@ document.addEventListener("change", (event) => {
 
 });
 
+document.addEventListener("input", (event) => {
+  const response = event.target.closest("[data-responsible-response]");
+  if (!response) return;
+  const planId = state.planningPlanId;
+  const itemIndex = response.dataset.responsibleResponse;
+  state.actionPlanResponses = {
+    ...state.actionPlanResponses,
+    [planId]: {
+      ...(state.actionPlanResponses?.[planId] || {}),
+      [itemIndex]: { ...(state.actionPlanResponses?.[planId]?.[itemIndex] || {}), text: response.value }
+    }
+  };
+  saveState();
+  const items = actionPlanPreviewItems(areaById(state.planningAreaId), planningActionRows().find((row) => row.id === planId)?.ncs || 0);
+  const complete = items.every((_, index) => String(state.actionPlanResponses?.[planId]?.[index]?.text || "").trim());
+  const submit = document.querySelector(`[data-submit-responsible-plan="${CSS.escape(planId)}"]`);
+  if (submit) submit.disabled = !complete;
+});
+
 document.addEventListener("submit", (event) => {
   const form = event.target.closest("[data-access-user-form]");
   if (!form) return;
@@ -6840,6 +7058,7 @@ if (reportRequest) {
       currentAccessUser = cached;
       accessNotice = { type: "success", text: "Modo offline: os dados coletados serão sincronizados quando a conexão voltar." };
     }
+    applyCurrentUserScope();
     if (state.view === "users" && currentAccessUser.role !== "admin") state.view = "home";
     render();
     hydrateStateFromBackend();
