@@ -348,6 +348,10 @@ async function handleApi(request, response, url) {
         sendJson(response, 401, { error: "Entre na sua conta para continuar." });
         return true;
       }
+      if (request.accessUser.role !== "admin") {
+        sendJson(response, 403, { error: "Esta etapa operacional está liberada somente para administradores durante a configuração das áreas." });
+        return true;
+      }
     } catch (error) {
       sendJson(response, 500, { error: "Não foi possível validar a sessão." });
       return true;

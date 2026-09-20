@@ -672,6 +672,8 @@ function defaultState() {
     selectedMonth: currentMonthId,
     reportKind: "monthly",
     answers: {},
+    auditNotes: {},
+    offlineAudits: {},
     detailBlock: null,
     detailActionsOpen: false,
     detailFilter: "all",
@@ -707,6 +709,8 @@ function persistableState(source = state) {
     selectedMonth: source.selectedMonth,
     reportKind: source.reportKind,
     answers: source.answers,
+    auditNotes: source.auditNotes,
+    offlineAudits: source.offlineAudits,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
     openTableSection: source.openTableSection,
@@ -742,6 +746,8 @@ function normalizeSavedState(saved = {}) {
     selectedMonth: validMonthIds.has(merged.selectedMonth) ? merged.selectedMonth : currentMonthId,
     reportKind: merged.reportKind === "comparison" ? "comparison" : "monthly",
     answers: merged.answers && typeof merged.answers === "object" ? merged.answers : {},
+    auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
+    offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
     detailBlock: null,
     detailActionsOpen: false,
     detailFilter: "all",
@@ -789,6 +795,8 @@ if (hashView) state.view = hashView;
 if (state.view === "settings") state.settingsMenuExpanded = true;
 let backendReady = false;
 let backendSaveTimer = null;
+let offlineBootstrap = null;
+let backendQuestionIds = new Map();
 
 const app = document.getElementById("app");
 
@@ -853,6 +861,88 @@ function renderReportFileRequest(request) {
 
 function formatScore(value) {
   return value.toFixed(1).replace(".", ",");
+}
+
+function buildBackendQuestionMap(payload) {
+  const mapping = new Map();
+  for (const backendArea of payload?.areas || []) {
+    const uiArea = checklistData[backendArea.slug];
+    const backendChecklist = backendArea.checklist || (payload.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea.id));
+    const backendBlocks = backendChecklist?.blocks || [];
+    (uiArea?.blocks || []).forEach((uiBlock, blockIndex) => {
+      const backendBlock = backendBlocks[blockIndex];
+      if (!backendBlock) return;
+      const questionsByNumber = new Map((backendBlock.questions || []).map((question) => [Number(question.question_number), question.id]));
+      for (const question of uiBlock.questions || []) {
+        const backendId = questionsByNumber.get(Number(question.number));
+        if (backendId) mapping.set(`${backendArea.slug}:${question.id}`, backendId);
+      }
+    });
+  }
+  backendQuestionIds = mapping;
+}
+
+async function loadOfflineBootstrap() {
+  if (!window.HAE_OFFLINE) return null;
+  let payload = null;
+  if (location.protocol !== "file:" && navigator.onLine !== false) {
+    try {
+      const response = await fetch("/api/offline-bootstrap", { cache: "no-store" });
+      if (response.ok) {
+        payload = await response.json();
+        await window.HAE_OFFLINE.cacheBootstrap(payload);
+      }
+    } catch {
+      // A cópia local abaixo mantém o checklist utilizável sem rede.
+    }
+  }
+  payload ||= await window.HAE_OFFLINE.getCachedBootstrap();
+  if (payload) {
+    offlineBootstrap = payload;
+    buildBackendQuestionMap(payload);
+  }
+  return payload;
+}
+
+function localAuditFor(areaId) {
+  const audit = state.offlineAudits?.[areaId];
+  return audit?.status === "in_progress" ? audit : null;
+}
+
+async function ensureLocalAudit(areaId) {
+  const existing = localAuditFor(areaId);
+  if (existing) return existing;
+  if (!window.HAE_OFFLINE) throw new Error("Armazenamento offline indisponível neste navegador.");
+  if (!offlineBootstrap) await loadOfflineBootstrap();
+  const backendArea = (offlineBootstrap?.areas || []).find((area) => area.slug === areaId);
+  const backendChecklist = backendArea?.checklist || (offlineBootstrap?.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea?.id));
+  if (!backendChecklist) throw new Error("Checklist ainda não foi preparado neste aparelho. Conecte-se uma vez e tente novamente.");
+  const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString() };
+  await window.HAE_OFFLINE.queueAuditStart({
+    localAuditId,
+    areaSlug: areaId,
+    checklistId: backendChecklist.id,
+    startedAt: audit.startedAt,
+    source: document.body.classList.contains("android-app") ? "tablet_android" : "web",
+    offlineCreated: navigator.onLine === false
+  });
+  state.offlineAudits = { ...state.offlineAudits, [areaId]: audit };
+  saveState();
+  return audit;
+}
+
+async function queueChecklistAnswer(areaId, questionId, answer, notes = "") {
+  const audit = await ensureLocalAudit(areaId);
+  const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+  if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
+  return window.HAE_OFFLINE.queueAuditAnswer({
+    localAuditId: audit.localAuditId,
+    questionId: backendQuestionId,
+    answer,
+    notes: notes.trim() || null,
+    answeredAt: new Date().toISOString()
+  });
 }
 
 function formatCurrentDate(date = new Date()) {
@@ -4646,10 +4736,10 @@ function checklistPage() {
                         Não conformidade de risco ${escapeHtml(risk.label)}
                       </div>
                       <div class="evidence-grid">
-                        <button class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small></button>
+                        <label class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small><input type="file" accept="image/jpeg,image/png" capture="environment" data-evidence-file="${question.id}" hidden /></label>
                         <div class="note-field">
                           <label>Observação</label>
-                          <textarea placeholder="Descreva a não conformidade encontrada..."></textarea>
+                          <textarea data-audit-note="${question.id}" placeholder="Descreva a não conformidade encontrada...">${escapeHtml(state.auditNotes?.[area.id]?.[question.id] || "")}</textarea>
                         </div>
                       </div>
                       <div class="action-form">
@@ -4673,7 +4763,7 @@ function checklistPage() {
         <section class="audit-footer surface" style="margin-top:12px">
           <button class="outline-btn" data-request-leave-audit>Voltar para áreas</button>
           <span class="small-muted">${questions.length} perguntas em ${blocks.length} blocos</span>
-          <button class="primary-btn">Finalizar auditoria ${svgIcon("arrow")}</button>
+          <button class="primary-btn" data-finalize-audit>Finalizar auditoria ${svgIcon("arrow")}</button>
         </section>
       </div>
       <aside class="blocks-sidebar surface ${showAllBlocks ? "is-open" : "is-compact"}">
@@ -5766,6 +5856,9 @@ document.addEventListener("click", (event) => {
     state.leaveAuditConfirm = false;
     state.view = "checklist";
     render();
+    ensureLocalAudit(state.selectedArea).catch((error) => {
+      setOfflineNotice({ phase: "error", message: error.message });
+    });
     return;
   }
 
@@ -6102,14 +6195,43 @@ document.addEventListener("click", (event) => {
   const answer = event.target.closest("[data-answer]");
   if (answer) {
     const areaId = state.selectedArea;
+    const questionId = answer.dataset.question;
+    const answerValue = answer.dataset.answer;
     state.answers = {
       ...state.answers,
       [areaId]: {
         ...(state.answers[areaId] || {}),
-        [answer.dataset.question]: answer.dataset.answer
+        [questionId]: answerValue
       }
     };
     render();
+    queueChecklistAnswer(areaId, questionId, answerValue, state.auditNotes?.[areaId]?.[questionId] || "").catch((error) => {
+      setOfflineNotice({ phase: "error", message: error.message });
+    });
+    return;
+  }
+
+  if (event.target.closest("[data-finalize-audit]")) {
+    const areaId = state.selectedArea;
+    const questions = questionsForArea(areaById(areaId));
+    const answered = answersForArea(areaId);
+    const missing = questions.filter((question) => !answered[question.id]).length;
+    if (missing) {
+      setOfflineNotice({ phase: "error", message: `Ainda faltam ${missing} perguntas para finalizar.` });
+      return;
+    }
+    ensureLocalAudit(areaId)
+      .then((audit) => window.HAE_OFFLINE.queueAuditFinalize({ localAuditId: audit.localAuditId, finishedAt: new Date().toISOString() }))
+      .then(() => {
+        state.offlineAudits = {
+          ...state.offlineAudits,
+          [areaId]: { ...state.offlineAudits[areaId], status: "finalizing", finishedAt: new Date().toISOString() }
+        };
+        state.view = "start";
+        saveState();
+        render();
+      })
+      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
     return;
   }
 
@@ -6136,6 +6258,49 @@ document.addEventListener("change", (event) => {
   if (reportArea) {
     state.selectedArea = reportArea.value;
     render();
+  }
+
+  const note = event.target.closest("[data-audit-note]");
+  if (note) {
+    const areaId = state.selectedArea;
+    const questionId = note.dataset.auditNote;
+    state.auditNotes = {
+      ...state.auditNotes,
+      [areaId]: { ...(state.auditNotes[areaId] || {}), [questionId]: note.value }
+    };
+    saveState();
+    const answer = state.answers?.[areaId]?.[questionId];
+    if (answer) {
+      queueChecklistAnswer(areaId, questionId, answer, note.value).catch((error) => {
+        setOfflineNotice({ phase: "error", message: error.message });
+      });
+    }
+  }
+
+  const evidence = event.target.closest("[data-evidence-file]");
+  if (evidence?.files?.[0]) {
+    const file = evidence.files[0];
+    const areaId = state.selectedArea;
+    const questionId = evidence.dataset.evidenceFile;
+    if (file.size > 10 * 1024 * 1024) {
+      setOfflineNotice({ phase: "error", message: "A foto deve ter no máximo 10 MB." });
+      evidence.value = "";
+      return;
+    }
+    ensureLocalAudit(areaId)
+      .then(async (audit) => {
+        const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+        if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
+        if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
+        await window.HAE_OFFLINE.queueFileUpload(file, {
+          localAuditId: audit.localAuditId,
+          questionId: backendQuestionId,
+          entityType: "audit_answer",
+          fileType: "audit_photo",
+          caption: state.auditNotes?.[areaId]?.[questionId] || null
+        });
+      })
+      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
   }
 
 });
@@ -6165,6 +6330,7 @@ if (reportRequest) {
     if (location.protocol === "file:") {
       currentAccessUser = { full_name: "Administrador local", role: "admin" };
       render();
+      await loadOfflineBootstrap();
       return;
     }
     try {
@@ -6174,7 +6340,8 @@ if (reportRequest) {
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
       await Promise.all([
         currentAccessUser.role === "admin" ? loadAccessUsers() : Promise.resolve(),
-        loadAccessNotifications()
+        loadAccessNotifications(),
+        loadOfflineBootstrap()
       ]);
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");

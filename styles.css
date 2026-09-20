@@ -2553,6 +2553,7 @@ h3 {
   color: var(--blue-700);
   background: #ffffff;
   font-weight: 850;
+  cursor: pointer;
 }
 
 .camera-drop small {

@@ -143,6 +143,13 @@ async function main() {
     const operationalLogin = await access("login", { username: "admin.test", password: accessPassword });
     assert.equal(operationalLogin.response.status, 200);
     authenticatedCookie = operationalLogin.cookie;
+    const offlineBootstrap = await json("/api/offline-bootstrap");
+    assert.equal(offlineBootstrap.areas.length, 12);
+    assert.ok(offlineBootstrap.areas.every((item) => offlineBootstrap.checklists.some((checklistItem) => checklistItem.area_id === item.id && checklistItem.blocks.length)));
+    assert.equal(
+      offlineBootstrap.checklists.reduce((total, checklistItem) => total + checklistItem.blocks.reduce((areaTotal, block) => areaTotal + block.questions.length, 0), 0),
+      437
+    );
     const token = "";
     const deviceUid = crypto.randomUUID();
     const localAuditId = crypto.randomUUID();
