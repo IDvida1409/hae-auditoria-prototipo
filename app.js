@@ -288,6 +288,7 @@ let currentAccessUser = null;
 let accessNotice = null;
 let accessNotifications = [];
 let notificationsOpen = false;
+let planningNoticeTimer = null;
 let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
 let offlineNoticeTimer = null;
 
@@ -5880,10 +5881,23 @@ function updatePlanningPlan(planId, values) {
   };
 }
 
+function setPlanningNotice(message = "") {
+  if (planningNoticeTimer) clearTimeout(planningNoticeTimer);
+  state.planningNotice = message;
+  planningNoticeTimer = null;
+  if (!message) return;
+  planningNoticeTimer = setTimeout(() => {
+    if (state.planningNotice !== message) return;
+    state.planningNotice = "";
+    planningNoticeTimer = null;
+    render();
+  }, 3800);
+}
+
 function applyPlanningDecision(plan, decision, reason = "") {
   if (decision === "approved" || decision === "rejected") {
     updatePlanningPlan(plan.id, { status: decision, decisionReason: reason, source: "Decidido em 20/09/2026" });
-    state.planningNotice = `Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e devolvida com justificativa"}.`;
+    setPlanningNotice(`Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e devolvida com justificativa"}.`);
     addPlanningNotification(`action_plan_${decision}`, plan, `Devolutiva ${decision === "approved" ? "aprovada" : "reprovada"} - ${plan.area.name}`, reason || "A decisão do auditor foi registrada no histórico do plano.", "sent");
     state.planningView = "history";
   } else {
@@ -5896,7 +5910,7 @@ function applyPlanningDecision(plan, decision, reason = "") {
       due: approved ? (plan.requestedDue || "15/12/2026") : plan.due,
       source: approved ? "Novo prazo aprovado" : "Novo prazo recusado"
     });
-    state.planningNotice = `Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada com justificativa"}.`;
+    setPlanningNotice(`Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada com justificativa"}.`);
     addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : reason, "sent");
     state.planningView = "plans";
   }
@@ -5979,6 +5993,9 @@ document.addEventListener("click", (event) => {
     else state.view = destination;
     if (state.view === "users") { state.settingsUserView = "active"; state.settingsUsersExpanded = true; }
     if (state.view === "actions") {
+      setPlanningNotice();
+      state.planningDecisionModal = false;
+      state.actionDeadlineModal = false;
       state.planningView = notificationItem.dataset.notificationPlanningView || "plans";
       const planId = notificationItem.dataset.notificationPlanId;
       const plan = planningActionRows().find((row) => row.id === planId);
@@ -5991,6 +6008,12 @@ document.addEventListener("click", (event) => {
     notificationsOpen = false;
     syncHashWithView(state.view);
     render();
+    if (state.view === "actions" && state.actionPlanPreview) {
+      requestAnimationFrame(() => {
+        const target = document.querySelector(".action-plan-deadline-record") || document.querySelector(".action-plan-preview-shell");
+        target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
     return;
   }
 
@@ -6250,6 +6273,7 @@ document.addEventListener("click", (event) => {
 
   const planningView = event.target.closest("[data-planning-view]");
   if (planningView) {
+    setPlanningNotice();
     state.actionPlanPreview = false;
     state.actionDeadlineModal = false;
     state.planningDecisionModal = false;
@@ -6267,7 +6291,7 @@ document.addEventListener("click", (event) => {
     const plan = planningActionRows().find((row) => row.id === openActionPlanPreview.dataset.openActionPlanPreview) || planningActionRows()[0];
     state.planningPlanId = plan.id;
     state.planningAreaId = plan.area.id;
-    state.planningNotice = "";
+    setPlanningNotice();
     state.actionPlanPreview = true;
     state.actionDeadlineModal = false;
     state.planningDecisionModal = false;
@@ -6279,7 +6303,7 @@ document.addEventListener("click", (event) => {
   const saveActionPlan = event.target.closest("[data-save-action-plan]");
   if (saveActionPlan) {
     const plan = planningActionRows().find((row) => row.id === saveActionPlan.dataset.saveActionPlan);
-    if (plan) state.planningNotice = `Rascunho de ${plan.area.name} salvo. O plano continua aguardando envio.`;
+    if (plan) setPlanningNotice(`Rascunho de ${plan.area.name} salvo. O plano continua aguardando envio.`);
     render();
     return;
   }
@@ -6288,11 +6312,10 @@ document.addEventListener("click", (event) => {
   if (sendActionPlan) {
     const plan = planningActionRows().find((row) => row.id === sendActionPlan.dataset.sendActionPlan);
     if (plan) {
+      const sentFromPreview = Boolean(sendActionPlan.closest(".action-plan-document"));
       updatePlanningPlan(plan.id, { status: "in_progress", source: "Enviado em 20/09/2026 às 16:55" });
-      state.planningPlanId = plan.id;
-      state.planningAreaId = plan.area.id;
-      state.actionPlanPreview = false;
-      state.planningNotice = `Plano de ${plan.area.name} enviado ao responsável e bloqueado para edição.`;
+      if (sentFromPreview) state.actionPlanPreview = false;
+      setPlanningNotice(`Plano de ${plan.area.name} enviado.`);
       addPlanningNotification("action_plan", plan, `Plano enviado - ${plan.area.name}`, `O plano foi disponibilizado para ${plan.owner}.`, "sent");
     }
     render();

@@ -15408,15 +15408,27 @@ button.planning-kpi:hover {
 }
 
 .planning-flow-notice {
-  margin-bottom: 12px;
+  position: fixed;
+  top: 18px;
+  right: 24px;
+  z-index: 1200;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
   padding: 11px 13px;
   border: 1px solid #b7dfc3;
   border-left: 4px solid #22a454;
   border-radius: 7px;
   color: #176938;
   background: #eff9f2;
+  box-shadow: 0 12px 28px rgba(18, 47, 73, .18);
   font-size: 12px;
   font-weight: 650;
+  animation: planning-notice-in .18s ease-out;
+}
+
+@keyframes planning-notice-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .action-plan-editing-note,
@@ -15546,6 +15558,7 @@ button.planning-kpi:hover {
 }
 
 .action-plan-deadline-record {
+  scroll-margin-top: 24px;
   margin: 18px 22px;
   padding: 16px;
   border: 1px solid #e4c35b;
