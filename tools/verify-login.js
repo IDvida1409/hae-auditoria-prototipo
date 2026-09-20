@@ -39,7 +39,8 @@ async function main() {
       await page.locator('[name="username"]').fill("david.souza");
       await page.waitForTimeout(350);
       assert.equal(await page.locator(".product-logo").getAttribute("alt"), "Einstein");
-      assert.ok((await page.locator(".product-logo").evaluate((element) => element.getBoundingClientRect().width)) >= 140);
+      assert.ok((await page.locator(".product-logo").evaluate((element) => element.getBoundingClientRect().width)) >= 350);
+      await page.screenshot({ path: path.join(output, "login-hospital-" + viewport.width + ".png"), fullPage: true });
       await page.locator('#login-form [name="password"]').fill("Synthetic test only");
       await page.getByRole("button", { name: "Login", exact: true }).click();
       await page.locator("#change-form").waitFor({ state: "visible" });
