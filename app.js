@@ -803,6 +803,16 @@ function formatScore(value) {
   return value.toFixed(1).replace(".", ",");
 }
 
+function formatCurrentDate(date = new Date()) {
+  const formatted = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(date);
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1611,7 +1621,7 @@ function dashboardHome() {
           <h1>Olá, João</h1>
           <p>Resumo operacional. Veja as notas das áreas auditadas no último fechamento.</p>
         </div>
-        <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>Terça-feira, 15 de setembro de 2026</span></div>
+        <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>${formatCurrentDate()}</span></div>
       </div>
       ${dashboardLegend()}
       <div class="fichario-main-layout">

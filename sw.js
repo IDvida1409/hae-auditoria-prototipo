@@ -1,4 +1,4 @@
-const CACHE_NAME = "hae-auditoria-v17-login-transition-1";
+const CACHE_NAME = "hae-auditoria-v18-current-date-1";
 const APP_SHELL = [
   "/",
   "/index.html",
