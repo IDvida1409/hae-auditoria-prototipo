@@ -303,7 +303,7 @@ function storageKeyFor(fileType, originalFilename = "") {
 function staticPathFor(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js"]);
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html"]);
   if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;

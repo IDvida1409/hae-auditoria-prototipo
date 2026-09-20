@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prévia local | Plano de ação</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html { background: #dfe7ef; }
+    body {
+      min-width: 0;
+      min-height: 100vh;
+      margin: 0;
+      overflow: auto;
+      background: #dfe7ef;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+    }
+    button, input, textarea, select { font: inherit; }
+    .preview-page { min-height: 100vh; padding: 22px; }
+    .preview-actions {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      width: min(100%, 1080px);
+      margin: 0 auto 12px;
+      padding: 10px 12px;
+      border: 1px solid #c6d3e0;
+      border-radius: 8px;
+      background: rgba(247, 250, 252, .94);
+      box-shadow: 0 8px 24px rgba(8, 36, 64, .1);
+      backdrop-filter: blur(12px);
+    }
+    .preview-actions div { display: flex; align-items: center; gap: 8px; }
+    .preview-actions strong { color: #0b284b; font-size: 13px; }
+    .preview-actions span { color: #62758a; font-size: 11px; }
+    .preview-actions button,
+    .preview-button {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 13px;
+      border: 1px solid #9eb6ce;
+      border-radius: 6px;
+      background: #fff;
+      color: #0b3762;
+      font-size: 12px;
+      font-weight: 750;
+      cursor: pointer;
+    }
+    .preview-button svg, .preview-actions svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .preview-actions button:hover, .preview-button:hover { border-color: #1683c7; background: #edf7fc; }
+    .preview-document {
+      width: min(100%, 1080px);
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid #c9d5e2;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 18px 42px rgba(13, 43, 73, .14);
+      color: #0b2244;
+    }
+    .institutional-header {
+      display: grid;
+      grid-template-columns: minmax(270px, auto) minmax(0, 1fr);
+      align-items: center;
+      gap: 24px;
+      padding: 18px 28px;
+      border-bottom: 1px solid #d7e1eb;
+    }
+    .institutional-brands { display: flex; align-items: center; gap: 16px; }
+    .institutional-brands > img { width: 98px; height: 50px; object-fit: contain; }
+    .brand-separator { width: 1px; height: 42px; background: #cfdae5; }
+    .hospital-brand { display: flex; align-items: center; gap: 9px; color: #07529b; font-size: 11px; font-weight: 750; line-height: 1.25; }
+    .hospital-brand img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
+    .institutional-copy { text-align: right; }
+    .institutional-copy span, .institutional-copy strong { display: block; }
+    .institutional-copy span { color: #61728a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+    .institutional-copy strong { margin-top: 3px; color: #0a2a50; font-size: 12px; }
+    .product-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      min-height: 58px;
+      padding: 10px 28px;
+      border-bottom: 4px solid #12a656;
+      background: #f8fafc;
+    }
+    .product-brand { display: flex; align-items: center; gap: 14px; }
+    .product-brand img { width: 102px; height: 32px; object-fit: contain; object-position: left center; }
+    .product-brand span, .plan-number span { display: block; color: #61728a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+    .plan-number { text-align: right; }
+    .plan-number strong { display: block; margin-top: 2px; font-size: 14px; }
+    .plan-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 23px 28px 19px;
+      background: linear-gradient(100deg, #edf7f2 0%, #fff 62%);
+    }
+    .plan-title small { color: #557087; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .plan-title h1 { margin: 4px 0; color: #09264b; font-size: 23px; line-height: 1.1; }
+    .plan-title p { margin: 0; color: #536780; font-size: 11px; }
+    .plan-title > img { width: 62px; height: 62px; object-fit: contain; }
+    .plan-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid #d9e2ec; border-bottom: 1px solid #d9e2ec; }
+    .plan-meta div { padding: 13px 18px; border-right: 1px solid #d9e2ec; }
+    .plan-meta div:last-child { border-right: 0; }
+    .plan-meta span, .field-label { display: block; margin-bottom: 5px; color: #5d6f86; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .plan-meta strong { font-size: 13px; }
+    .instructions {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      margin: 20px 28px 14px;
+      padding: 16px 18px;
+      border-left: 4px solid #1589d1;
+      background: #eef7fc;
+    }
+    .instruction-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #fff; color: #1479b5; }
+    .instruction-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+    .instructions h2 { margin: 0 0 7px; font-size: 16px; }
+    .instructions ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 28px; margin: 0; padding-left: 18px; color: #3f536c; font-size: 12px; line-height: 1.4; }
+    .plan-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 8px; margin: 0 28px 20px; }
+    .plan-summary > div { display: flex; min-height: 58px; flex-direction: column; justify-content: center; padding: 8px 13px; border: 1px solid #d9e2ec; }
+    .plan-summary strong { color: #0d9d4d; font-size: 19px; }
+    .plan-summary span { color: #586a81; font-size: 11px; }
+    .nc-list { display: grid; gap: 14px; padding: 0 28px 24px; }
+    .nc-card { overflow: hidden; border: 1px solid #cdd8e4; border-radius: 8px; }
+    .nc-heading { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px 16px; border-bottom: 1px solid #dbe3ec; background: #f7f9fc; }
+    .nc-number { padding: 6px 8px; border-radius: 5px; background: #0b3762; color: #fff; font-size: 11px; font-weight: 850; }
+    .nc-heading small { display: block; margin-bottom: 2px; color: #5a6e86; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+    .nc-heading h2 { margin: 0; font-size: 14px; line-height: 1.3; }
+    .risk { padding: 5px 8px; border-radius: 999px; background: #ffe9eb; color: #d82d3a; font-size: 10px; font-weight: 800; }
+    .nc-content { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; padding: 16px; }
+    .source-photo { position: relative; width: 190px; height: 132px; margin: 0; overflow: hidden; border-radius: 6px; background: #dfe7ef; }
+    .source-photo img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.32); }
+    .source-photo.is-one img { transform: scale(1.45); transform-origin: 12% 22%; }
+    .source-photo.is-two img { transform: scale(1.55); transform-origin: 50% 58%; filter: saturate(.82) brightness(.94); }
+    .source-photo.is-three img { transform: scale(1.5); transform-origin: 88% 76%; filter: contrast(1.08); }
+    .source-photo figcaption { position: absolute; right: 0; bottom: 0; left: 0; padding: 6px 8px; background: rgba(5, 28, 52, .84); color: #fff; font-size: 9px; }
+    .audit-copy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .read-box { min-height: 96px; padding: 10px; border: 1px solid #c7d3e0; border-radius: 6px; background: #f9fbfd; color: #263e5b; font-size: 12px; line-height: 1.4; }
+    .response-area { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 14px; padding: 14px 16px 16px; border-top: 1px solid #e1e7ee; background: #f4f8f5; }
+    .response-area textarea, .signing input, .deadline-modal textarea, .deadline-modal input, .deadline-modal select { width: 100%; border: 1px solid #c7d3e0; border-radius: 6px; background: #fff; color: #102b4f; }
+    .response-area textarea { min-height: 76px; resize: vertical; padding: 10px 12px; font-size: 12px; }
+    .evidence-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: end; gap: 8px; }
+    .evidence-actions label { cursor: pointer; }
+    .evidence-status { grid-column: 1 / -1; color: #687b91; font-size: 10px; text-align: center; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; padding: 23px 28px; border-top: 1px solid #d7e0ea; background: #fbfcfe; }
+    .signature-line { margin-top: 24px; padding-top: 10px; border-top: 1px solid #778aa1; }
+    .signature-line strong, .signature-line span, .signature-line small { display: block; }
+    .signature-line strong { font-size: 14px; }
+    .signature-line span { margin-top: 2px; color: #586b82; font-size: 11px; }
+    .signature-line small { margin-top: 7px; color: #728196; font-size: 10px; }
+    .signing input { min-height: 40px; padding: 9px 11px; font-size: 12px; }
+    .acknowledgement { display: flex; align-items: flex-start; gap: 8px; margin: 11px 0; color: #425870; font-size: 11px; line-height: 1.35; }
+    .acknowledgement input { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; accent-color: #0a9f50; }
+    .signed-state { display: none; margin-top: 12px; padding: 10px 12px; border-left: 3px solid #18a557; background: #eaf7ef; color: #176c3b; font-size: 11px; line-height: 1.4; }
+    .signed-state.is-visible { display: block; }
+    .document-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 28px; background: #0b3762; color: #fff; }
+    .document-footer strong, .document-footer span { display: block; }
+    .document-footer span { margin-top: 2px; color: #d7e4ef; font-size: 11px; }
+    .document-footer button { border-color: #1eb866; background: #0ba653; color: #fff; }
+    .document-footer button:disabled { cursor: not-allowed; opacity: .55; }
+    .deadline-backdrop { position: fixed; z-index: 100; inset: 0; display: none; place-items: center; padding: 18px; background: rgba(4, 20, 37, .68); backdrop-filter: blur(4px); }
+    .deadline-backdrop.is-open { display: grid; }
+    .deadline-modal { position: relative; width: min(100%, 650px); max-height: calc(100vh - 36px); overflow: auto; padding: 24px; border-radius: 8px; background: #fff; box-shadow: 0 22px 60px rgba(0, 0, 0, .25); }
+    .deadline-modal h2 { margin: 4px 40px 7px 0; font-size: 21px; }
+    .deadline-modal > p { margin: 0 0 17px; color: #52667e; font-size: 12px; line-height: 1.5; }
+    .close-modal { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: #425870; font-size: 24px; cursor: pointer; }
+    .deadline-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+    .deadline-field.is-wide { grid-column: 1 / -1; }
+    .deadline-modal textarea { min-height: 82px; padding: 10px; resize: vertical; }
+    .deadline-modal input, .deadline-modal select { min-height: 41px; padding: 8px 10px; }
+    .deadline-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+    .deadline-note { display: block; margin-top: 8px; color: #748398; font-size: 10px; text-align: right; }
+    @media (max-width: 760px) {
+      .preview-page { padding: 8px; }
+      .preview-actions { position: static; flex-wrap: wrap; }
+      .preview-actions > button { margin-left: auto; }
+      .institutional-header { grid-template-columns: 1fr; gap: 10px; padding: 14px 16px; }
+      .institutional-copy { text-align: left; }
+      .institutional-brands > img { width: 82px; height: 42px; }
+      .product-header { padding: 11px 16px; }
+      .product-brand img { width: 94px; height: 32px; }
+      .product-brand span { display: none; }
+      .plan-number strong { font-size: 12px; }
+      .plan-title { padding: 18px 16px; }
+      .plan-title h1 { font-size: 21px; }
+      .plan-title > img { width: 48px; height: 48px; }
+      .plan-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .plan-meta div:nth-child(2) { border-right: 0; }
+      .plan-meta div:nth-child(-n+2) { border-bottom: 1px solid #d9e2ec; }
+      .instructions { margin: 14px 12px 10px; padding: 13px; }
+      .instructions ol { grid-template-columns: 1fr; }
+      .plan-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 12px 14px; }
+      .plan-summary .preview-button { grid-column: 1 / -1; }
+      .plan-summary strong { font-size: 16px; }
+      .nc-list { gap: 11px; padding: 0 12px 16px; }
+      .nc-heading { grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+      .nc-heading .risk { grid-column: 2; justify-self: start; }
+      .nc-content, .audit-copy, .response-area, .signatures { grid-template-columns: 1fr; }
+      .source-photo { width: 100%; height: 190px; }
+      .signatures { gap: 22px; padding: 20px 16px; }
+      .document-footer { align-items: stretch; flex-direction: column; padding: 15px 16px; }
+      .deadline-grid { grid-template-columns: 1fr; }
+      .deadline-field.is-wide { grid-column: auto; }
+    }
+    @page { size: A4; margin: 9mm; }
+    @media print {
+      html, body { width: auto !important; min-width: 0 !important; min-height: 0 !important; overflow: visible !important; background: #fff !important; }
+      body, .preview-document, .document-footer, .product-header, .plan-title, .instructions, .response-area, .signed-state {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .preview-page { min-height: 0 !important; padding: 0 !important; }
+      .preview-actions, .deadline-backdrop { display: none !important; }
+      .preview-document { width: 100% !important; margin: 0 !important; overflow: visible !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+      .institutional-header {
+        display: grid !important;
+        grid-template-columns: 46% 54% !important;
+        align-items: center !important;
+        gap: 12px !important;
+        min-height: 44px !important;
+        padding: 5mm 5mm 3mm !important;
+      }
+      .institutional-brands { display: flex !important; gap: 10px !important; }
+      .institutional-brands > img { width: 70px !important; height: 34px !important; }
+      .brand-separator { height: 30px !important; }
+      .hospital-brand { display: flex !important; gap: 6px !important; font-size: 8px !important; }
+      .hospital-brand img { width: 29px !important; height: 29px !important; }
+      .institutional-copy { display: block !important; text-align: right !important; }
+      .institutional-copy span { font-size: 7px !important; }
+      .institutional-copy strong { margin-top: 2px !important; font-size: 9px !important; }
+      .product-header {
+        display: flex !important;
+        min-height: 38px !important;
+        padding: 2.5mm 5mm !important;
+        border-bottom-width: 2px !important;
+      }
+      .product-brand { display: flex !important; gap: 8px !important; }
+      .product-brand img { width: 72px !important; height: 23px !important; }
+      .product-brand span, .plan-number span { display: block !important; font-size: 7px !important; }
+      .plan-number strong { margin-top: 1px !important; font-size: 10px !important; }
+      .plan-title { padding: 3.5mm 5mm !important; }
+      .plan-title small { font-size: 7px !important; }
+      .plan-title h1 { margin: 2px 0 !important; font-size: 17px !important; }
+      .plan-title p { font-size: 8px !important; }
+      .plan-title > img { width: 36px !important; height: 36px !important; }
+      .plan-meta { display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+      .plan-meta div { padding: 2.5mm 4mm !important; border-right: 1px solid #d9e2ec !important; border-bottom: 0 !important; }
+      .plan-meta div:last-child { border-right: 0 !important; }
+      .plan-meta span, .field-label { margin-bottom: 2px !important; font-size: 6.8px !important; }
+      .plan-meta strong { font-size: 9px !important; }
+      .instructions { grid-template-columns: 27px 1fr !important; gap: 8px !important; margin: 3.5mm 5mm 2.5mm !important; padding: 2.5mm 3mm !important; }
+      .instruction-icon { width: 27px !important; height: 27px !important; }
+      .instruction-icon svg { width: 16px !important; height: 16px !important; }
+      .instructions h2 { margin-bottom: 3px !important; font-size: 10px !important; }
+      .instructions ol { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 1px 18px !important; padding-left: 14px !important; font-size: 7.2px !important; line-height: 1.25 !important; }
+      .plan-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) auto !important; gap: 5px !important; margin: 0 5mm 3mm !important; }
+      .plan-summary > div { min-height: 34px !important; padding: 4px 8px !important; }
+      .plan-summary strong { font-size: 12px !important; }
+      .plan-summary span { font-size: 7px !important; }
+      .plan-summary .preview-button { grid-column: auto !important; min-height: 34px !important; padding: 5px 9px !important; font-size: 7px !important; }
+      .nc-list { gap: 2.5mm !important; padding: 0 5mm 3.5mm !important; }
+      .nc-card { break-inside: avoid !important; page-break-inside: avoid !important; border-radius: 4px !important; }
+      .nc-heading { grid-template-columns: auto minmax(0, 1fr) auto !important; gap: 7px !important; padding: 2mm 3mm !important; }
+      .nc-number { padding: 4px 6px !important; font-size: 7px !important; }
+      .nc-heading small { font-size: 6px !important; }
+      .nc-heading h2 { font-size: 9px !important; line-height: 1.18 !important; }
+      .nc-heading .risk { grid-column: auto !important; padding: 3px 6px !important; font-size: 6px !important; }
+      .nc-content { display: grid !important; grid-template-columns: 120px minmax(0, 1fr) !important; gap: 9px !important; padding: 2.5mm 3mm !important; }
+      .source-photo { width: 120px !important; height: 78px !important; border-radius: 3px !important; }
+      .source-photo figcaption { padding: 3px 5px !important; font-size: 5.8px !important; }
+      .audit-copy { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 7px !important; }
+      .read-box { min-height: 58px !important; padding: 6px !important; font-size: 7.5px !important; line-height: 1.3 !important; }
+      .response-area { display: grid !important; grid-template-columns: minmax(0, 1fr) 190px !important; gap: 8px !important; padding: 2mm 3mm !important; }
+      .response-area textarea { min-height: 44px !important; height: 44px !important; padding: 6px !important; font-size: 7px !important; }
+      .evidence-actions { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 5px !important; }
+      .evidence-actions .preview-button { min-height: 26px !important; padding: 4px !important; font-size: 7px !important; }
+      .evidence-status { font-size: 6px !important; }
+      .signatures { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 22px !important; padding: 4mm 5mm !important; break-inside: avoid !important; page-break-inside: avoid !important; }
+      .signature-line { margin-top: 12px !important; padding-top: 6px !important; }
+      .signature-line strong { font-size: 9px !important; }
+      .signature-line span, .acknowledgement { font-size: 7px !important; }
+      .signature-line small, .signed-state { font-size: 6.5px !important; }
+      .signing input { min-height: 27px !important; padding: 5px 7px !important; font-size: 7.5px !important; }
+      .acknowledgement { margin: 6px 0 !important; }
+      .signing .preview-button { min-height: 27px !important; padding: 5px 8px !important; font-size: 7px !important; }
+      .signed-state { margin-top: 6px !important; padding: 6px 8px !important; }
+      .document-footer { display: flex !important; align-items: center !important; flex-direction: row !important; padding: 3mm 5mm !important; break-inside: avoid !important; page-break-inside: avoid !important; background: #0b3762 !important; color: #fff !important; }
+      .document-footer strong { font-size: 10px !important; }
+      .document-footer span { color: #d7e4ef !important; font-size: 7px !important; }
+      .document-footer .preview-button { min-height: 28px !important; padding: 5px 9px !important; border-color: #1eb866 !important; background: #0ba653 !important; color: #fff !important; font-size: 7px !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="preview-page">
+    <nav class="preview-actions" aria-label="Controles da prévia">
+      <div><strong>Prévia local</strong><span>Nenhuma informação será enviada</span></div>
+      <button type="button" onclick="window.print()">
+        <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"/></svg>
+        Visualizar impressão
+      </button>
+    </nav>
+
+    <article class="preview-document">
+      <header class="institutional-header">
+        <div class="institutional-brands">
+          <img src="assets/idvida-logo.png" alt="IDVIDA" />
+          <span class="brand-separator"></span>
+          <span class="hospital-brand"><img src="assets/einstein-logo-menu.png" alt="" /><span>Hospital Einstein<br />Unidade Morumbi</span></span>
+        </div>
+        <div class="institutional-copy"><span>Auditoria interna</span><strong>Boas práticas de manipulação de alimentos</strong></div>
+      </header>
+
+      <header class="product-header">
+        <div class="product-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div>
+        <div class="plan-number"><span>Plano de ação vigente</span><strong>PA-2026-CT-009</strong></div>
+      </header>
+
+      <section class="plan-title">
+        <div><small>Área auditada</small><h1>Cozinha Catering</h1><p>Plano emitido em 20/09/2026 às 16:42 · Auditoria de setembro/2026</p></div>
+        <img src="assets/icons/cozinha-catering.png" alt="" />
+      </section>
+
+      <section class="plan-meta">
+        <div><span>Responsável</span><strong>Juliana Martins</strong></div>
+        <div><span>Auditor</span><strong>teste.01</strong></div>
+        <div><span>Emitido em</span><strong>20/09/2026</strong></div>
+        <div><span>Prazo atual</span><strong>15/10/2026</strong></div>
+      </section>
+
+      <section class="instructions">
+        <span class="instruction-icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M8.4 14.2a6 6 0 1 1 7.2 0c-.6.5-.9 1.1-.9 1.8H9.3c0-.7-.3-1.3-.9-1.8z"/></svg></span>
+        <div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação do auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data e informe o motivo.</li><li>Revise as três respostas, confirme a ciência e assine digitalmente.</li></ol></div>
+      </section>
+
+      <section class="plan-summary">
+        <div><strong>3</strong><span>não conformidades</span></div>
+        <div><strong>3</strong><span>evidências originais</span></div>
+        <div><strong>25 dias</strong><span>prazo para resposta</span></div>
+        <button class="preview-button" id="open-deadline" type="button">Solicitar novo prazo</button>
+      </section>
+
+      <div class="nc-list">
+        <section class="nc-card">
+          <header class="nc-heading"><span class="nc-number">NC 01</span><div><small>Equipamentos, móveis e utensílios</small><h2>Utensílios limpos, conservados e em quantidade suficiente</h2></div><span class="risk">Alto</span></header>
+          <div class="nc-content">
+            <figure class="source-photo is-one"><img src="assets/report-evidence-utensilios.png" alt="Evidência da NC 01" /><figcaption>Evidência 1 · registrada pelo auditor</figcaption></figure>
+            <div class="audit-copy"><div><span class="field-label">Observação do auditor</span><div class="read-box">Utensílio com resíduo aderido identificado durante a inspeção do setor.</div></div><div><span class="field-label">Ação orientada</span><div class="read-box">Realizar higienização completa e revisar a rotina de inspeção antes do uso.</div></div></div>
+          </div>
+          <div class="response-area"><label><span class="field-label">O que foi realizado?</span><textarea placeholder="Descreva a correção realizada para este item..."></textarea></label><div class="evidence-actions"><label class="preview-button">Tirar foto<input class="evidence-input" type="file" accept="image/*" capture="environment" hidden /></label><label class="preview-button">Escolher arquivo<input class="evidence-input" type="file" accept="image/*,.pdf" hidden /></label><span class="evidence-status">Nenhuma evidência adicionada</span></div></div>
+        </section>
+
+        <section class="nc-card">
+          <header class="nc-heading"><span class="nc-number">NC 02</span><div><small>Controle de temperatura e registros</small><h2>Registros de temperatura preenchidos e dentro do limite definido</h2></div><span class="risk">Alto</span></header>
+          <div class="nc-content">
+            <figure class="source-photo is-two"><img src="assets/report-evidence-utensilios.png" alt="Evidência da NC 02" /><figcaption>Evidência 2 · registrada pelo auditor</figcaption></figure>
+            <div class="audit-copy"><div><span class="field-label">Observação do auditor</span><div class="read-box">Planilha do turno sem o registro de temperatura de dois equipamentos.</div></div><div><span class="field-label">Ação orientada</span><div class="read-box">Regularizar os registros, orientar a equipe e validar o controle ao fim de cada turno.</div></div></div>
+          </div>
+          <div class="response-area"><label><span class="field-label">O que foi realizado?</span><textarea placeholder="Descreva a correção realizada para este item..."></textarea></label><div class="evidence-actions"><label class="preview-button">Tirar foto<input class="evidence-input" type="file" accept="image/*" capture="environment" hidden /></label><label class="preview-button">Escolher arquivo<input class="evidence-input" type="file" accept="image/*,.pdf" hidden /></label><span class="evidence-status">Nenhuma evidência adicionada</span></div></div>
+        </section>
+
+        <section class="nc-card">
+          <header class="nc-heading"><span class="nc-number">NC 03</span><div><small>Armazenamento e identificação</small><h2>Produtos identificados, protegidos e dentro do prazo de validade</h2></div><span class="risk">Moderado</span></header>
+          <div class="nc-content">
+            <figure class="source-photo is-three"><img src="assets/report-evidence-utensilios.png" alt="Evidência da NC 03" /><figcaption>Evidência 3 · registrada pelo auditor</figcaption></figure>
+            <div class="audit-copy"><div><span class="field-label">Observação do auditor</span><div class="read-box">Recipiente armazenado sem identificação de abertura e validade.</div></div><div><span class="field-label">Ação orientada</span><div class="read-box">Identificar o produto, revisar os recipientes do setor e reforçar o padrão com a equipe.</div></div></div>
+          </div>
+          <div class="response-area"><label><span class="field-label">O que foi realizado?</span><textarea placeholder="Descreva a correção realizada para este item..."></textarea></label><div class="evidence-actions"><label class="preview-button">Tirar foto<input class="evidence-input" type="file" accept="image/*" capture="environment" hidden /></label><label class="preview-button">Escolher arquivo<input class="evidence-input" type="file" accept="image/*,.pdf" hidden /></label><span class="evidence-status">Nenhuma evidência adicionada</span></div></div>
+        </section>
+      </div>
+
+      <section class="signatures">
+        <div><span class="field-label">Documento emitido e assinado por</span><div class="signature-line"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>
+        <div class="signing"><span class="field-label">Ciência e assinatura do responsável</span><input id="responsible-name" value="Juliana Martins" aria-label="Nome do responsável" /><label class="acknowledgement"><input id="acknowledge" type="checkbox" /><span>Confirmo que recebi, li e estou ciente deste plano de ação, de suas não conformidades e do prazo informado.</span></label><button class="preview-button" id="sign-action" type="button">Assinar digitalmente e registrar ciência</button><div class="signed-state" id="signed-state"></div></div>
+      </section>
+
+      <footer class="document-footer"><div><strong>Devolutiva do plano</strong><span>As três NCs precisam de resposta e evidência antes do envio.</span></div><button class="preview-button" type="button" disabled>Confirmar e enviar devolutiva</button></footer>
+    </article>
+  </main>
+
+  <div class="deadline-backdrop" id="deadline-modal" role="presentation">
+    <section class="deadline-modal" role="dialog" aria-modal="true" aria-labelledby="deadline-title">
+      <button class="close-modal" id="close-deadline" type="button" aria-label="Fechar">×</button>
+      <span class="field-label">Solicitação de prazo</span><h2 id="deadline-title">Solicitar alteração do prazo</h2><p>Explique por que a ação não poderá ser concluída até 15/10/2026. O auditor analisará a justificativa antes de validar uma nova data.</p>
+      <div class="deadline-grid">
+        <label class="deadline-field is-wide"><span class="field-label">Motivo da solicitação</span><select><option>Manutenção ou obra</option><option>Compra de peça ou equipamento</option><option>Contratação de serviço</option><option>Outro motivo</option></select></label>
+        <label class="deadline-field"><span class="field-label">Novo prazo solicitado</span><input type="date" value="2026-12-15" /></label>
+        <label class="deadline-field"><span class="field-label">Item relacionado</span><select><option>Todos os itens do plano</option><option>NC 01</option><option>NC 02</option><option>NC 03</option></select></label>
+        <label class="deadline-field is-wide"><span class="field-label">Justificativa detalhada</span><textarea placeholder="Ex.: a correção depende da compra da peça e do prazo de instalação do fornecedor."></textarea></label>
+      </div>
+      <div class="deadline-actions"><button class="preview-button" id="cancel-deadline" type="button">Cancelar</button><button class="preview-button" type="button" disabled>Enviar solicitação</button></div><small class="deadline-note">Prévia visual: nenhuma solicitação será enviada.</small>
+    </section>
+  </div>
+
+  <script>
+    const deadlineModal = document.getElementById("deadline-modal");
+    const setDeadlineOpen = (open) => deadlineModal.classList.toggle("is-open", open);
+    document.getElementById("open-deadline").addEventListener("click", () => setDeadlineOpen(true));
+    document.getElementById("close-deadline").addEventListener("click", () => setDeadlineOpen(false));
+    document.getElementById("cancel-deadline").addEventListener("click", () => setDeadlineOpen(false));
+    deadlineModal.addEventListener("click", (event) => { if (event.target === deadlineModal) setDeadlineOpen(false); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") setDeadlineOpen(false); });
+
+    document.querySelectorAll(".evidence-input").forEach((input) => {
+      input.addEventListener("change", () => {
+        const status = input.closest(".evidence-actions").querySelector(".evidence-status");
+        status.textContent = input.files.length ? `Evidência selecionada: ${input.files[0].name}` : "Nenhuma evidência adicionada";
+      });
+    });
+
+    document.getElementById("sign-action").addEventListener("click", (event) => {
+      const acknowledgement = document.getElementById("acknowledge");
+      const name = document.getElementById("responsible-name").value.trim();
+      if (!name || !acknowledgement.checked) {
+        alert("Informe o nome e confirme a declaração de ciência antes de assinar.");
+        return;
+      }
+      const now = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date());
+      const state = document.getElementById("signed-state");
+      state.textContent = `${name} confirmou ciência e assinou digitalmente em ${now}.`;
+      state.classList.add("is-visible");
+      acknowledgement.disabled = true;
+      document.getElementById("responsible-name").readOnly = true;
+      event.currentTarget.textContent = "Ciência registrada";
+      event.currentTarget.disabled = true;
+    });
+  </script>
+</body>
+</html>

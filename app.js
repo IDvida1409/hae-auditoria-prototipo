@@ -691,6 +691,8 @@ function defaultState() {
     planningAreaId: "",
     planningStatusFilter: "",
     planningMonthFilter: "",
+    actionPlanPreview: false,
+    actionDeadlineModal: false,
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
@@ -764,6 +766,8 @@ function normalizeSavedState(saved = {}) {
     planningAreaId: validAreaIds.has(merged.planningAreaId) || merged.planningAreaId === "" ? merged.planningAreaId : base.planningAreaId,
     planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
     planningMonthFilter: ["", "2026-09", "2026-08", "2026-07"].includes(merged.planningMonthFilter) ? merged.planningMonthFilter : "",
+    actionPlanPreview: false,
+    actionDeadlineModal: false,
     feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false
@@ -5537,7 +5541,7 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
                 <td>${row.ncs}</td>
                 <td><span class="planning-status is-${tone}">${escapeHtml(label)}</span></td>
                 <td>${escapeHtml(row.due)}</td>
-                <td><button class="fichario-sub-action" type="button">${actionLabel}</button></td>
+                <td><button class="fichario-sub-action" data-open-action-plan-preview="${escapeHtml(row.area.id)}" type="button">${actionLabel}</button></td>
               </tr>
             `;
           }).join("")}
@@ -5547,7 +5551,120 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
   `;
 }
 
+function actionPlanPreviewItems(area) {
+  const rows = reportNcRows(area, 3);
+  const fallbacks = questionRowsForArea(area).slice(0, 3);
+  return (rows.length >= 3 ? rows : [...rows, ...fallbacks.filter((row) => !rows.some((item) => item.id === row.id))]).slice(0, 3);
+}
+
+function actionPlanInstructionFor(row, index) {
+  const instructions = [
+    "Realizar a higienização completa do utensílio e revisar a rotina de inspeção antes do uso.",
+    "Corrigir a condição identificada, orientar a equipe e registrar a verificação no controle da área.",
+    "Adequar o item ao padrão definido e anexar evidência fotográfica após a correção."
+  ];
+  return instructions[index] || `Corrigir a não conformidade registrada em ${row.blockTitle}.`;
+}
+
+function planningDeadlineModal() {
+  if (!state.actionDeadlineModal) return "";
+  return `
+    <div class="action-plan-modal-backdrop" role="presentation">
+      <section class="action-plan-modal surface" role="dialog" aria-modal="true" aria-labelledby="deadline-modal-title">
+        <button class="panel-close" data-close-deadline-modal title="Fechar">${icons.close}</button>
+        <span class="eyebrow">Solicitação de prazo</span>
+        <h2 id="deadline-modal-title">Solicitar alteração do prazo</h2>
+        <p>Explique por que a ação não poderá ser concluída até 15/10/2026. O auditor analisará a justificativa antes de validar uma nova data.</p>
+        <div class="action-plan-form-grid">
+          <label class="action-plan-field is-wide"><span>Motivo da solicitação</span><select><option>Manutenção ou obra</option><option>Compra de peça ou equipamento</option><option>Contratação de serviço</option><option>Outro motivo</option></select></label>
+          <label class="action-plan-field"><span>Novo prazo solicitado</span><input type="date" value="2026-12-15" /></label>
+          <label class="action-plan-field"><span>Item relacionado</span><select><option>Todos os itens do plano</option><option>NC 01</option><option>NC 02</option><option>NC 03</option></select></label>
+          <label class="action-plan-field is-wide"><span>Justificativa detalhada</span><textarea placeholder="Ex.: a substituição da cuba depende da compra da peça e do prazo de instalação do fornecedor."></textarea></label>
+          <label class="action-plan-upload is-wide">${svgIcon("document")}<span><strong>Anexar comprovante</strong><small>Orçamento, ordem de serviço, foto ou outro documento</small></span><input type="file" hidden /></label>
+        </div>
+        <div class="action-plan-modal-actions">
+          <button class="outline-btn" data-close-deadline-modal type="button">Cancelar</button>
+          <button class="primary-btn" type="button" disabled title="Envio desativado nesta prévia">Enviar solicitação</button>
+        </div>
+        <small class="action-plan-preview-note">Prévia visual: nenhuma solicitação será enviada.</small>
+      </section>
+    </div>
+  `;
+}
+
+function planningPlanPreview() {
+  const area = areaById(state.planningAreaId || "cozinha-catering");
+  const items = actionPlanPreviewItems(area);
+  return `
+    <div class="fichario-sub-panel action-plan-preview-shell">
+      <div class="action-plan-preview-toolbar">
+        <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
+        <span class="planning-status is-blue">Plano vigente</span>
+        <a class="fichario-sub-action" href="/plano-acao-preview.html" target="_blank" rel="noopener">${svgIcon("document")} Visualizar PDF</a>
+      </div>
+      <article class="action-plan-document">
+        <header class="action-plan-doc-header">
+          <div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div>
+          <div><span>PLANO DE AÇÃO VIGENTE</span><strong>PA-2026-CT-009</strong></div>
+        </header>
+        <section class="action-plan-title-block">
+          <div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano independente da área · Auditoria de setembro/2026</p></div>
+          <img src="assets/icons/${area.icon}" alt="" />
+        </section>
+        <section class="action-plan-meta-grid">
+          <div><span>Responsável</span><strong>Juliana Martins</strong></div>
+          <div><span>Auditor</span><strong>José da Silva</strong></div>
+          <div><span>Emitido em</span><strong>20/09/2026</strong></div>
+          <div><span>Prazo atual</span><strong>15/10/2026</strong></div>
+        </section>
+        <section class="action-plan-instructions">
+          <div class="action-plan-section-icon">${svgIcon("idea")}</div>
+          <div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação registrada pelo auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data e informe o motivo.</li><li>Revise as três respostas antes de assinar e enviar a devolutiva.</li></ol></div>
+        </section>
+        <section class="action-plan-summary-row">
+          <div><strong>3</strong><span>não conformidades</span></div>
+          <div><strong>3</strong><span>evidências originais</span></div>
+          <div><strong>25 dias</strong><span>prazo para resposta</span></div>
+          <button class="outline-btn" data-open-deadline-modal type="button">${svgIcon("clock")} Solicitar novo prazo</button>
+        </section>
+        <div class="action-plan-nc-list">
+          ${items.map((row, index) => `
+            <section class="action-plan-nc-card">
+              <div class="action-plan-nc-heading">
+                <span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span>
+                <div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>
+                ${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}
+              </div>
+              <div class="action-plan-nc-body">
+                <figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>
+                <div class="action-plan-auditor-copy">
+                  <label><span>Observação do auditor</span><textarea>${escapeHtml(reportObservationForQuestion(row))}</textarea></label>
+                  <label><span>Ação orientada</span><textarea>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label>
+                </div>
+              </div>
+              <div class="action-plan-response-box">
+                <label class="action-plan-field is-wide"><span>O que foi realizado?</span><textarea placeholder="Descreva a correção realizada para este item..."></textarea></label>
+                <div class="action-plan-evidence-actions"><label class="outline-btn">${svgIcon("camera")} Tirar foto<input type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input type="file" accept="image/*,.pdf" hidden /></label><small>Nenhuma evidência adicionada</small></div>
+              </div>
+            </section>
+          `).join("")}
+        </div>
+        <section class="action-plan-signature-section">
+          <div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>José da Silva</strong><span>Auditor responsável · ID 0048</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>
+          <label class="action-plan-field"><span>Assinatura do responsável na devolutiva</span><input placeholder="Nome completo do responsável" /></label>
+        </section>
+        <footer class="action-plan-submit-footer">
+          <div><strong>Revise antes de enviar</strong><span>As três NCs precisam de resposta e evidência.</span></div>
+          <button class="primary-btn" type="button" disabled title="Envio desativado nesta prévia">Confirmar, assinar e enviar</button>
+        </footer>
+      </article>
+      ${planningDeadlineModal()}
+    </div>
+  `;
+}
+
 function planningPlansContent() {
+  if (state.actionPlanPreview) return planningPlanPreview();
   const baseRows = planningFilterByMonth([...planningActiveRows(), ...planningFeedbackRows()]);
   const rows = state.planningStatusFilter === "pending_review"
     ? planningFilterByMonth(planningFeedbackRows())
@@ -5988,11 +6105,43 @@ document.addEventListener("click", (event) => {
 
   const planningView = event.target.closest("[data-planning-view]");
   if (planningView) {
+    state.actionPlanPreview = false;
+    state.actionDeadlineModal = false;
     state.planningView = planningView.dataset.planningView;
     state.planningStatusFilter = "";
     if (state.planningView !== "history") state.planningAreaId = "";
     state.view = "actions";
     syncHashWithView("actions");
+    render();
+    return;
+  }
+
+  const openActionPlanPreview = event.target.closest("[data-open-action-plan-preview]");
+  if (openActionPlanPreview) {
+    state.planningAreaId = openActionPlanPreview.dataset.openActionPlanPreview || "cozinha-catering";
+    state.actionPlanPreview = true;
+    state.actionDeadlineModal = false;
+    render();
+    requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
+    return;
+  }
+
+  if (event.target.closest("[data-close-action-plan-preview]")) {
+    state.actionPlanPreview = false;
+    state.actionDeadlineModal = false;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-open-deadline-modal]")) {
+    state.actionDeadlineModal = true;
+    render();
+    requestAnimationFrame(() => document.querySelector(".action-plan-modal textarea")?.focus());
+    return;
+  }
+
+  if (event.target.closest("[data-close-deadline-modal]")) {
+    state.actionDeadlineModal = false;
     render();
     return;
   }
