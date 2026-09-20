@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Abrindo plano de ação</title>
     <script>
-      const target = location.protocol === "file:"
-        ? "index.html?actionPlan=cozinha-catering-auto#actions"
-        : "/?actionPlan=cozinha-catering-auto#actions";
+      const target = location.protocol === "file:" ? "index.html#actions" : "/#actions";
       location.replace(target);
     </script>
   </head>

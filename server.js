@@ -1445,7 +1445,7 @@ async function handleApi(request, response, url) {
 function serveStatic(request, response, url) {
   if (url.pathname === "/plano-acao-preview.html") {
     response.writeHead(302, {
-      location: "/?actionPlan=cozinha-catering-auto#actions",
+      location: "/#actions",
       "cache-control": "no-store"
     });
     response.end();

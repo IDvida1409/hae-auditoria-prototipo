@@ -687,6 +687,7 @@ const foodTableSections = [
 
 function defaultState() {
   return {
+    planningDataVersion: 4,
     view: "home",
     sidebarCollapsed: false,
     selectedArea: "",
@@ -731,6 +732,7 @@ function defaultState() {
 
 function persistableState(source = state) {
   return {
+    planningDataVersion: source.planningDataVersion,
     view: source.view,
     sidebarCollapsed: source.sidebarCollapsed,
     selectedArea: source.selectedArea,
@@ -766,6 +768,7 @@ function normalizeSavedState(saved = {}) {
   const validSettingsUserViews = new Set(["active", "new", "inactive"]);
   const validSettingsRulesViews = new Set(["goals", "scoring", "visual", "docs", "tables"]);
   const validPlanningViews = new Set(planningTabs.map(([id]) => id));
+  const planningDataIsCurrent = saved.planningDataVersion === base.planningDataVersion;
   const merged = { ...base, ...saved };
   return {
     ...merged,
@@ -796,7 +799,8 @@ function normalizeSavedState(saved = {}) {
     planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
     planningMonthFilter: ["", "2026-09", "2026-08", "2026-07"].includes(merged.planningMonthFilter) ? merged.planningMonthFilter : "",
     planningPlanId: "",
-    planningPlanOverrides: merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
+    planningDataVersion: base.planningDataVersion,
+    planningPlanOverrides: planningDataIsCurrent && merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
     planningNotice: "",
     planningDecisionModal: false,
     actionPlanPreview: false,
@@ -863,7 +867,11 @@ async function hydrateStateFromBackend() {
     if (!response.ok) return;
     const payload = await response.json();
     if (payload?.state) {
-      state = normalizeSavedState({ ...persistableState(), ...payload.state });
+      state = normalizeSavedState({
+        ...persistableState(),
+        ...payload.state,
+        planningDataVersion: payload.state.planningDataVersion
+      });
       const hashView = viewFromHash();
       if (hashView) state.view = hashView;
       render({ skipSave: true });
@@ -898,11 +906,6 @@ function renderReportFileRequest(request) {
 
 function formatScore(value) {
   return value.toFixed(1).replace(".", ",");
-}
-
-function actionPlanFileRequest() {
-  const planId = new URLSearchParams(location.search).get("actionPlan");
-  return planId && /^[a-z0-9-]+$/i.test(planId) ? planId : null;
 }
 
 function buildBackendQuestionMap(payload) {
@@ -5757,18 +5760,13 @@ function planningPlanPreview() {
     "O registro foi corrigido, a liderança orientou o turno e incluiu uma dupla checagem no encerramento.",
     "O item foi identificado e os demais recipientes do setor foram revisados conforme o padrão orientado."
   ];
-  const standaloneDocument = Boolean(actionPlanFileRequest());
   return `
     <div class="fichario-sub-panel action-plan-preview-shell">
       ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="action-plan-preview-toolbar">
-        ${standaloneDocument
-          ? `<a class="fichario-sub-action" href="/#actions">${svgIcon("arrow", "is-back")} Voltar aos planos</a>`
-          : `<button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>`}
+        <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
-        ${standaloneDocument
-          ? `<button class="fichario-sub-action" data-print-action-plan type="button">${svgIcon("document")} Visualizar impressão</button>`
-          : `<a class="fichario-sub-action" href="/?actionPlan=${encodeURIComponent(plan.id)}#actions" target="_blank" rel="noopener">${svgIcon("document")} Abrir documento</a>`}
+        <button class="fichario-sub-action" data-print-action-plan type="button">${svgIcon("document")} Visualizar impressão</button>
       </div>
       ${isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
@@ -5989,19 +5987,6 @@ function viewContent() {
 }
 
 function render(options = {}) {
-  const actionPlanId = actionPlanFileRequest();
-  if (actionPlanId) {
-    state.view = "actions";
-    state.planningView = "feedback";
-    state.planningPlanId = actionPlanId;
-    state.actionPlanPreview = true;
-    document.body.classList.add("action-plan-document-body");
-    app.className = "app-shell is-action-plan-document";
-    app.innerHTML = `<main class="stored-action-plan-view">${planningPlanPreview()}</main>`;
-    if (!options.skipSave) saveState();
-    return;
-  }
-  document.body.classList.remove("action-plan-document-body");
   app.className = "app-shell fichario-shell";
   app.innerHTML = `
     <main class="main">
@@ -6057,10 +6042,9 @@ document.addEventListener("click", (event) => {
       const planId = notificationItem.dataset.notificationPlanId;
       const plan = planningActionRows().find((row) => row.id === planId);
       if (plan) {
-        notificationsOpen = false;
-        render();
-        window.open(`/?actionPlan=${encodeURIComponent(plan.id)}#actions`, "_blank", "noopener");
-        return;
+        state.planningPlanId = plan.id;
+        state.planningAreaId = plan.area.id;
+        state.actionPlanPreview = true;
       }
     }
     notificationsOpen = false;
@@ -6347,7 +6331,14 @@ document.addEventListener("click", (event) => {
   const openActionPlanPreview = event.target.closest("[data-open-action-plan-preview]");
   if (openActionPlanPreview) {
     const plan = planningActionRows().find((row) => row.id === openActionPlanPreview.dataset.openActionPlanPreview) || planningActionRows()[0];
-    window.open(`/?actionPlan=${encodeURIComponent(plan.id)}#actions`, "_blank", "noopener");
+    state.planningPlanId = plan.id;
+    state.planningAreaId = plan.area.id;
+    setPlanningNotice();
+    state.actionPlanPreview = true;
+    state.actionDeadlineModal = false;
+    state.planningDecisionModal = false;
+    render();
+    requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
     return;
   }
 
