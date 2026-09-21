@@ -5048,7 +5048,6 @@ function checklistPage() {
     || blocks.find((block, index) => index !== currentBlockIndex && (block.questions || []).some((question) => !areaAnswers[question.id]));
   const allAnswered = answeredCount === questions.length && questions.length > 0;
   const missingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && !state.auditEvidence?.[area.id]?.[question.id]).length;
-  const readyToFinalize = allAnswered && missingEvidenceCount === 0;
 
   if (!blocks.length) {
     return `
@@ -5165,7 +5164,7 @@ function checklistPage() {
         <section class="audit-footer surface" style="margin-top:12px">
           <button class="outline-btn" data-request-leave-audit><span class="desktop-action-label">Voltar para áreas</span><span class="mobile-action-label">Áreas</span></button>
           <span class="audit-total-summary"><b>${questions.length}</b> perguntas <i>•</i> <b>${blocks.length}</b> blocos</span>
-          <button class="primary-btn" data-finalize-audit ${readyToFinalize ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Anexe ${missingEvidenceCount} foto(s) de NC` : "Finalizar auditoria"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `${missingEvidenceCount} foto(s)` : "Finalizar"}</span> ${readyToFinalize ? svgIcon("arrow") : ""}</button>
+          <button class="primary-btn" data-finalize-audit ${allAnswered ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Abrir ${missingEvidenceCount} foto(s) pendente(s)` : "Finalizar auditoria"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `Falta ${missingEvidenceCount} foto` : "Finalizar"}</span> ${allAnswered ? svgIcon("arrow") : ""}</button>
         </section>
       </div>
       ${showAllBlocks ? '<button class="mobile-blocks-backdrop" data-checklist-blocks type="button" aria-label="Fechar lista de blocos"></button>' : ""}
@@ -7321,16 +7320,25 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.closest("[data-finalize-audit]")) {
     const areaId = state.selectedArea;
-    const questions = questionsForArea(areaById(areaId));
+    const area = areaById(areaId);
+    const questions = questionsForArea(area);
     const answered = answersForArea(areaId);
     const missing = questions.filter((question) => !answered[question.id]).length;
     if (missing) {
       setOfflineNotice({ phase: "error", message: `Ainda faltam ${missing} perguntas para finalizar.` });
       return;
     }
-    const missingEvidence = questions.filter((question) => answered[question.id] === "NC" && !state.auditEvidence?.[areaId]?.[question.id]).length;
-    if (missingEvidence) {
-      setOfflineNotice({ phase: "error", message: `Ainda faltam ${missingEvidence} foto(s) obrigatória(s) das não conformidades.` });
+    const missingEvidence = questions.filter((question) => answered[question.id] === "NC" && !state.auditEvidence?.[areaId]?.[question.id]);
+    if (missingEvidence.length) {
+      const pendingQuestion = missingEvidence[0];
+      const pendingBlock = blocksForArea(area).find((block) => (block.questions || []).some((question) => question.id === pendingQuestion.id));
+      const questionIndex = Math.max(0, (pendingBlock?.questions || []).findIndex((question) => question.id === pendingQuestion.id));
+      if (pendingBlock) state.checklistBlock = pendingBlock.id;
+      state.checklistPage = Math.floor(questionIndex / 3);
+      state.actionPlanNoticeQuestion = null;
+      setOfflineNotice({ phase: "error", message: `Anexe a foto obrigatória desta não conformidade. Ainda ${missingEvidence.length === 1 ? "falta 1 foto" : `faltam ${missingEvidence.length} fotos`}.` });
+      render();
+      requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(pendingQuestion.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
       return;
     }
     state.auditFinalizeModal = true;
