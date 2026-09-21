@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v36-mobile-audit-footer";
+const CACHE_NAME = "idauditor-v37-live-update-reload";
 const APP_SHELL = [
   "/",
   "/index.html",

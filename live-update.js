@@ -25,7 +25,12 @@
         liveUpdate.getNextBundle()
       ]);
       if (Number(versionCode) < Number(release.minVersionCode || 0)) return;
-      if (current.bundleId === release.bundleId || next.bundleId === release.bundleId) return;
+      if (current.bundleId === release.bundleId) return;
+      if (next.bundleId === release.bundleId) {
+        announce("applying", { bundleId: release.bundleId });
+        await liveUpdate.reload();
+        return;
+      }
 
       announce("downloading", { bundleId: release.bundleId });
       await liveUpdate.downloadBundle({
@@ -34,7 +39,8 @@
         artifactType: "zip"
       });
       await liveUpdate.setNextBundle({ bundleId: release.bundleId });
-      announce("ready", { bundleId: release.bundleId });
+      announce("applying", { bundleId: release.bundleId });
+      await liveUpdate.reload();
     } catch (error) {
       console.warn("Atualizacao automatica indisponivel:", error?.message || error);
       announce("error");
