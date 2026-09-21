@@ -744,6 +744,7 @@ function defaultState() {
     auditNotes: {},
     offlineAudits: {},
     detailBlock: null,
+    detailEvidenceOpen: false,
     detailActionsOpen: false,
     detailFilter: "all",
     checklistBlock: null,
@@ -832,6 +833,7 @@ function normalizeSavedState(saved = {}) {
     auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
     offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
     detailBlock: null,
+    detailEvidenceOpen: false,
     detailActionsOpen: false,
     detailFilter: "all",
     checklistBlocksOpen: false,
@@ -1186,7 +1188,7 @@ function riskSummary(area) {
 
 function actionPlansForArea(area) {
   const configured = actionPlanData[area.id];
-  if (configured?.length) return configured;
+  if (configured?.length) return configured.map((plan) => ({ ...plan, owner: area.id === "area-residuos" ? "Carlos Lima" : plan.owner }));
   const blocks = blockSummaries(area);
   const lowestBlock = [...blocks].sort((a, b) => a.score - b.score)[0];
   return [
@@ -1200,6 +1202,10 @@ function actionPlansForArea(area) {
       critical: area.critical > 0
     }
   ];
+}
+
+function reportResponsibleName(area) {
+  return area.id === "area-residuos" ? "Carlos Lima" : "Liderança da área auditada";
 }
 
 function actionPlanStats(area) {
@@ -1429,13 +1435,13 @@ function ficharioTabs() {
     ["reports", "Relatórios", "reports"],
     ["settings", "Configuração", "settings"],
     ["users", "Usuários", "users"]
-  ].filter(([id]) => !(isAreaResponsible() && id === "audits") && (id !== "users" || currentAccessUser?.role === "admin" || isAreaResponsible()));
+  ].filter(([id]) => id !== "users" || currentAccessUser?.role === "admin" || isAreaResponsible());
   return `
     <nav class="fichario-tabs" aria-label="Navegação principal">
       ${tabs.map(([id, label, icon]) => {
         const locked = !moduleAllowed(id);
         return `
-        <button class="fichario-tab ${state.view === id ? "is-active" : ""} ${locked ? "is-locked" : ""}" ${locked ? "data-locked-module" : `data-nav="${id}"`} type="button" title="${locked ? "Acesso exclusivo do administrador" : label}">
+        <button class="fichario-tab ${state.view === id ? "is-active" : ""} ${locked ? "is-locked" : ""}" data-nav="${id}" ${locked ? "data-locked-module" : ""} type="button" title="${locked ? "Acesso exclusivo do administrador" : label}">
           <img src="assets/fichario-icons/${icon}.png?v=fichario-shell-1" alt="" aria-hidden="true" />
           <span>${label}</span>
           ${locked ? `<span class="fichario-tab-lock">${icons.lock}</span>` : ""}
@@ -1865,6 +1871,7 @@ function graphAuditSummary() {
 function dashboardHome() {
   const hasSelection = Boolean(state.selectedArea);
   const selectedArea = hasSelection ? areaById(state.selectedArea) : null;
+  const scopeArea = isAreaResponsible() ? primaryUserArea() : selectedArea;
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
       <div class="fichario-panel-head">
@@ -1882,16 +1889,16 @@ function dashboardHome() {
             <section class="fichario-summary-card">
               <h2>${isAreaResponsible() ? "Pendências da área" : "Pendências gerais"}</h2>
               <div class="pending-compact-grid">
-                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>${isAreaResponsible() ? selectedArea.pending : 12}</b><small>planos pendentes</small></span>
-                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>${isAreaResponsible() ? selectedArea.critical : 8}</b><small>NCs de alto risco</small></span>
+                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>${isAreaResponsible() ? scopeArea.pending : 12}</b><small>planos pendentes</small></span>
+                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>${isAreaResponsible() ? scopeArea.critical : 8}</b><small>NCs de alto risco</small></span>
                 <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>${isAreaResponsible() ? 0 : 1}</b><small>documento vencido</small></span>
-                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>${isAreaResponsible() ? Number(selectedArea.pending > 3) : 2}</b><small>áreas atrasadas</small></span>
+                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>${isAreaResponsible() ? Number(scopeArea.pending > 3) : 2}</b><small>áreas atrasadas</small></span>
               </div>
             </section>
             <section class="fichario-summary-card">
               <h2>Evolução da nota</h2>
               <p>Visão geral dos últimos meses.</p>
-              ${dashboardEvolution(selectedArea)}
+              ${dashboardEvolution(scopeArea)}
             </section>
             <section class="fichario-summary-card feedback-summary-card ${state.feedbackExpanded ? "is-expanded" : ""}">
               <h2>Últimas devolutivas</h2>
@@ -2983,8 +2990,8 @@ function reportDocHeader(title, area, showMeta = false) {
       ${showMeta ? `<div class="report-doc-meta-strip">
         <span><strong>Unidade</strong>Hospital Einstein - Morumbi</span>
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
-        <span><strong>Responsável</strong>Liderança da área auditada</span>
+        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
         <span><strong>Data</strong>${audit.date}</span>
         <span><strong>Início</strong>${audit.start}</span>
         <span><strong>Término</strong>${audit.end}</span>
@@ -3014,8 +3021,8 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
-        <span><strong>Responsável</strong>Liderança da área auditada</span>
+        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
   `;
@@ -3045,8 +3052,8 @@ function reportComparisonDocHeader(area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>Qualidade / Segurança dos Alimentos</span>
-        <span><strong>Responsável</strong>Liderança da área auditada</span>
+        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
   `;
@@ -3851,9 +3858,8 @@ function reportConclusion(area) {
       <strong>Conclusão técnica</strong>
       <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${reportPlural(totals.NC, "não conformidade", "não conformidades")}, ${reportPlural(stats.total, "plano de ação", "planos de ação")} e ${reportPlural(reportOpenActions(stats), "ação aberta", "ações abertas")}. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
-    <div class="report-signatures">
-      <span>Auditor responsável</span>
-      <span>Responsável da área auditada</span>
+    <div class="report-signatures is-auditor-only">
+      <span><strong>teste.01</strong>Auditor responsável</span>
     </div>
   `;
 }
@@ -4317,9 +4323,8 @@ function comparativeReportPage() {
             <p>${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)} constitui a principal prioridade para o próximo ciclo, devido à recorrência de não conformidade de risco alto e à existência de plano de ação não concluído no prazo. O acompanhamento deverá considerar a execução da ação, o cumprimento do prazo, a evidência registrada e a validação de sua efetividade na auditoria subsequente.</p>
           </div>
         `)}
-        <div class="report-signatures">
-          <span>Auditor responsável</span>
-          <span>Responsável pelo plano de ação</span>
+        <div class="report-signatures is-auditor-only">
+          <span><strong>teste.01</strong>Auditor responsável</span>
         </div>
       `)}
     </div>
@@ -4622,11 +4627,11 @@ function areaDetailPage() {
           <section class="surface detail-side-card">
             <h3>Evidências fotográficas</h3>
             <div class="photo-grid">
-              ${Array.from({ length: Math.max(1, Math.min(3, areaNcRows.length)) })
-                .map(() => `<div class="photo-thumb"><span>⌕</span></div>`)
+              ${areaNcRows.slice(0, 3)
+                .map((row) => `<button class="photo-thumb has-photo" data-open-evidence-gallery type="button" title="Ver evidência do item ${String(row.number).padStart(2, "0")}"><img src="${reportEvidenceImageForQuestion(row)}" alt="Evidência do item ${String(row.number).padStart(2, "0")}" /></button>`)
                 .join("")}
             </div>
-            <button class="link-inline">Ver evidências ${svgIcon("arrow")}</button>
+            <button class="link-inline" data-open-evidence-gallery type="button">Ver evidências ${svgIcon("arrow")}</button>
           </section>
           <section class="surface detail-side-card">
             <h3>Plano de ação</h3>
@@ -4655,10 +4660,18 @@ function areaDetailPage() {
                 <span>Melhora após ação: ${planStats.improved > 0 ? "sim" : "não"}</span>
               </div>
             ` : ""}
-            <button class="primary-btn" data-toggle-detail-actions>${state.detailActionsOpen ? "Ocultar plano de ação" : "Ver plano de ação"} ${svgIcon("arrow")}</button>
+            <button class="primary-btn" data-open-area-plan="${area.id}">Ver plano de ação ${svgIcon("arrow")}</button>
           </section>
         </aside>
       </div>
+      ${state.detailEvidenceOpen ? `
+        <div class="detail-modal-backdrop">
+          <section class="detail-modal evidence-gallery-modal surface" role="dialog" aria-modal="true" aria-label="Evidências fotográficas da área">
+            <div class="detail-modal-head"><div><span class="modal-kicker">${escapeHtml(area.name)}</span><h2>Evidências fotográficas</h2><p>${areaNcRows.length} registros vinculados às não conformidades.</p></div><button class="panel-close" data-close-evidence-gallery title="Fechar">${icons.close}</button></div>
+            <div class="detail-modal-body"><div class="detail-evidence-grid">${areaNcRows.map((row) => `<article class="detail-evidence-card"><img src="${reportEvidenceImageForQuestion(row)}" alt="Evidência do item ${String(row.number).padStart(2, "0")}" /><div><strong>Item ${String(row.number).padStart(2, "0")} · ${escapeHtml(row.blockTitle)}</strong><p>${escapeHtml(reportFullText(row.text))}</p><span>Risco ${(riskMeta[row.riskLevel] || riskMeta.none).label}</span></div></article>`).join("")}</div></div>
+          </section>
+        </div>
+      ` : ""}
       ${selectedBlock ? `
         <div class="detail-modal-backdrop">
           <section class="detail-modal surface" role="dialog" aria-modal="true" aria-label="Detalhes do bloco">
@@ -6780,6 +6793,36 @@ document.addEventListener("click", (event) => {
   const detailFilter = event.target.closest("[data-detail-filter]");
   if (detailFilter) {
     state.detailFilter = detailFilter.dataset.detailFilter;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-open-evidence-gallery]")) {
+    state.detailEvidenceOpen = true;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-close-evidence-gallery]")) {
+    state.detailEvidenceOpen = false;
+    render();
+    return;
+  }
+
+  const openAreaPlan = event.target.closest("[data-open-area-plan]");
+  if (openAreaPlan) {
+    const areaId = openAreaPlan.dataset.openAreaPlan;
+    const plan = planningActionRows().find((row) => row.area.id === areaId && !["approved", "rejected"].includes(row.status)) || planningActionRows().find((row) => row.area.id === areaId);
+    state.view = "actions";
+    state.planningView = "plans";
+    state.planningAreaId = areaId;
+    state.detailEvidenceOpen = false;
+    if (plan) {
+      state.planningPlanId = plan.id;
+      state.actionPlanPreview = true;
+      if (isAreaResponsible() && !state.actionPlanAcknowledgements?.[plan.id]) state.actionPlanConsentId = plan.id;
+    }
+    syncHashWithView("actions");
     render();
     return;
   }
