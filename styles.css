@@ -2556,6 +2556,21 @@ h3 {
   cursor: pointer;
 }
 
+.evidence-photo-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.evidence-photo-actions .camera-drop {
+  min-height: 62px;
+  cursor: pointer;
+}
+
+.evidence-photo-actions .camera-drop.is-gallery {
+  border-style: solid;
+  background: #f4f8fd;
+}
+
 /* Visual preview: action plan generated for one audited area. */
 .action-plan-preview-shell {
   position: relative;

@@ -537,6 +537,11 @@ function paintOfflineStatus() {
 function setOfflineNotice(detail) {
   clearTimeout(offlineNoticeTimer);
   const phase = detail?.phase;
+  if (["syncing", "synced"].includes(phase) && !detail.recovered) {
+    offlineNotice = null;
+    paintOfflineStatus();
+    return;
+  }
   if (phase === "idle") {
     offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
   } else if (phase === "saved" && navigator.onLine !== false) {
@@ -556,7 +561,10 @@ function setOfflineNotice(detail) {
 window.addEventListener("offline:sync-status", (event) => setOfflineNotice(event.detail || {}));
 window.addEventListener("offline", () => setOfflineNotice({ phase: "offline", pending: offlineNotice?.pending || 0 }));
 window.addEventListener("online", () => {
-  if (offlineNotice?.phase === "offline") setOfflineNotice({ phase: "syncing", pending: offlineNotice.pending || 0 });
+  if (offlineNotice?.phase === "offline") {
+    offlineNotice = null;
+    paintOfflineStatus();
+  }
 });
 
 const settingsPermissionProfiles = [
@@ -5028,7 +5036,10 @@ function checklistPage() {
                         Não conformidade de risco ${escapeHtml(risk.label)}
                       </div>
                       <div class="evidence-grid">
-                        <label class="camera-drop">${svgIcon("camera")} Tirar foto <small>JPG, PNG até 10MB</small><input type="file" accept="image/jpeg,image/png" capture="environment" data-evidence-file="${question.id}" hidden /></label>
+                        <div class="evidence-photo-actions">
+                          <label class="camera-drop">${svgIcon("camera")} Tirar foto <small>Abrir câmera traseira</small><input type="file" accept="image/*" capture="environment" data-evidence-file="${question.id}" data-capture-method="camera" hidden /></label>
+                          <label class="camera-drop is-gallery">${svgIcon("document")} Escolher da galeria <small>JPG ou PNG até 10 MB</small><input type="file" accept="image/*" data-evidence-file="${question.id}" data-capture-method="gallery" hidden /></label>
+                        </div>
                         <div class="note-field">
                           <label>Observação</label>
                           <textarea data-audit-note="${question.id}" placeholder="Descreva a não conformidade encontrada...">${escapeHtml(state.auditNotes?.[area.id]?.[question.id] || "")}</textarea>
@@ -7255,7 +7266,8 @@ document.addEventListener("change", (event) => {
           questionId: backendQuestionId,
           entityType: "audit_answer",
           fileType: "audit_photo",
-          caption: state.auditNotes?.[areaId]?.[questionId] || null
+          caption: state.auditNotes?.[areaId]?.[questionId] || null,
+          captureMethod: evidence.dataset.captureMethod || "gallery"
         });
       })
       .catch((error) => setOfflineNotice({ phase: "error", message: error.message }));

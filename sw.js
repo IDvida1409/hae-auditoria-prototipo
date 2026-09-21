@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v34-ota-updates";
+const CACHE_NAME = "idauditor-v35-audit-camera-sync";
 const APP_SHELL = [
   "/",
   "/index.html",

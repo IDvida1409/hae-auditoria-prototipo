@@ -9,6 +9,7 @@
   let retryTimer = null;
   let retryDelay = 2000;
   let syncOptions = {};
+  let disconnectedSinceLastSync = navigator.onLine === false;
 
   function userScope() {
     return String(syncOptions.userScope || "anonymous");
@@ -354,7 +355,7 @@
     const base = configured || location.origin;
     const device = await deviceUid();
     const headers = { ...(typeof options.headers === "function" ? options.headers() : options.headers || {}) };
-    emitSync("syncing", { pending: operations.length, sent: 0 });
+    emitSync("syncing", { pending: operations.length, sent: 0, recovered: disconnectedSinceLastSync });
     let sent = 0;
     let failed = false;
     const reconciled = [];
@@ -410,15 +411,22 @@
           await updateOperation(local.clientOperationId, { status: "error", retryCount: local.retryCount + 1, errorMessage: remote?.error_message || "Operacao ainda nao aplicada no servidor" });
         }
       }
-      emitSync("syncing", { sent, pending: operations.length - sent });
+      emitSync("syncing", { sent, pending: operations.length - sent, recovered: disconnectedSinceLastSync });
     }
     const remaining = await listSyncableOperations();
     if (reconciled.length) window.dispatchEvent(new CustomEvent("offline:sync-complete", { detail: { results: reconciled, sent, pending: remaining.length } }));
-    emitSync(remaining.length ? "pending" : "synced", { sent, pending: remaining.length });
+    emitSync(remaining.length ? "pending" : "synced", {
+      sent,
+      pending: remaining.length,
+      recovered: !remaining.length && disconnectedSinceLastSync
+    });
     if (remaining.length) {
       scheduleSync(retryDelay);
       retryDelay = Math.min(retryDelay * 2, 300000);
-    } else retryDelay = 2000;
+    } else {
+      retryDelay = 2000;
+      disconnectedSinceLastSync = false;
+    }
     return { sent, pending: remaining.length, failed };
   }
 
@@ -497,7 +505,11 @@
   window.addEventListener("online", () => {
     syncPending().catch(() => {});
   });
-  window.addEventListener("offline", () => { clearTimeout(retryTimer); emitSync("offline"); });
+  window.addEventListener("offline", () => {
+    disconnectedSinceLastSync = true;
+    clearTimeout(retryTimer);
+    emitSync("offline");
+  });
   window.addEventListener("pageshow", () => scheduleSync());
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleSync();
