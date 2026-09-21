@@ -9,6 +9,8 @@ const resourceApi = require("./lib/resource-api");
 const { migrate: runMigrations } = require("./lib/database");
 const reportWorker = require("./lib/report-worker");
 const accessApi = require("./lib/access-api");
+const { importChecklistData } = require("./lib/checklist-import");
+const { notify } = require("./lib/notifications");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
@@ -88,6 +90,10 @@ async function getPool() {
         await runMigrations(pool);
         await accessApi.ensureBootstrapAdmin(pool);
         await accessApi.ensureDemoResponsible(pool);
+        const checklistImport = await importChecklistData(pool);
+        if (checklistImport.imported) {
+          console.log(`Checklists sincronizados: ${checklistImport.areas} areas, ${checklistImport.questions} perguntas.`);
+        }
       }
       catch (error) { await pool.end(); throw error; }
       return pool;
@@ -226,6 +232,30 @@ async function currentUser(pool, request, unitId) {
   return user;
 }
 
+function operationalAccessAllowed(user, pathname, method) {
+  if (["admin", "quality", "auditor"].includes(user.role)) return true;
+  if (user.role !== "area_responsible") return false;
+  if (method === "GET" && (
+    pathname === "/api/offline-bootstrap" ||
+    pathname === "/api/dashboard" ||
+    pathname === "/api/action-plans" ||
+    pathname === "/api/reports" ||
+    pathname === "/api/audits" ||
+    pathname === "/api/notifications" ||
+    /^\/api\/(?:reports|audits)\/[0-9a-f-]+(?:\/versions)?$/i.test(pathname) ||
+    /^\/api\/files\/[0-9a-f-]+\/content$/i.test(pathname)
+  )) return true;
+  if (method === "POST" && (
+    /^\/api\/action-plans\/[0-9a-f-]+\/feedback$/i.test(pathname) ||
+    pathname === "/api/offline-files" ||
+    pathname === "/api/sync-queue" ||
+    pathname === "/api/sync-queue/process" ||
+    /^\/api\/sync-queue\/[^/]+\/resolve$/i.test(pathname) ||
+    /^\/api\/notifications\/[0-9a-f-]+\/read$/i.test(pathname)
+  )) return true;
+  return false;
+}
+
 async function ensureCycle(pool, unitId, monthStart = currentMonthStart()) {
   const result = await pool.query(
     `
@@ -349,8 +379,9 @@ async function handleApi(request, response, url) {
         sendJson(response, 401, { error: "Entre na sua conta para continuar." });
         return true;
       }
-      if (request.accessUser.role !== "admin") {
-        sendJson(response, 403, { error: "Esta etapa operacional está liberada somente para administradores durante a configuração das áreas." });
+      request.accessUser = await accessApi.withAccessAreas(pool, request.accessUser);
+      if (!operationalAccessAllowed(request.accessUser, url.pathname, request.method)) {
+        sendJson(response, 403, { error: "Seu perfil não possui permissão para esta operação." });
         return true;
       }
     } catch (error) {
@@ -964,6 +995,7 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
       const status = url.searchParams.get("status");
       const areaId = url.searchParams.get("areaId");
       const result = await pool.query(
@@ -979,10 +1011,11 @@ async function handleApi(request, response, url) {
           where ap.unit_id = $1
             and ($2::text is null or ap.status = $2)
             and ($3::uuid is null or ap.area_id = $3)
+            and ($4::boolean or ap.area_id = any($5::uuid[]))
           order by ap.due_at nulls last, ap.created_at desc
           limit 200
         `,
-        [unitId, status || null, areaId || null]
+        [unitId, status || null, areaId || null, Boolean(user.all_areas), user.area_ids || []]
       );
       sendJson(response, 200, { actionPlans: result.rows });
     } catch (error) {
@@ -999,7 +1032,21 @@ async function handleApi(request, response, url) {
       const body = await readJsonBody(request);
       const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
-      const result = await pool.query(
+      const client = await pool.connect();
+      let result;
+      let plan;
+      try {
+        await client.query("begin");
+        const selected = await client.query(
+          `select ap.*,a.auditor_user_id from action_plans ap
+           left join audits a on a.id=ap.origin_audit_id
+           where ap.id=$1 and ap.unit_id=$2 and ($3::boolean or ap.assigned_to_user_id=$4) for update`,
+          [planFeedbackMatch.id, unitId, Boolean(user.all_areas), user.id]
+        );
+        plan = selected.rows[0];
+        if (!plan) throw new Error("Plano não encontrado ou não pertence a este usuário.");
+        if (["approved", "cancelled"].includes(plan.status)) throw new Error("Este plano já está encerrado.");
+        result = await client.query(
         `
           insert into action_plan_feedback (
             action_plan_id,
@@ -1027,8 +1074,8 @@ async function handleApi(request, response, url) {
           body.delayJustification || null,
           body.captureMethod || "upload"
         ]
-      );
-      await pool.query(
+        );
+        await client.query(
         `
           update action_plans
           set status = 'pending_review',
@@ -1038,7 +1085,26 @@ async function handleApi(request, response, url) {
           where id = $1
         `,
         [planFeedbackMatch.id, result.rows[0].id]
-      );
+        );
+        if (plan.auditor_user_id && plan.auditor_user_id !== user.id) {
+          await notify(client, {
+            unitId,
+            recipientId: plan.auditor_user_id,
+            title: body.delayJustification ? "Novo prazo solicitado" : "Devolutiva recebida",
+            body: body.delayJustification || `${user.full_name} enviou uma devolutiva para análise.`,
+            type: body.delayJustification ? "action_plan_deadline_requested" : "action_plan_feedback",
+            entityType: "action_plan",
+            entityId: plan.id,
+            key: `feedback:${result.rows[0].id}`
+          });
+        }
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
       sendJson(response, 201, { feedback: result.rows[0] });
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro ao enviar devolutiva" });

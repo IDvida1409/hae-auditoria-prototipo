@@ -292,6 +292,8 @@ let notificationsOpen = false;
 let planningNoticeTimer = null;
 let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
 let offlineNoticeTimer = null;
+let operationalActionPlans = null;
+let operationalDashboard = null;
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -364,6 +366,22 @@ async function accessRequest(path, options = {}) {
   return data;
 }
 
+async function operationalRequest(path, options = {}) {
+  const response = await fetch(`/api/${path}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    ...options,
+    headers: { "content-type": "application/json", ...options.headers }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.error || "Não foi possível carregar os dados operacionais.");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 async function loadAccessUsers() {
   if (currentAccessUser?.role !== "admin") return;
   const data = await accessRequest("users");
@@ -375,28 +393,8 @@ async function loadAccessUsers() {
 
 async function loadAccessNotifications() {
   const data = await accessRequest("notifications").catch(() => ({ notifications: [] }));
-  const existing = data.notifications || [];
-  const demo = planningDemoNotifications();
-  const merged = new Map(existing.map((item) => [item.id, item]));
-  demo.forEach((item) => merged.set(item.id, item));
-  accessNotifications = [...merged.values()]
+  accessNotifications = [...(data.notifications || [])]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-}
-
-function planningDemoNotifications() {
-  const ago = (minutes) => new Date(Date.now() - minutes * 60000).toISOString();
-  if (isAreaResponsible()) {
-    return [
-      { id: "plan-assigned-residuos", notification_type: "action_plan_assigned", entity_type: "action_plan", entity_id: "area-residuos-auto", title: "Plano de ação disponível - Área de Resíduos", body: "O plano da auditoria vigente está disponível para ciência e resposta.", created_at: ago(8), read_at: null },
-      { id: "report-residuos-current", notification_type: "report_ready", entity_type: "report", entity_id: "area-residuos", title: "Relatório mensal disponível", body: "O relatório vigente da Área de Resíduos já pode ser consultado.", created_at: ago(34), read_at: null }
-    ];
-  }
-  return [
-    { id: "plan-feedback-residuos", notification_type: "action_plan_feedback", entity_type: "action_plan", entity_id: "area-residuos-auto", title: "Devolutiva recebida - Área de Resíduos", body: "Carlos Lima enviou respostas e três evidências para análise.", created_at: ago(8), read_at: null },
-    { id: "plan-deadline-cubas", notification_type: "action_plan_deadline_requested", entity_type: "action_plan", entity_id: "higienizacao-cubas-auto", title: "Novo prazo solicitado - Higienização de Cubas", body: "O responsável solicitou prazo até 15/12/2026 e anexou uma justificativa.", created_at: ago(31), read_at: null },
-    { id: "plan-sent-catering", notification_type: "action_plan_sent", entity_type: "action_plan", entity_id: "cozinha-catering-auto", title: "Plano enviado - Cozinha Catering", body: "Plano de ação disponibilizado ao responsável da área.", created_at: ago(74), read_at: new Date().toISOString() },
-    { id: "plan-approved-docs", notification_type: "action_plan_approved", entity_type: "action_plan", entity_id: "hist-documentacao-ago", title: "Devolutiva aprovada - Documentação", body: "As evidências foram aprovadas e o plano foi encerrado.", created_at: ago(180), read_at: new Date().toISOString() }
-  ];
 }
 
 function planningNotificationView(item) {
@@ -1002,6 +1000,78 @@ async function loadOfflineBootstrap() {
     buildBackendQuestionMap(payload);
   }
   return payload;
+}
+
+function uiAreaFromBackendId(areaId) {
+  const backendArea = (offlineBootstrap?.areas || []).find((area) => String(area.id) === String(areaId));
+  return backendArea ? areaData.find((area) => area.id === backendArea.slug) : null;
+}
+
+function planningStatusFromBackend(status) {
+  return {
+    draft: "awaiting_send",
+    generated: "awaiting_send",
+    available_to_responsible: "in_progress",
+    sent_to_responsible: "in_progress",
+    acknowledged: "in_progress",
+    submitted: "pending_review",
+    pending_review: "pending_review",
+    approved: "approved",
+    rejected: "rejected",
+    reopened: "reopened",
+    overdue: "overdue",
+    cancelled: "rejected"
+  }[status] || "in_progress";
+}
+
+function shortDate(value) {
+  if (!value) return "Sem prazo";
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+async function loadOperationalData() {
+  if (location.protocol === "file:") return;
+  const [dashboard, plans] = await Promise.all([
+    operationalRequest("dashboard"),
+    operationalRequest("action-plans")
+  ]);
+  operationalDashboard = dashboard;
+  const scores = new Map((dashboard.scores || []).map((row) => [String(row.area_id), Number(row.score || 0)]));
+  const backendAreas = offlineBootstrap?.areas || [];
+  for (const area of areaData) {
+    const backend = backendAreas.find((item) => item.slug === area.id);
+    const score = backend ? scores.get(String(backend.id)) : undefined;
+    area.score = score ?? 0;
+    area.last = score ?? 0;
+    area.ncs = 0;
+    area.critical = 0;
+    area.pending = 0;
+    area.status = score == null ? "naoAvaliado" : scoreStatus(score);
+  }
+  operationalActionPlans = (plans.actionPlans || []).map((plan) => {
+    const area = uiAreaFromBackendId(plan.area_id) || areaData.find((item) => item.id === plan.area_slug);
+    if (area) {
+      area.pending += ["approved", "cancelled"].includes(plan.status) ? 0 : 1;
+      area.ncs += 1;
+      if (["high", "critical"].includes(plan.locked_risk_snapshot)) area.critical += 1;
+    }
+    return {
+      id: plan.id,
+      area,
+      title: plan.title || "Plano de ação",
+      block: plan.problem_description || "Não conformidade da auditoria",
+      owner: plan.assigned_to_name || area?.name || "Responsável da área",
+      status: planningStatusFromBackend(plan.status),
+      due: shortDate(plan.due_at),
+      ncs: 1,
+      attempts: Number(plan.resubmission_attempt || 0),
+      source: plan.creation_source === "audit_nc" ? "Auditoria" : "Plano de ação",
+      deadlineRequested: Boolean(plan.deadline_requested_at),
+      requestedDue: shortDate(plan.requested_due_at),
+      deadlineReason: plan.deadline_request_reason || "",
+      itemDecisions: {}
+    };
+  }).filter((row) => row.area);
 }
 
 function localAuditFor(areaId) {
@@ -5350,6 +5420,11 @@ function usersPage() {
 }
 
 function planningActionRows() {
+  if (operationalActionPlans !== null) {
+    return operationalActionPlans
+      .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }))
+      .filter((row) => row.area && canAccessArea(row.area.id));
+  }
   const fallbackPlans = areaData
     .filter((area) => area.pending > 0)
     .map((area, index) => ({
@@ -7102,6 +7177,7 @@ if (reportRequest) {
         loadAccessNotifications(),
         loadOfflineBootstrap()
       ]);
+      await loadOperationalData();
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");
       if (error.status === 401 || !cached) { location.replace("/login.html"); return; }
