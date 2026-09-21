@@ -2556,6 +2556,36 @@ h3 {
   cursor: pointer;
 }
 
+/* Navegação compacta do checklist em celular e tablet */
+.mobile-action-label,
+.mobile-blocks-close,
+.mobile-blocks-backdrop {
+  display: none;
+}
+
+.audit-page-summary,
+.audit-total-summary {
+  white-space: nowrap;
+}
+
+.audit-page-summary b,
+.audit-total-summary b {
+  color: var(--ink-950);
+  font-weight: 850;
+}
+
+.audit-total-summary {
+  color: var(--ink-600);
+  font-size: 11.5px;
+  font-weight: 720;
+}
+
+.audit-total-summary i {
+  margin: 0 4px;
+  color: var(--blue-500);
+  font-style: normal;
+}
+
 .evidence-photo-actions {
   display: grid;
   gap: 8px;
@@ -7136,6 +7166,36 @@ h3 {
   margin-top: 1px !important;
   font-size: 9.5px !important;
   font-weight: 680 !important;
+}
+
+.audit-question-list .answer-btn.is-selected {
+  color: #fff !important;
+  background: var(--answer) !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--answer) 24%, transparent) !important;
+}
+
+.audit-question-list .answer-btn.is-selected small {
+  color: inherit !important;
+}
+
+.audit-question-list .question-card.is-answered {
+  position: relative;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.audit-question-list .question-card.is-answered.answer-c {
+  background: color-mix(in srgb, var(--green) 5%, #fff) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 42%, #fff), var(--shadow-sm) !important;
+}
+
+.audit-question-list .question-card.is-answered.answer-nc {
+  background: color-mix(in srgb, var(--red) 4%, #fff) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 38%, #fff), var(--shadow-sm) !important;
+}
+
+.audit-question-list .question-card.is-answered.answer-x {
+  background: color-mix(in srgb, var(--ink-600) 4%, #fff) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-600) 28%, #fff), var(--shadow-sm) !important;
 }
 
 .audit-question-list .nc-evidence {
@@ -15999,6 +16059,116 @@ button.planning-kpi:hover {
   .detail-evidence-card { grid-template-columns: 110px minmax(0, 1fr); }
   .detail-evidence-card img { width: 110px; height: 92px; }
 }
+
+/* Keep the audit controls compact after the legacy responsive rules above. */
+@media (max-width: 1180px) {
+  .blocks-sidebar.is-compact {
+    display: none !important;
+  }
+
+  .mobile-blocks-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 79;
+    display: block;
+    border: 0;
+    background: rgba(4, 18, 38, 0.48);
+  }
+
+  .blocks-sidebar.is-open {
+    position: fixed !important;
+    z-index: 80 !important;
+    top: max(14px, env(safe-area-inset-top)) !important;
+    right: 14px !important;
+    bottom: max(14px, env(safe-area-inset-bottom)) !important;
+    left: 14px !important;
+    width: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding: 18px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 24px 64px rgba(3, 20, 42, 0.34) !important;
+  }
+
+  .blocks-sidebar.is-open .blocks-sidebar-head {
+    position: sticky;
+    top: -18px;
+    z-index: 2;
+    margin: -18px -18px 0;
+    padding: 18px 54px 14px 18px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    background: #fff;
+  }
+
+  .mobile-blocks-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--ink-700);
+    background: #edf3fa;
+    cursor: pointer;
+  }
+
+  .mobile-blocks-close svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mobile-blocks-close svg path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  body:has(.blocks-sidebar.is-open) {
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 760px) {
+  .audit-pager,
+  .audit-footer {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .audit-page-summary,
+  .audit-total-summary {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: center;
+    margin: 0 0 2px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .audit-pager button,
+  .audit-footer button {
+    grid-row: 2;
+    width: 100%;
+    min-width: 0 !important;
+    padding: 0 9px !important;
+    white-space: nowrap;
+  }
+
+  .desktop-action-label {
+    display: none;
+  }
+
+  .mobile-action-label {
+    display: inline;
+  }
+}
+
 /* Native startup synchronization screen. */
 .app-startup { display: none; }
 .android-app .app-startup { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 28px; background: #f7fafc; color: #082d58; transition: opacity .58s ease, visibility .58s ease; }

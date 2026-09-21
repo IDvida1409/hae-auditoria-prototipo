@@ -4955,7 +4955,7 @@ function checklistPage() {
   const globalQuestionNumbers = new Map(questions.map((question, index) => [question.id, index + 1]));
   const showAllBlocks = Boolean(state.checklistBlocksOpen);
   const sidebarBlocks = showAllBlocks ? blocks : [currentBlock];
-  const blocksButtonLabel = showAllBlocks ? "Ver bloco atual" : "Ver todos os blocos";
+  const blocksButtonLabel = showAllBlocks ? "Fechar blocos" : "Ver todos os blocos";
 
   if (!blocks.length) {
     return `
@@ -5005,8 +5005,9 @@ function checklistPage() {
                 const risk = riskMeta[question.riskLevel] || riskMeta.none;
                 const planNotice = questionActionPlanNotice(area, question);
                 const isPlanNoticeOpen = planNotice && state.actionPlanNoticeQuestion === question.id;
+                const answerStateClass = selectedAnswer ? `is-answered answer-${selectedAnswer.toLowerCase()}` : "";
                 return `
-                  <section class="question-card surface ${isNC ? "has-nc" : ""}" data-question-card="${question.id}" style="--question-risk:${risk.color}">
+                  <section class="question-card surface ${isNC ? "has-nc" : ""} ${answerStateClass}" data-question-card="${question.id}" style="--question-risk:${risk.color}">
                     <div class="question-head">
                       <div class="question-marker">
                         <span class="question-number">${String(displayNumber).padStart(2, "0")}</span>
@@ -5025,7 +5026,8 @@ function checklistPage() {
                       ${allowed
                         .map((answer) => {
                           const meta = answerMeta[answer];
-                          return `<button class="answer-btn ${selectedAnswer === answer ? "is-selected" : ""}" data-answer="${answer}" data-question="${question.id}" style="--answer:${meta.color}">${meta.label} <small>(${meta.short})</small></button>`;
+                          const isSelected = selectedAnswer === answer;
+                          return `<button class="answer-btn answer-${answer.toLowerCase()} ${isSelected ? "is-selected" : ""}" data-answer="${answer}" data-question="${question.id}" aria-pressed="${isSelected}" style="--answer:${meta.color}">${meta.label} <small>(${meta.short})</small></button>`;
                         })
                         .join("")}
                     </div>
@@ -5058,21 +5060,23 @@ function checklistPage() {
               .join("")}
           </section>
           <section class="audit-pager surface">
-            <button class="outline-btn" data-checklist-page="${pageIndex - 1}" ${pageIndex === 0 ? "disabled" : ""}>Perguntas anteriores</button>
-            <span>${pageStart}-${pageEnd} de ${blockQuestions.length}</span>
-            <button class="primary-btn" data-checklist-page="${pageIndex + 1}" ${pageIndex >= totalPages - 1 ? "disabled" : ""}>Próximas perguntas ${svgIcon("arrow")}</button>
+            <button class="outline-btn" data-checklist-page="${pageIndex - 1}" ${pageIndex === 0 ? "disabled" : ""}><span class="desktop-action-label">Perguntas anteriores</span><span class="mobile-action-label">Anteriores</span></button>
+            <span class="audit-page-summary"><b>${pageStart}-${pageEnd}</b> de ${blockQuestions.length}</span>
+            <button class="primary-btn" data-checklist-page="${pageIndex + 1}" ${pageIndex >= totalPages - 1 ? "disabled" : ""}><span class="desktop-action-label">Próximas perguntas</span><span class="mobile-action-label">Próximas</span> ${svgIcon("arrow")}</button>
           </section>
         </div>
         <section class="audit-footer surface" style="margin-top:12px">
-          <button class="outline-btn" data-request-leave-audit>Voltar para áreas</button>
-          <span class="small-muted">${questions.length} perguntas em ${blocks.length} blocos</span>
-          <button class="primary-btn" data-finalize-audit>Finalizar auditoria ${svgIcon("arrow")}</button>
+          <button class="outline-btn" data-request-leave-audit><span class="desktop-action-label">Voltar para áreas</span><span class="mobile-action-label">Áreas</span></button>
+          <span class="audit-total-summary"><b>${questions.length}</b> perguntas <i>•</i> <b>${blocks.length}</b> blocos</span>
+          <button class="primary-btn" data-finalize-audit><span class="desktop-action-label">Finalizar auditoria</span><span class="mobile-action-label">Finalizar</span> ${svgIcon("arrow")}</button>
         </section>
       </div>
+      ${showAllBlocks ? '<button class="mobile-blocks-backdrop" data-checklist-blocks type="button" aria-label="Fechar lista de blocos"></button>' : ""}
       <aside class="blocks-sidebar surface ${showAllBlocks ? "is-open" : "is-compact"}">
         <div class="blocks-sidebar-head">
           <h2>${showAllBlocks ? "Blocos da área" : "Bloco atual"}</h2>
           <span>${showAllBlocks ? `${blocks.length} blocos` : `${blockDone}/${blockQuestions.length}`}</span>
+          <button class="mobile-blocks-close" data-checklist-blocks type="button" title="Fechar" aria-label="Fechar lista de blocos">${icons.close}</button>
         </div>
         <div class="block-nav">
           ${sidebarBlocks
@@ -7106,6 +7110,7 @@ document.addEventListener("click", async (event) => {
     state.checklistBlock = checklistBlock.dataset.checklistBlock;
     state.checklistPage = 0;
     state.actionPlanNoticeQuestion = null;
+    if (window.matchMedia("(max-width: 1180px)").matches) state.checklistBlocksOpen = false;
     render();
     return;
   }
