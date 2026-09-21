@@ -1,6 +1,7 @@
 node_modules/
 dist/
 www/
+idauditor-web.zip
 .env
 .DS_Store
 *.log

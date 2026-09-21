@@ -9,6 +9,7 @@ const files = [
   "styles.css",
   "checklist-data.js",
   "offline-store.js",
+  "live-update.js",
   "app.js",
   "manifest.webmanifest",
   "sw.js",
@@ -17,9 +18,10 @@ const files = [
   "login.js",
 ];
 
-function copyDir(source, target) {
+function copyDir(source, target, ignoredNames = new Set()) {
   fs.mkdirSync(target, { recursive: true });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    if (ignoredNames.has(entry.name)) continue;
     const sourcePath = path.join(source, entry.name);
     const targetPath = path.join(target, entry.name);
     if (entry.isDirectory()) {
@@ -42,6 +44,6 @@ fs.writeFileSync(androidIndex, fs.readFileSync(androidIndex, "utf8").replace("<b
 const androidLogin = path.join(output, "login.html");
 fs.writeFileSync(androidLogin, fs.readFileSync(androidLogin, "utf8").replace("<body>", '<body class="android-app">'));
 
-copyDir(path.join(root, "assets"), path.join(output, "assets"));
+copyDir(path.join(root, "assets"), path.join(output, "assets"), new Set(["reports"]));
 
 console.log(`Build Android web gerado em ${output}`);

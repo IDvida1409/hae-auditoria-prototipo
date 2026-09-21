@@ -31,7 +31,8 @@ const mimeTypes = {
   ".svg": "image/svg+xml; charset=utf-8",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".ico": "image/x-icon"
+  ".ico": "image/x-icon",
+  ".zip": "application/zip"
 };
 
 function ensureStore() {
@@ -338,7 +339,7 @@ function storageKeyFor(fileType, originalFilename = "") {
 function staticPathFor(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
   const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html"]);
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "idauditor-web.zip"]);
   if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;
@@ -366,6 +367,18 @@ function readStaticReports() {
 }
 
 async function handleApi(request, response, url) {
+  if (url.pathname === "/api/mobile-update" && request.method === "GET") {
+    const commit = String(process.env.RENDER_GIT_COMMIT || "").trim();
+    const enabled = /^[0-9a-f]{40}$/i.test(commit);
+    const publicUrl = String(process.env.RENDER_EXTERNAL_URL || "https://hae-auditoria-prototipo.onrender.com").replace(/\/$/, "");
+    sendJson(response, 200, {
+      enabled,
+      bundleId: enabled ? `web-${commit}` : null,
+      url: enabled ? `${publicUrl}/idauditor-web.zip?v=${commit}` : null,
+      minVersionCode: 14
+    });
+    return true;
+  }
   if (await accessApi.handle(request, response, url, { getPool, sendJson, readJsonBody, requireDatabase })) return true;
   const structuredApisEnabled = process.env.STRUCTURED_APIS_ENABLED !== "false" &&
     !(process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true");

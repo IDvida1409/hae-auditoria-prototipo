@@ -37,6 +37,12 @@ O APK de teste sera gerado em:
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## Atualizacoes automaticas
+
+A partir da versao nativa `1.0.13-teste`, alteracoes compativeis em HTML, CSS e JavaScript sao publicadas como um pacote OTA pelo proprio backend. O aplicativo consulta `/api/mobile-update`, baixa o pacote em segundo plano e o ativa na proxima abertura.
+
+Um novo APK so e necessario para alteracoes nativas, como plugins, camera, permissoes, icone do aplicativo ou requisitos do Android. Se um pacote web falhar ao iniciar, o plugin retorna automaticamente ao bundle incluido no APK.
+
 ## Status atual neste computador
 
 A pasta nativa `android/` ja foi criada com Capacitor e o sync dos arquivos web funcionou.

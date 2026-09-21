@@ -1,10 +1,11 @@
-const CACHE_NAME = "idauditor-v33-user-suggestions";
+const CACHE_NAME = "idauditor-v34-ota-updates";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/checklist-data.js",
   "/offline-store.js",
+  "/live-update.js",
   "/app.js",
   "/manifest.webmanifest",
   "/login.html",

@@ -7,8 +7,8 @@ android {
         applicationId "br.com.hae.auditoria.teste"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "1.0.12-teste"
+        versionCode 14
+        versionName "1.0.13-teste"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

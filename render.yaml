@@ -3,7 +3,7 @@ services:
     name: hae-auditoria-prototipo
     env: node
     plan: free
-    buildCommand: npm ci --omit=dev && npx playwright install --with-deps chromium
+    buildCommand: npm ci --omit=dev && npx playwright install --with-deps chromium && node tools/build-android-web.js && cd www && zip -qr ../idauditor-web.zip .
     startCommand: npm start
     autoDeploy: true
     envVars:
