@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v30-mobile-approved";
+const CACHE_NAME = "idauditor-v31-mobile-login-proportion";
 const APP_SHELL = [
   "/",
   "/index.html",
