@@ -15915,6 +15915,24 @@ button.planning-kpi:hover {
   font-size: 11px;
 }
 
+.report-signatures.is-signed-report strong,
+.report-signatures.is-signed-report small {
+  display: block;
+}
+
+.report-signatures.is-signed-report strong {
+  margin-bottom: 3px;
+  color: #163a62;
+  font-size: 11px;
+}
+
+.report-signatures.is-signed-report small {
+  margin-top: 3px;
+  color: #718096;
+  font-size: 8.5px;
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   .detail-evidence-grid { grid-template-columns: 1fr; }
   .detail-evidence-card { grid-template-columns: 110px minmax(0, 1fr); }

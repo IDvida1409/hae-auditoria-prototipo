@@ -1205,7 +1205,11 @@ function actionPlansForArea(area) {
 }
 
 function reportResponsibleName(area) {
-  return area.id === "area-residuos" ? "Carlos Lima" : "Liderança da área auditada";
+  return area.id === "area-residuos" ? "Carlos Teste" : "Liderança da área auditada";
+}
+
+function reportAuditorName() {
+  return "Teste 1";
 }
 
 function actionPlanStats(area) {
@@ -2961,11 +2965,15 @@ function reportShortEffectTag(plan) {
 }
 
 function reportAuditWindow() {
+  const now = new Date();
+  const date = now.toLocaleDateString("pt-BR");
+  const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
   return {
-    date: "30/08/2026",
-    start: "08h15",
-    end: "09h40",
-    duration: "1h25"
+    date,
+    start: time,
+    end: time,
+    duration: "Relatório gerado no fechamento",
+    signedAt: `${date} às ${time.replace("h", ":")}`
   };
 }
 
@@ -2990,7 +2998,7 @@ function reportDocHeader(title, area, showMeta = false) {
       ${showMeta ? `<div class="report-doc-meta-strip">
         <span><strong>Unidade</strong>Hospital Einstein - Morumbi</span>
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
         <span><strong>Data</strong>${audit.date}</span>
         <span><strong>Início</strong>${audit.start}</span>
@@ -3021,7 +3029,7 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
@@ -3052,7 +3060,7 @@ function reportComparisonDocHeader(area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>teste.01</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
@@ -3164,11 +3172,8 @@ function reportStoredPdfUrl(area, reportKind) {
 }
 
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
-  const url = reportStoredPdfUrl(area, reportKind);
-  const downloadAttr = mode === "download" ? ` download="${reportPdfFilename(area, reportKind)}"` : "";
-  const targetAttr = mode === "open" ? ` target="_blank" rel="noopener"` : "";
   const icon = mode === "download" ? svgIcon("document") : svgIcon("externalLink");
-  return `<a class="report-file-action" href="${url}"${targetAttr}${downloadAttr}>${icon} ${escapeHtml(label)}</a>`;
+  return `<button class="report-file-action" data-report-action="${mode}" data-report-area="${escapeHtml(area.id)}" data-report-kind="${escapeHtml(reportKind)}" type="button">${icon} ${escapeHtml(label)}</button>`;
 }
 
 function prepareReportPdfWindow() {
@@ -3858,8 +3863,9 @@ function reportConclusion(area) {
       <strong>Conclusão técnica</strong>
       <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${reportPlural(totals.NC, "não conformidade", "não conformidades")}, ${reportPlural(stats.total, "plano de ação", "planos de ação")} e ${reportPlural(reportOpenActions(stats), "ação aberta", "ações abertas")}. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
-    <div class="report-signatures is-auditor-only">
-      <span><strong>teste.01</strong>Auditor responsável</span>
+    <div class="report-signatures is-signed-report">
+      <span><strong>${escapeHtml(reportAuditorName())}</strong>Auditor responsável<small>Assinado eletronicamente em ${escapeHtml(reportAuditWindow().signedAt)}</small></span>
+      <span><strong>${escapeHtml(reportResponsibleName(area))}</strong>Responsável da área auditada<small>Responsável identificado no cadastro da área</small></span>
     </div>
   `;
 }
@@ -4323,8 +4329,9 @@ function comparativeReportPage() {
             <p>${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)} constitui a principal prioridade para o próximo ciclo, devido à recorrência de não conformidade de risco alto e à existência de plano de ação não concluído no prazo. O acompanhamento deverá considerar a execução da ação, o cumprimento do prazo, a evidência registrada e a validação de sua efetividade na auditoria subsequente.</p>
           </div>
         `)}
-        <div class="report-signatures is-auditor-only">
-          <span><strong>teste.01</strong>Auditor responsável</span>
+        <div class="report-signatures is-signed-report">
+          <span><strong>${escapeHtml(reportAuditorName())}</strong>Auditor responsável<small>Assinado eletronicamente em ${escapeHtml(reportAuditWindow().signedAt)}</small></span>
+          <span><strong>${escapeHtml(reportResponsibleName(area))}</strong>Responsável da área auditada<small>Responsável identificado no cadastro da área</small></span>
         </div>
       `)}
     </div>
