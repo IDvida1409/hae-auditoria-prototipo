@@ -45,6 +45,16 @@
     retryTimer = setTimeout(() => syncPending().catch(() => {}), delay);
   }
 
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function openDb() {
     return new Promise((resolve, reject) => {
       if (!("indexedDB" in window)) {
@@ -139,7 +149,7 @@
         const auditKey = scopedKey("audit:" + p.localAuditId);
         const audit = entities.get(auditKey);
         audit.onsuccess = () => {
-          if (payload.entityType !== "audit" || payload.operation !== "create") {
+          if ((payload.entityType !== "audit" || payload.operation !== "create") && payload.entityType !== "audit_answer") {
             if (audit.result?.createOperationId) payload.dependsOn.push(audit.result.createOperationId);
             if (audit.result?.lastOperationId) payload.dependsOn.push(audit.result.lastOperationId);
           }
@@ -361,34 +371,41 @@
     const reconciled = [];
     for (let offset = 0; offset < operations.length; offset += 50) {
       const batch = operations.slice(offset, offset + 50);
+      for (const operation of batch) {
+        if (operation.entityType === "audit_answer" && operation.dependsOn?.length) {
+          operation.dependsOn = [];
+          await updateOperation(operation.clientOperationId, { dependsOn: [] });
+        }
+      }
       for (const op of batch) {
         if (op.entityType !== "stored_file") continue;
         const file = await getFile(op.payload.localFileId);
         if (!file?.file) throw new Error("Foto local nao encontrada; os dados pendentes foram mantidos");
         if (!file.serverId) {
-          const upload = await fetch(base + "/api/offline-files", {
+          const upload = await fetchWithTimeout(base + "/api/offline-files", {
             method: "POST",
             headers: { ...headers, "content-type": file.mimeType, "x-device-uid": device,
               "x-local-file-id": file.localFileId, "x-file-type": file.fileType, "x-file-name": encodeURIComponent(file.fileName) },
-            body: file.file,
-            signal: AbortSignal.timeout(120000)
-          });
+            body: file.file
+          }, 120000);
           if (!upload.ok) throw new Error("Falha ao enviar foto: " + upload.status);
           const result = await upload.json();
           if (!result.file?.id) throw new Error("Servidor nao confirmou o arquivo");
           await putRecord(FILE_STORE, { ...file, serverId: result.file.id, status: "uploaded", updatedAt: nowIso() });
         }
       }
-      const response = await fetch(base + "/api/sync-queue", {
+      const response = await fetchWithTimeout(base + "/api/sync-queue", {
         method: "POST",
         headers: { ...headers, "content-type": "application/json" },
         body: JSON.stringify({ deviceUid: device, operations: batch.map((item) => ({
           clientOperationId: item.clientOperationId, clientSequence: item.clientSequence,
           entityType: item.entityType, operation: item.operation, payload: item.payload, dependsOn: item.dependsOn || []
-        })) }),
-        signal: AbortSignal.timeout(60000)
-      });
-      if (!response.ok) throw new Error("Falha ao sincronizar: " + response.status);
+        })) })
+      }, 60000);
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw new Error(failure.error || "Falha ao sincronizar: " + response.status);
+      }
       const result = await response.json();
       const received = new Map((result.operations || []).map((row) => [row.client_operation_id, row]));
       for (const local of batch) {
@@ -449,10 +466,10 @@
     if (!local) throw new Error("Operacao local em conflito nao encontrada");
     const base = syncOptions.backendUrl || await getMeta("backendUrl") || location.origin;
     const headers = typeof syncOptions.headers === "function" ? syncOptions.headers() : syncOptions.headers || {};
-    const response = await fetch(base + "/api/sync-queue/" + encodeURIComponent(clientOperationId) + "/resolve", {
+    const response = await fetchWithTimeout(base + "/api/sync-queue/" + encodeURIComponent(clientOperationId) + "/resolve", {
       method: "POST", headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify({ deviceUid: await deviceUid(), strategy }), signal: AbortSignal.timeout(60000)
-    });
+      body: JSON.stringify({ deviceUid: await deviceUid(), strategy })
+    }, 60000);
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Falha ao resolver conflito");
     await updateOperation(clientOperationId, { status: "ignored", serverResult: result.original.result_payload, errorMessage: null });

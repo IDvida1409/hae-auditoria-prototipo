@@ -303,6 +303,7 @@ let notificationsOpen = false;
 let planningNoticeTimer = null;
 let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
 let offlineNoticeTimer = null;
+let lastSyncProblemNoticeAt = 0;
 let operationalActionPlans = null;
 let operationalDashboard = null;
 let operationalReports = null;
@@ -535,8 +536,13 @@ function paintOfflineStatus() {
 }
 
 function setOfflineNotice(detail) {
-  clearTimeout(offlineNoticeTimer);
   const phase = detail?.phase;
+  if (["pending", "error"].includes(phase)) {
+    const now = Date.now();
+    if (now - lastSyncProblemNoticeAt < 60000) return;
+    lastSyncProblemNoticeAt = now;
+  }
+  clearTimeout(offlineNoticeTimer);
   if (["syncing", "synced"].includes(phase) && !detail.recovered) {
     offlineNotice = null;
     paintOfflineStatus();
@@ -550,11 +556,11 @@ function setOfflineNotice(detail) {
     offlineNotice = { ...detail, phase };
   }
   paintOfflineStatus();
-  if (["saved", "synced"].includes(phase)) {
+  if (["saved", "synced", "pending", "error"].includes(phase)) {
     offlineNoticeTimer = setTimeout(() => {
       offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
       paintOfflineStatus();
-    }, 4500);
+    }, ["pending", "error"].includes(phase) ? 6500 : 4500);
   }
 }
 
@@ -5062,7 +5068,9 @@ function checklistPage() {
           <section class="audit-pager surface">
             <button class="outline-btn" data-checklist-page="${pageIndex - 1}" ${pageIndex === 0 ? "disabled" : ""}><span class="desktop-action-label">Perguntas anteriores</span><span class="mobile-action-label">Anteriores</span></button>
             <span class="audit-page-summary"><b>${pageStart}-${pageEnd}</b> de ${blockQuestions.length}</span>
-            <button class="primary-btn" data-checklist-page="${pageIndex + 1}" ${pageIndex >= totalPages - 1 ? "disabled" : ""}><span class="desktop-action-label">Próximas perguntas</span><span class="mobile-action-label">Próximas</span> ${svgIcon("arrow")}</button>
+            ${pageIndex >= totalPages - 1
+              ? '<button class="outline-btn audit-end-btn" type="button" disabled>Fim do bloco</button>'
+              : `<button class="primary-btn" data-checklist-page="${pageIndex + 1}"><span class="desktop-action-label">Próximas perguntas</span><span class="mobile-action-label">Próximas</span> ${svgIcon("arrow")}</button>`}
           </section>
         </div>
         <section class="audit-footer surface" style="margin-top:12px">

@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v37-live-update-reload";
+const CACHE_NAME = "idauditor-v38-ios-sync-queue";
 const APP_SHELL = [
   "/",
   "/index.html",

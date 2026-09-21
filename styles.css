@@ -16133,6 +16133,16 @@ button.planning-kpi:hover {
 }
 
 @media (max-width: 760px) {
+  .offline-status {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    margin: 8px 12px 0;
+    padding: 10px 12px;
+    box-shadow: 0 6px 16px rgba(7, 26, 61, 0.12);
+  }
+
   .audit-pager,
   .audit-footer {
     display: grid !important;
@@ -16166,6 +16176,13 @@ button.planning-kpi:hover {
 
   .mobile-action-label {
     display: inline;
+  }
+
+  .audit-end-btn:disabled {
+    color: var(--ink-600) !important;
+    background: #edf2f7 !important;
+    border-color: #d5dee8 !important;
+    opacity: 1 !important;
   }
 }
 
