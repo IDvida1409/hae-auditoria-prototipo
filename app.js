@@ -1152,24 +1152,34 @@ async function loadOperationalData() {
     const item = {
       actionPlanId: plan.id,
       documentItemId: plan.document_item_id,
-      feedbackId: plan.last_feedback_id,
+      feedbackId: plan.feedback_id || plan.last_feedback_id,
       status: planningStatusFromBackend(plan.status),
       question: plan.locked_question_snapshot || plan.problem_description || plan.title,
       observation: plan.locked_audit_notes_snapshot || "",
       correction: plan.corrective_action || plan.automatic_correction_text || "Corrigir a não conformidade e anexar a evidência.",
       riskLevel: plan.locked_risk_snapshot || "low",
       evidenceFileIds: plan.locked_original_evidence_file_ids || [],
+      responseText: plan.feedback_correction_summary || plan.feedback_observation || "",
+      responseEvidenceFileId: plan.feedback_evidence_file_id || null,
+      feedbackStatus: plan.feedback_status || null,
+      reviewNote: plan.feedback_review_note || "",
       dueAt: plan.due_at,
-      deadlineRequested: Boolean(plan.deadline_requested_at),
+      deadlineRequested: plan.deadline_status === "requested",
       requestedDue: plan.requested_due_at,
       deadlineReason: plan.deadline_request_reason || ""
     };
+    if (item.deadlineRequested && !item.responseText && !item.responseEvidenceFileId) item.status = "in_progress";
     const existing = groupedPlans.get(groupId);
     if (existing) {
       existing.backendItems.push(item);
       existing.ncs = existing.backendItems.length;
       if (item.status === "pending_review") existing.status = "pending_review";
       existing.deadlineRequested ||= item.deadlineRequested;
+      if (item.deadlineRequested) {
+        existing.requestedDue = shortDate(item.requestedDue);
+        existing.deadlineReason = item.deadlineReason;
+        existing.deadlineItemIndex = existing.backendItems.length - 1;
+      }
       continue;
     }
     groupedPlans.set(groupId, {
@@ -1192,10 +1202,31 @@ async function loadOperationalData() {
       deadlineRequested: item.deadlineRequested,
       requestedDue: shortDate(plan.requested_due_at),
       deadlineReason: plan.deadline_request_reason || "",
+      deadlineItemIndex: item.deadlineRequested ? 0 : null,
       itemDecisions: {}
     });
   }
   operationalActionPlans = [...groupedPlans.values()];
+  for (const plan of operationalActionPlans) {
+    const itemStatuses = plan.backendItems.map((item) => item.status);
+    if (itemStatuses.includes("pending_review")) plan.status = "pending_review";
+    else if (itemStatuses.some((status) => ["rejected", "reopened"].includes(status))) plan.status = "reopened";
+    else if (itemStatuses.length && itemStatuses.every((status) => status === "approved")) plan.status = "approved";
+    else if (itemStatuses.includes("in_progress")) plan.status = "in_progress";
+    const existing = state.actionPlanResponses?.[plan.id] || {};
+    const hydrated = { ...existing };
+    plan.backendItems.forEach((item, index) => {
+      if (item.feedbackStatus === "approved") plan.itemDecisions[index] = { status: "approved", reason: item.reviewNote };
+      if (["rejected", "reopened"].includes(item.feedbackStatus)) plan.itemDecisions[index] = { status: "rejected", reason: item.reviewNote };
+      if (!item.responseText && !item.responseEvidenceFileId) return;
+      hydrated[index] = {
+        text: item.responseText || hydrated[index]?.text || "",
+        evidenceFileId: item.responseEvidenceFileId || hydrated[index]?.evidenceFileId || null,
+        evidenceName: item.responseEvidenceFileId ? "Evidência enviada" : hydrated[index]?.evidenceName
+      };
+    });
+    state.actionPlanResponses = { ...state.actionPlanResponses, [plan.id]: hydrated };
+  }
 }
 
 function planFromNotificationEntity(entityId) {
@@ -1436,11 +1467,15 @@ function actionPlansForArea(area) {
 }
 
 function reportResponsibleName(area) {
+  const audit = (operationalAudits || []).find((item) => String(item.area_id) === String(area.backendId) && item.status === "finished");
+  if (audit?.responsible_name) return audit.responsible_name;
   if (isAreaResponsible() && canAccessArea(area.id)) return currentAccessUser?.full_name || "Responsável da área";
   return settingsUsers.find((user) => user.role === "area_responsible" && user.area_name === area.name)?.full_name || "Responsável não atribuído";
 }
 
-function reportAuditorName() {
+function reportAuditorName(area = reportSelectedArea()) {
+  const audit = (operationalAudits || []).find((item) => String(item.area_id) === String(area?.backendId) && item.status === "finished");
+  if (audit?.auditor_name) return audit.auditor_name;
   return currentAccessUser?.full_name || "Auditor não identificado";
 }
 
@@ -1949,7 +1984,7 @@ function dashboardEvolution(area = null) {
 }
 
 function generalAssessmentMiniChart() {
-  const monthIds = availableMonthIds();
+  const monthIds = months.map(([id]) => id).filter((id) => id <= currentMonthId && !futureMonthIds.has(id));
   const monthPoints = monthIds.map((monthId) => ({ monthId, value: monthAverage(monthId) }));
   const availablePoints = monthPoints.filter((point) => point.value != null);
   const labels = monthIds.map((monthId) => monthId.slice(0, 3).replace(/^./, (letter) => letter.toUpperCase()));
@@ -2161,6 +2196,7 @@ function dashboardHome() {
 function chartSvg() {
   const expanded = state.chartExpanded;
   const selected = state.selectedMonth;
+  const visibleAreas = areaData.filter((area) => canAccessArea(area.id));
   const chartAreas = areasWithResults().filter((area) => canAccessArea(area.id));
   const chartIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
   const hasComparison = selected !== currentMonthId && Array.isArray(monthLines[selected]);
@@ -2173,10 +2209,12 @@ function chartSvg() {
     : { left: 48, right: 138, top: 38, bottom: 108 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
+  const slotCount = Math.max(1, visibleAreas.length);
   const barGap = expanded ? 32 : 28;
-  const slotW = innerW / chartAreas.length;
-  const barW = Math.max(20, innerW / chartAreas.length - barGap);
-  const xFor = (index) => pad.left + index * slotW + barGap / 2;
+  const slotW = innerW / slotCount;
+  const barW = Math.max(20, slotW - barGap);
+  const slotIndexes = chartAreas.map((area) => Math.max(0, visibleAreas.findIndex((item) => item.id === area.id)));
+  const xFor = (index) => pad.left + slotIndexes[index] * slotW + barGap / 2;
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const lineD = lineValues
     ? lineValues.map((value, i) => `${i === 0 ? "M" : "L"}${xFor(i) + barW / 2},${yFor(value)}`).join(" ")
@@ -3194,21 +3232,25 @@ function reportShortEffectTag(plan) {
   return reportTag("Acompanhar", "neutral");
 }
 
-function reportAuditWindow() {
-  const now = new Date();
-  const date = now.toLocaleDateString("pt-BR");
-  const time = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+function reportAuditWindow(area = reportSelectedArea()) {
+  const audit = (operationalAudits || []).find((item) => String(item.area_id) === String(area?.backendId) && item.status === "finished");
+  const started = audit?.started_at ? new Date(audit.started_at) : new Date();
+  const finished = audit?.finished_at ? new Date(audit.finished_at) : started;
+  const date = started.toLocaleDateString("pt-BR");
+  const start = started.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+  const end = finished.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+  const durationMinutes = Math.max(0, Math.round((finished.getTime() - started.getTime()) / 60000));
   return {
     date,
-    start: time,
-    end: time,
-    duration: "Relatório gerado no fechamento",
-    signedAt: `${date} às ${time.replace("h", ":")}`
+    start,
+    end,
+    duration: durationMinutes ? `${durationMinutes} min` : "Relatório gerado no fechamento",
+    signedAt: `${finished.toLocaleDateString("pt-BR")} às ${end.replace("h", ":")}`
   };
 }
 
 function reportDocHeader(title, area, showMeta = false) {
-  const audit = reportAuditWindow();
+  const audit = reportAuditWindow(area);
   return `
     <header class="report-doc-header">
       <div class="report-doc-brand">
@@ -3545,10 +3587,10 @@ function waitForReportImages(root) {
 }
 
 function openReportPdf(targetWindow = null, options = {}) {
-  const report = document.querySelector(".technical-report");
-  if (!report) return;
+  const report = options.reportRoot || document.querySelector(".technical-report");
+  if (!report) return Promise.reject(new Error("Relatório não encontrado para gerar o PDF."));
 
-  ensureReportPdfLibrary()
+  return ensureReportPdfLibrary()
     .then(async () => {
       if (!window.jspdf?.jsPDF || !window.html2canvas) {
         throw new Error("Biblioteca de PDF indisponível");
@@ -3588,10 +3630,13 @@ function openReportPdf(targetWindow = null, options = {}) {
           pdf.addImage(canvas.toDataURL("image/jpeg", 0.98), "JPEG", imageX, margin, imageWidth, imageHeight, undefined, "FAST");
         }
 
+        const pdfBlob = pdf.output("blob");
+        if (typeof options.onBlob === "function") await options.onBlob(pdfBlob);
+        if (options.mode === "archive") return pdfBlob;
         if (options.mode === "download") {
-          pdf.save(reportPdfFilename());
+          pdf.save(options.filename || reportPdfFilename());
         } else {
-          const pdfUrl = URL.createObjectURL(pdf.output("blob"));
+          const pdfUrl = URL.createObjectURL(pdfBlob);
           if (targetWindow) {
             targetWindow.location.href = pdfUrl;
           } else {
@@ -3602,7 +3647,32 @@ function openReportPdf(targetWindow = null, options = {}) {
         holder.remove();
       }
     })
-    .catch(() => reportPrintFallback(targetWindow));
+    .catch((error) => {
+      if (options.mode === "archive") throw error;
+      reportPrintFallback(targetWindow);
+      return null;
+    });
+}
+
+function approvedReportMarkup(area, reportKind = "monthly") {
+  const previousArea = state.selectedArea;
+  const previousKind = state.reportKind;
+  state.selectedArea = area.id;
+  state.reportKind = reportKind;
+  const markup = reportKind === "comparison" ? comparativeReportPage() : monthlyReportPage();
+  state.selectedArea = previousArea;
+  state.reportKind = previousKind;
+  return markup;
+}
+
+function openApprovedReportPdf(area, reportKind, targetWindow = null, options = {}) {
+  const source = document.createElement("div");
+  source.innerHTML = approvedReportMarkup(area, reportKind);
+  return openReportPdf(targetWindow, {
+    ...options,
+    filename: reportPdfFilename(area, reportKind),
+    reportRoot: source.querySelector(".technical-report")
+  });
 }
 
 function openReportPdfAfterRender(targetWindow, options = {}) {
@@ -3625,11 +3695,12 @@ function preloadReportPdfLibrary() {
 }
 
 function reportMetaRows(area, typeLabel) {
+  const audit = reportAuditWindow(area);
   return [
     ["Unidade hospitalar", "Hospital Einstein - Morumbi", "Tipo de relatório", typeLabel],
     ["Área auditada", escapeHtml(area.name), "Base normativa", "Portaria SMS nº 2.619/2011"],
-    ["Auditoria realizada por", "Equipe de Qualidade / Segurança dos Alimentos", "Reunião realizada com", "Responsáveis da área auditada"],
-    ["Periodicidade", "Mensal", "Data e horário", "30/08/2026 · 08h00 às 17h00"]
+    ["Auditoria realizada por", escapeHtml(reportAuditorName(area)), "Responsável da área", escapeHtml(reportResponsibleName(area))],
+    ["Periodicidade", "Mensal", "Data e horário", `${audit.date} · ${audit.start} às ${audit.end}`]
   ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
 }
 
@@ -4564,13 +4635,15 @@ function comparativeReportPage() {
 function reportLibraryItems(area) {
   const stored = reportsForArea(area);
   const findReport = (type) => stored.find((report) => report.report_type === type);
+  const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
+  const monthlyAvailable = Boolean(findReport("monthly") || completedAudit);
   return [
     {
       id: "monthly",
       title: "Relatório da auditoria mensal",
-      status: findReport("monthly") ? "Disponível" : "Ainda não gerado",
+      status: monthlyAvailable ? "Disponível" : "Ainda não gerado",
       note: findReport("monthly")?.period_label || reportMonthLabel(currentMonthId),
-      available: Boolean(findReport("monthly"))
+      available: monthlyAvailable
     },
     {
       id: "comparison",
@@ -4610,6 +4683,10 @@ function reportsForArea(area) {
 
 function reportHistoryRows(area) {
   const rows = reportsForArea(area);
+  const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
+  if (!rows.length && completedAudit) {
+    return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>Relatório disponível</td><td>${reportStoredPdfLink(area, "monthly", "open", "Abrir")}</td></tr>`;
+  }
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
   return rows.map((row) => `
@@ -5949,7 +6026,9 @@ function actionPlanPreviewItems(area, count = 3, plan = null) {
       riskLevel: riskMap[item.riskLevel] || "baixo",
       observation: item.observation,
       correction: item.correction,
-      evidenceFileIds: item.evidenceFileIds || []
+      evidenceFileIds: item.evidenceFileIds || [],
+      responseText: item.responseText || "",
+      responseEvidenceFileId: item.responseEvidenceFileId || null
     }));
   }
   const itemCount = Math.max(1, Math.min(Number(count) || 3, 8));
@@ -5968,13 +6047,14 @@ function actionPlanInstructionFor(row, index) {
   return instructions[index] || `Corrigir a não conformidade registrada em ${row.blockTitle}.`;
 }
 
-function planningItemReview(plan, index) {
+function planningItemReview(plan, index, item) {
   const decision = plan.itemDecisions?.[index];
   if (decision) {
     const approved = decision.status === "approved";
     return `<div class="action-plan-item-review is-${approved ? "approved" : "rejected"}"><div><span>Decisão do auditor</span><strong>${approved ? "Evidência aprovada" : "Evidência reprovada"}</strong>${decision.reason ? `<p><b>Justificativa:</b> ${escapeHtml(decision.reason)}</p>` : ""}</div><span class="planning-status is-${approved ? "good" : "danger"}">${approved ? "Aprovada" : "Reprovada"}</span></div>`;
   }
-  if (plan.status !== "pending_review" && !plan.deadlineRequested) return "";
+  const hasSubmittedEvidence = Boolean(item?.responseText || item?.responseEvidenceFileId);
+  if (plan.status !== "pending_review" || !hasSubmittedEvidence) return "";
   return `<div class="action-plan-item-review is-pending"><div><span>Análise da NC ${String(index + 1).padStart(2, "0")}</span><strong>Aguardando decisão do auditor</strong></div><div class="action-plan-item-actions"><button class="outline-btn is-danger" data-plan-item-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Reprovar evidência</button><button class="primary-btn" data-plan-item-decision="approved" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Aprovar evidência</button></div></div>`;
 }
 
@@ -6013,9 +6093,11 @@ function responsibleAcknowledgementModal(plan) {
 
 function responsiblePlanFooter(plan, items) {
   const responses = state.actionPlanResponses?.[plan.id] || {};
-  const completed = items.filter((_, index) => String(responses[index]?.text || "").trim()).length;
+  const answered = items.filter((_, index) => String(responses[index]?.text || "").trim()).length;
+  const evidenced = items.filter((_, index) => responses[index]?.evidenceName || responses[index]?.evidenceFileId).length;
+  const completed = items.filter((_, index) => String(responses[index]?.text || "").trim() && (responses[index]?.evidenceName || responses[index]?.evidenceFileId)).length;
   const acknowledged = Boolean(state.actionPlanAcknowledgements?.[plan.id]);
-  return `<footer class="action-plan-submit-footer is-review"><div><strong>Preenchimento da devolutiva: ${completed}/${items.length}</strong><span>${acknowledged ? "Descreva cada correção e anexe as evidências antes de enviar." : "Confirme a ciência para responder ao plano."}</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-open-deadline-modal type="button" ${acknowledged ? "" : "disabled"}>Solicitar novo prazo</button><button class="primary-btn" data-submit-responsible-plan="${escapeHtml(plan.id)}" type="button" ${acknowledged && completed === items.length ? "" : "disabled"}>Enviar devolutiva</button></div></footer>`;
+  return `<footer class="action-plan-submit-footer is-review"><div><strong>Devolutiva pronta: ${completed}/${items.length}</strong><span>${acknowledged ? `${answered}/${items.length} respostas · ${evidenced}/${items.length} evidências. Preencha os dois campos de cada NC para enviar.` : "Confirme a ciência para responder ao plano."}</span></div><div class="action-plan-admin-actions"><button class="outline-btn" data-open-deadline-modal type="button" ${acknowledged ? "" : "disabled"}>Solicitar novo prazo</button><button class="primary-btn" data-submit-responsible-plan="${escapeHtml(plan.id)}" type="button" ${acknowledged && completed === items.length ? "" : "disabled"}>Enviar devolutiva ao auditor</button></div></footer>`;
 }
 
 function planningDecisionModal() {
@@ -6056,7 +6138,7 @@ function planningDeadlineRecord(plan, items = []) {
     <section class="action-plan-deadline-record">
       <div class="action-plan-deadline-head"><div>${svgIcon("clock")}<span><small>Solicitação registrada na devolutiva</small><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "Não informado")}</strong></span></div><span class="planning-status is-${decisionCopy[2]}">${decisionCopy[0]}</span></div>
       <div class="action-plan-deadline-grid"><div><span>Observação do responsável</span><p>${escapeHtml(plan.deadlineReason || "Não informada.")}</p></div><div><span>Não conformidade vinculada</span><p>${escapeHtml(linkedLabel)}</p></div></div>
-      ${plan.deadlineRequested ? `<div class="action-plan-deadline-actions"><span>Decisão do auditor sobre esta solicitação</span><div><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></div>` : ""}
+      ${plan.deadlineRequested && !isAreaResponsible() ? `<div class="action-plan-deadline-actions"><span>Decisão do auditor sobre esta solicitação</span><div><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></div>` : ""}
       ${plan.deadlineDecision ? `<div class="action-plan-decision-note is-${plan.deadlineDecision}"><strong>Decisão do auditor</strong><span>${escapeHtml(decisionCopy[1])}</span>${plan.decisionReason ? `<p><b>Justificativa:</b> ${escapeHtml(plan.decisionReason)}</p>` : ""}</div>` : ""}
     </section>`;
 }
@@ -6095,7 +6177,8 @@ function planningPlanPreview() {
   const area = plan.area;
   const items = actionPlanPreviewItems(area, plan.ncs, plan);
   const isDraft = plan.status === "awaiting_send";
-  const hasResponse = ["pending_review", "approved", "rejected"].includes(plan.status) || plan.deadlineRequested || Boolean(plan.deadlineDecision);
+  const submittedItems = items.filter((item) => item.responseText || item.responseEvidenceFileId).length;
+  const hasResponse = submittedItems === items.length && items.length > 0;
   const effectiveStatus = plan.deadlineRequested ? "extension_requested" : plan.status;
   const [statusLabel, statusTone] = planningStatusMeta(effectiveStatus);
   const responsibleView = isAreaResponsible();
@@ -6118,7 +6201,7 @@ function planningPlanPreview() {
         <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : escapeHtml(plan.due || "Não definido")}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : ""}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName ? `Evidência: ${escapeHtml(responsibleResponses[index].evidenceName)}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${hasResponse ? "Devolutiva recebida e disponível para análise." : "A evidência será adicionada pelo responsável após o envio."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
         <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido por</span><div class="action-plan-auditor-signature"><strong>${escapeHtml(plan.auditorName)}</strong><span>Auditor responsável</span><small>Registro autenticado no sistema</small></div></div>${acknowledgement ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(acknowledgement.name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement.signedAtLabel)}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito quando o responsável confirmar o recebimento.</small></div>`}</section>
@@ -6292,7 +6375,7 @@ function setPlanningNotice(message = "") {
   }, 3800);
 }
 
-function applyPlanningDecision(plan, decision, reason = "") {
+async function applyPlanningDecision(plan, decision, reason = "") {
   if (decision === "approved" || decision === "rejected") {
     updatePlanningPlan(plan.id, { status: decision, decisionReason: reason, source: `Decidido em ${new Date().toLocaleString("pt-BR")}` });
     setPlanningNotice(`Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e devolvida com justificativa"}.`);
@@ -6300,6 +6383,23 @@ function applyPlanningDecision(plan, decision, reason = "") {
     state.planningView = "history";
   } else {
     const approved = decision === "deadline_approved";
+    const deadlineItem = plan.backendItems?.find((item) => item.deadlineRequested) || plan.backendItems?.[0];
+    if (location.protocol !== "file:" && deadlineItem?.actionPlanId) {
+      try {
+        await operationalRequest(`action-plans/${deadlineItem.actionPlanId}/deadline-review`, {
+          method: "POST",
+          body: JSON.stringify({
+            feedbackId: deadlineItem.feedbackId,
+            decision: approved ? "approved" : "rejected",
+            justification: reason || null
+          })
+        });
+        await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+      } catch (error) {
+        setPlanningNotice(error.message);
+        return;
+      }
+    }
     updatePlanningPlan(plan.id, {
       status: plan.status === "pending_review" ? "pending_review" : "in_progress",
       deadlineRequested: false,
@@ -6623,16 +6723,9 @@ document.addEventListener("click", async (event) => {
       }
       return;
     }
-    const pdfWindow = actionMode === "open" ? window.open("", "_blank") : null;
-    state.selectedArea = reportAction.dataset.reportArea;
-    state.reportKind = reportKindValue;
-    if (actionMode === "open") {
-      openStoredReportView(pdfWindow);
-    } else {
-      state.reportPdfSource = true;
-      render({ skipSave: true });
-      openReportPdfAfterRender(null, { mode: actionMode });
-    }
+    const area = areaById(reportAction.dataset.reportArea);
+    const pdfWindow = actionMode === "open" ? prepareReportPdfWindow() : null;
+    if (area) openApprovedReportPdf(area, reportKindValue, pdfWindow, { mode: actionMode });
     return;
   }
 
@@ -6801,8 +6894,8 @@ document.addEventListener("click", async (event) => {
       }
     }
     updatePlanningPlan(plan.id, {
-      status: "pending_review",
-      responsibleSubmitted: true,
+      status: "in_progress",
+      responsibleSubmitted: false,
       deadlineRequested: true,
       requestedDue,
       deadlineReason: reason,
@@ -6821,12 +6914,16 @@ document.addEventListener("click", async (event) => {
     if (!plan) return;
     const items = actionPlanPreviewItems(plan.area, plan.ncs, plan);
     const responses = state.actionPlanResponses?.[plan.id] || {};
-    if (items.some((_, index) => !String(responses[index]?.text || "").trim())) return;
+    if (items.some((_, index) => !String(responses[index]?.text || "").trim() || !(responses[index]?.evidenceName || responses[index]?.evidenceFileId))) {
+      setPlanningNotice("Preencha a correção e anexe uma evidência em cada não conformidade antes de enviar.");
+      render();
+      return;
+    }
     if (location.protocol !== "file:") {
       try {
         for (const [index, item] of items.entries()) {
           const evidenceFile = pendingActionPlanEvidence.get(`${plan.id}:${index}`);
-          let evidenceFileId = null;
+          let evidenceFileId = responses[index]?.evidenceFileId || null;
           if (evidenceFile) {
             const deviceUid = await window.HAE_OFFLINE.deviceUid();
             const upload = await fetch(apiUrl("/api/offline-files"), {
@@ -6931,7 +7028,7 @@ document.addEventListener("click", async (event) => {
         requestAnimationFrame(() => document.querySelector("[data-plan-decision-reason]")?.focus());
         return;
       }
-      applyPlanningDecision(plan, decision);
+      await applyPlanningDecision(plan, decision);
     }
     render();
     return;
@@ -6998,7 +7095,7 @@ document.addEventListener("click", async (event) => {
       updatePlanningPlan(plan.id, { itemDecisions: { ...(plan.itemDecisions || {}), [itemIndex]: { status: "rejected", reason } } });
       state.planningDecisionModal = false;
       setPlanningNotice(`NC ${String(itemIndex + 1).padStart(2, "0")} reprovada com justificativa. Continue a análise.`);
-    } else if (plan) applyPlanningDecision(plan, confirmPlanDecision.dataset.confirmPlanDecision, reason);
+    } else if (plan) await applyPlanningDecision(plan, confirmPlanDecision.dataset.confirmPlanDecision, reason);
     render();
     return;
   }
@@ -7513,7 +7610,10 @@ document.addEventListener("input", (event) => {
   saveState();
   const currentPlan = planningActionRows().find((row) => row.id === planId);
   const items = actionPlanPreviewItems(areaById(state.planningAreaId), currentPlan?.ncs || 0, currentPlan);
-  const complete = items.every((_, index) => String(state.actionPlanResponses?.[planId]?.[index]?.text || "").trim());
+  const complete = items.every((_, index) => {
+    const item = state.actionPlanResponses?.[planId]?.[index];
+    return String(item?.text || "").trim() && (item?.evidenceName || item?.evidenceFileId);
+  });
   const submit = document.querySelector(`[data-submit-responsible-plan="${CSS.escape(planId)}"]`);
   if (submit) submit.disabled = !complete;
 });

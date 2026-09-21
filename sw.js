@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v38-ios-sync-queue";
+const CACHE_NAME = "idauditor-v39-plano-relatorio";
 const APP_SHELL = [
   "/",
   "/index.html",

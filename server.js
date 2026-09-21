@@ -992,13 +992,27 @@ async function handleApi(request, response, url) {
             creator.full_name as created_by_name,
             d.public_code,
             d.generated_at as document_generated_at,
-            d.generation_mode
+            d.generation_mode,
+            feedback.id as feedback_id,
+            feedback.submitted_by_user_id as feedback_submitted_by_user_id,
+            feedback.observation as feedback_observation,
+            feedback.correction_summary as feedback_correction_summary,
+            feedback.evidence_file_id as feedback_evidence_file_id,
+            feedback.requested_due_at,
+            feedback.delay_justification as deadline_request_reason,
+            feedback.deadline_status,
+            feedback.status as feedback_status,
+            feedback.review_note as feedback_review_note
           from action_plans ap
           join audit_areas aa on aa.id = ap.area_id
           left join action_plan_document_items dpi on dpi.action_plan_id=ap.id
           left join app_users u on u.id = ap.assigned_to_user_id
           left join app_users creator on creator.id=ap.created_by_user_id
           left join action_plan_documents d on d.id=ap.action_plan_document_id
+          left join lateral (
+            select f.* from action_plan_feedback f
+            where f.action_plan_id=ap.id order by f.created_at desc limit 1
+          ) feedback on true
           where ap.unit_id = $1
             and ($2::text is null or ap.status = $2)
             and ($3::uuid is null or ap.area_id = $3)
@@ -1235,13 +1249,13 @@ async function handleApi(request, response, url) {
         await client.query(
         `
           update action_plans
-          set status = 'pending_review',
-              submitted_at = now(),
+          set status = case when $3 then 'in_progress' else 'pending_review' end,
+              submitted_at = case when $3 then submitted_at else now() end,
               last_feedback_id = $2,
               updated_at = now()
           where id = $1
         `,
-        [planFeedbackMatch.id, result.rows[0].id]
+        [planFeedbackMatch.id, result.rows[0].id, Boolean(body.delayJustification)]
         );
         if (plan.auditor_user_id && plan.auditor_user_id !== user.id) {
           await notify(client, {
@@ -1270,6 +1284,60 @@ async function handleApi(request, response, url) {
   }
 
   const planReviewMatch = pathMatch(url.pathname, /^\/api\/action-plans\/(?<id>[0-9a-f-]+)\/review$/i);
+  const deadlineReviewMatch = pathMatch(url.pathname, /^\/api\/action-plans\/(?<id>[0-9a-f-]+)\/deadline-review$/i);
+  if (deadlineReviewMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const body = await readJsonBody(request);
+      if (!["approved", "rejected"].includes(body.decision)) {
+        sendJson(response, 400, { error: "Decisão de prazo inválida." });
+        return true;
+      }
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      if (!["admin", "quality", "auditor"].includes(user.role)) {
+        sendJson(response, 403, { error: "Somente o auditor pode decidir a solicitação de prazo." });
+        return true;
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const selected = await client.query(
+          `select ap.*,f.id as feedback_id,f.requested_due_at from action_plans ap
+           join action_plan_feedback f on f.id=coalesce($2::uuid,ap.last_feedback_id)
+           where ap.id=$1 and ap.unit_id=$3 and f.deadline_status='requested' for update of ap,f`,
+          [deadlineReviewMatch.id, body.feedbackId || null, unitId]
+        );
+        const plan = selected.rows[0];
+        if (!plan) throw new Error("Solicitação de prazo pendente não encontrada.");
+        await client.query(
+          `update action_plan_feedback set deadline_status=$2,deadline_reviewed_by_user_id=$3,
+             deadline_reviewed_at=now(),deadline_review_note=$4,updated_at=now() where id=$1`,
+          [plan.feedback_id, body.decision, user.id, body.justification || null]
+        );
+        await client.query(
+          `update action_plans set due_at=case when $2='approved' then $3 else due_at end,
+             status='in_progress',updated_at=now() where id=$1`,
+          [plan.id, body.decision, plan.requested_due_at]
+        );
+        if (plan.assigned_to_user_id && plan.assigned_to_user_id !== user.id) {
+          await notify(client, { unitId, recipientId: plan.assigned_to_user_id,
+            title: body.decision === "approved" ? "Novo prazo aprovado" : "Solicitação de prazo recusada",
+            body: body.justification || (body.decision === "approved" ? "O novo prazo solicitado foi aprovado." : "O prazo atual foi mantido."),
+            type: "action_plan_deadline_decided", entityType: "action_plan", entityId: plan.id,
+            key: `deadline-review:${plan.feedback_id}` });
+        }
+        await client.query("commit");
+        sendJson(response, 200, { ok: true, decision: body.decision, dueAt: body.decision === "approved" ? plan.requested_due_at : plan.due_at });
+      } catch (error) { await client.query("rollback"); throw error; }
+      finally { client.release(); }
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao decidir solicitação de prazo" });
+    }
+    return true;
+  }
+
   if (planReviewMatch && request.method === "POST") {
     try {
       const pool = await getPool();
@@ -1281,6 +1349,10 @@ async function handleApi(request, response, url) {
       }
       const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
+      if (!["admin", "quality", "auditor"].includes(user.role)) {
+        sendJson(response, 403, { error: "Somente o auditor pode aprovar ou reprovar evidências." });
+        return true;
+      }
       const nextStatus = body.decision === "approved" ? "approved" : body.allowResubmission ? "reopened" : "rejected";
       const client = await pool.connect();
       let plan;
@@ -1351,10 +1423,16 @@ async function handleApi(request, response, url) {
              updated_at=now() where d.id=$1`, [plan.action_plan_document_id]
           );
         }
-        if (plan?.assigned_to_user_id && plan.assigned_to_user_id !== user.id) {
+        const pendingReviews = plan?.action_plan_document_id
+          ? await client.query(
+              `select count(*)::int as count from action_plans where action_plan_document_id=$1 and status='pending_review'`,
+              [plan.action_plan_document_id]
+            )
+          : { rows: [{ count: 0 }] };
+        if (plan?.assigned_to_user_id && plan.assigned_to_user_id !== user.id && Number(pendingReviews.rows[0]?.count || 0) === 0) {
           await notify(client, { unitId, recipientId: plan.assigned_to_user_id,
-            title: body.decision === "approved" ? "Evidência aprovada" : "Correção solicitada",
-            body: body.justification || (body.decision === "approved" ? "A evidência enviada foi aprovada." : "Revise o item e envie uma nova evidência."),
+            title: body.decision === "approved" ? "Devolutiva analisada" : "Correções solicitadas",
+            body: body.justification || (body.decision === "approved" ? "Todas as evidências enviadas foram analisadas." : "Abra o plano para consultar os itens que precisam ser corrigidos."),
             type: body.decision === "approved" ? "action_plan_approved" : "action_plan_rejected",
             entityType: "action_plan", entityId: plan.id, key: `review:${event.rows[0].id}` });
         }
