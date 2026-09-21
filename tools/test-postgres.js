@@ -191,6 +191,55 @@ async function main() {
     assert.equal(Number(finished.operations[0].result_payload.audit.final_score), 10);
     const count = await pool.query("select count(*)::int as count from audits where local_audit_id=$1", [localAuditId]);
     assert.equal(count.rows[0].count, 1);
+    const residueArea = offlineBootstrap.areas.find((item) => item.slug === "area-residuos");
+    const residueChecklist = offlineBootstrap.checklists.find((item) => item.area_id === residueArea.id);
+    const residueQuestion = residueChecklist.blocks.flatMap((block) => block.questions)[0];
+    const ncAuditId = crypto.randomUUID();
+    const ncCreate = { clientOperationId: "create-" + ncAuditId, clientSequence: 6, entityType: "audit", operation: "create", payload: { localAuditId: ncAuditId, areaSlug: residueArea.slug } };
+    const ncAnswer = { clientOperationId: "answer-" + ncAuditId, clientSequence: 7, entityType: "audit_answer", operation: "upsert", dependsOn: [ncCreate.clientOperationId], payload: { localAuditId: ncAuditId, questionId: residueQuestion.id, answer: "NC", notes: "Recipiente sem identificação" } };
+    const ncFinish = { clientOperationId: "finish-" + ncAuditId, clientSequence: 8, entityType: "audit", operation: "finalize", dependsOn: [ncAnswer.clientOperationId], payload: { localAuditId: ncAuditId, generationMode: "automatic" } };
+    const ncFinished = await json("/api/sync-queue", { deviceUid, operations: [ncCreate, ncAnswer, ncFinish] }, "POST", token);
+    assert.equal(ncFinished.complete, true);
+    const generatedPayload = ncFinished.operations.find((item) => item.client_operation_id === ncFinish.clientOperationId).result_payload;
+    assert.equal(generatedPayload.actionPlans.length, 1);
+    assert.equal(generatedPayload.actionPlanDocument.status, "available_to_responsible");
+    const generatedPlan = generatedPayload.actionPlans[0];
+    const generatedDocument = generatedPayload.actionPlanDocument;
+    const generatedItem = await pool.query("select * from action_plan_document_items where action_plan_document_id=$1", [generatedDocument.id]);
+    assert.equal(generatedItem.rows.length, 1);
+
+    await pool.query("update app_users set password_hash=$1,must_change_password=false where username='carlos.01'", [await hashPassword(accessPassword)]);
+    const responsibleLogin = await access("login", { username: "carlos.01", password: accessPassword });
+    assert.equal(responsibleLogin.response.status, 200);
+    authenticatedCookie = responsibleLogin.cookie;
+    const responsibleBootstrap = await json("/api/offline-bootstrap");
+    assert.deepEqual(responsibleBootstrap.areas.map((item) => item.slug), ["area-residuos"]);
+    const responsibleDocuments = await json("/api/action-plan-documents");
+    assert.equal(responsibleDocuments.actionPlanDocuments.length, 1);
+    const acknowledged = await json(`/api/action-plan-documents/${generatedDocument.id}/acknowledge`, {});
+    assert.equal(acknowledged.acknowledgement.signature_name, "Carlos Lima");
+    const feedback = await json(`/api/action-plans/${generatedPlan.id}/feedback`, {
+      documentItemId: generatedItem.rows[0].id,
+      correctionSummary: "Identificação aplicada e rotina revisada.",
+      delayJustification: "Aguardando entrega da etiqueta definitiva.",
+      requestedDueAt: "2026-12-15T12:00:00.000Z"
+    });
+    assert.equal(feedback.feedback.deadline_status, "requested");
+
+    authenticatedCookie = operationalLogin.cookie;
+    const reviewed = await json(`/api/action-plans/${generatedPlan.id}/review`, {
+      documentItemId: generatedItem.rows[0].id,
+      feedbackId: feedback.feedback.id,
+      decision: "rejected",
+      justification: "Anexe a foto da identificação definitiva.",
+      allowResubmission: true,
+      resubmissionDueAt: "2026-12-15T12:00:00.000Z"
+    });
+    assert.equal(reviewed.actionPlan.status, "reopened");
+    const workflowNotifications = await pool.query("select notification_type from notifications where recipient_user_id=(select id from app_users where username='carlos.01')");
+    assert.ok(workflowNotifications.rows.some((item) => item.notification_type === "action_plan_assigned"));
+    assert.ok(workflowNotifications.rows.some((item) => item.notification_type === "action_plan_rejected"));
+    console.log("PASS: area-scoped responsible access, grouped action-plan document, acknowledgement, per-item feedback, deadline request, review, reopening and notifications.");
     await json("/api/dashboard");
     const setting = await json("/api/workflow-settings", { actionPlanDueDays: 45 }, "PATCH", token);
     assert.equal(setting.settings.action_plan_due_days, 45);

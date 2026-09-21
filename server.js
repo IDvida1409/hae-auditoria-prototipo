@@ -11,6 +11,7 @@ const reportWorker = require("./lib/report-worker");
 const accessApi = require("./lib/access-api");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
+const actionPlanService = require("./lib/action-plan-service");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
@@ -239,14 +240,17 @@ function operationalAccessAllowed(user, pathname, method) {
     pathname === "/api/offline-bootstrap" ||
     pathname === "/api/dashboard" ||
     pathname === "/api/action-plans" ||
+    pathname === "/api/action-plan-documents" ||
     pathname === "/api/reports" ||
     pathname === "/api/audits" ||
     pathname === "/api/notifications" ||
     /^\/api\/(?:reports|audits)\/[0-9a-f-]+(?:\/versions)?$/i.test(pathname) ||
+    /^\/api\/action-plan-documents\/[0-9a-f-]+$/i.test(pathname) ||
     /^\/api\/files\/[0-9a-f-]+\/content$/i.test(pathname)
   )) return true;
   if (method === "POST" && (
     /^\/api\/action-plans\/[0-9a-f-]+\/feedback$/i.test(pathname) ||
+    /^\/api\/action-plan-documents\/[0-9a-f-]+\/acknowledge$/i.test(pathname) ||
     pathname === "/api/offline-files" ||
     pathname === "/api/sync-queue" ||
     pathname === "/api/sync-queue/process" ||
@@ -905,77 +909,12 @@ async function handleApi(request, response, url) {
         audit = auditResult.rows[0];
         if (!audit) throw new Error("Auditoria não encontrada");
 
-        const ncAnswers = await client.query(
-          `
-            select
-              aa.id as answer_id,
-              aa.question_id,
-              aa.notes,
-              cq.requirement_text,
-              cq.risk_level,
-              aa.risk_level_snapshot
-            from audit_answers aa
-            join checklist_questions cq on cq.id = aa.question_id
-            where aa.audit_id = $1 and aa.answer = 'NC'
-          `,
-          [audit.id]
-        );
-
-        for (const nc of ncAnswers.rows) {
-          const title = `Corrigir NC - ${String(nc.requirement_text).slice(0, 80)}`;
-          const planResult = await client.query(
-            `
-              insert into action_plans (
-                unit_id,
-                area_id,
-                subarea_id,
-                origin_audit_id,
-                origin_answer_id,
-                question_id,
-                generated_cycle_id,
-                created_by_user_id,
-                assigned_to_user_id,
-                title,
-                problem_description,
-                corrective_action,
-                due_at,
-                status,
-                creation_source,
-                automatic_correction_text,
-                locked_question_snapshot,
-                locked_risk_snapshot,
-                locked_audit_notes_snapshot
-              )
-              values (
-                $1, $2, $3, $4, $5, $6, $7, $8,
-                (select responsible_user_id from audit_areas where id = $2),
-                $9, $10, $11,
-                now() + (($12::int || ' days')::interval),
-                'generated',
-                'audit_nc',
-                $11, $10, $13, $14
-              )
-              returning *
-            `,
-            [
-              audit.unit_id,
-              audit.area_id,
-              audit.subarea_id,
-              audit.id,
-              nc.answer_id,
-              nc.question_id,
-              audit.cycle_id,
-              audit.auditor_user_id,
-              title,
-              nc.requirement_text,
-              body.defaultCorrection || "Corrigir a não conformidade e anexar evidência da ação realizada.",
-              Number(body.dueDays || 30),
-              nc.risk_level_snapshot || nc.risk_level,
-              nc.notes || null
-            ]
-          );
-          createdPlans.push(planResult.rows[0]);
-        }
+        const generated = await actionPlanService.generateForAudit(client, audit, {
+          generationMode: body.generationMode,
+          defaultCorrection: body.defaultCorrection,
+          dueDays: body.dueDays
+        });
+        createdPlans.push(...generated.actionPlans);
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");
@@ -1002,11 +941,13 @@ async function handleApi(request, response, url) {
         `
           select
             ap.*,
+            dpi.id as document_item_id,
             aa.name as area_name,
             aa.slug as area_slug,
             u.full_name as assigned_to_name
           from action_plans ap
           join audit_areas aa on aa.id = ap.area_id
+          left join action_plan_document_items dpi on dpi.action_plan_id=ap.id
           left join app_users u on u.id = ap.assigned_to_user_id
           where ap.unit_id = $1
             and ($2::text is null or ap.status = $2)
@@ -1021,6 +962,132 @@ async function handleApi(request, response, url) {
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro ao listar planos" });
     }
+    return true;
+  }
+
+  if (url.pathname === "/api/action-plan-documents" && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const result = await pool.query(
+        `select d.*,a.name as area_name,a.slug as area_slug,u.full_name as assigned_to_name,
+           count(i.id)::int as item_count,
+           count(i.id) filter (where p.status='approved')::int as approved_item_count,
+           count(i.id) filter (where p.status in ('pending_review','submitted'))::int as pending_review_count
+         from action_plan_documents d
+         join audit_areas a on a.id=d.area_id
+         left join app_users u on u.id=d.assigned_to_user_id
+         left join action_plan_document_items i on i.action_plan_document_id=d.id
+         left join action_plans p on p.id=i.action_plan_id
+         where d.unit_id=$1 and ($2::boolean or d.area_id=any($3::uuid[]))
+         group by d.id,a.name,a.slug,u.full_name
+         order by d.created_at desc limit 200`,
+        [unitId, Boolean(user.all_areas), user.area_ids || []]
+      );
+      sendJson(response, 200, { actionPlanDocuments: result.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao listar documentos de plano de ação" });
+    }
+    return true;
+  }
+
+  const planDocumentMatch = pathMatch(url.pathname, /^\/api\/action-plan-documents\/(?<id>[0-9a-f-]+)$/i);
+  if (planDocumentMatch && request.method === "GET") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const document = await pool.query(
+        `select d.*,a.name as area_name,a.slug as area_slug,u.full_name as assigned_to_name,au.full_name as auditor_name
+         from action_plan_documents d join audit_areas a on a.id=d.area_id
+         left join app_users u on u.id=d.assigned_to_user_id
+         left join audits audit on audit.id=d.origin_audit_id
+         left join app_users au on au.id=audit.auditor_user_id
+         where d.id=$1 and d.unit_id=$2 and ($3::boolean or d.area_id=any($4::uuid[]))`,
+        [planDocumentMatch.id, unitId, Boolean(user.all_areas), user.area_ids || []]
+      );
+      if (!document.rows[0]) { sendJson(response, 404, { error: "Plano de ação não encontrado." }); return true; }
+      const [items, acknowledgements, timeline] = await Promise.all([
+        pool.query(
+          `select i.*,p.status as action_plan_status,p.due_at,p.last_feedback_id,
+             coalesce(json_agg(f order by f.created_at) filter (where f.id is not null),'[]'::json) as feedback
+           from action_plan_document_items i
+           left join action_plans p on p.id=i.action_plan_id
+           left join action_plan_feedback f on f.action_plan_id=p.id
+           where i.action_plan_document_id=$1 group by i.id,p.id order by i.item_order`, [planDocumentMatch.id]),
+        pool.query("select a.*,u.full_name from action_plan_acknowledgements a join app_users u on u.id=a.responsible_user_id where a.action_plan_document_id=$1 order by a.signed_at desc", [planDocumentMatch.id]),
+        pool.query("select t.*,u.full_name as actor_name from action_plan_timeline_events t left join app_users u on u.id=t.actor_user_id where t.action_plan_id in (select action_plan_id from action_plan_document_items where action_plan_document_id=$1) order by t.created_at", [planDocumentMatch.id])
+      ]);
+      sendJson(response, 200, { document: document.rows[0], items: items.rows, acknowledgements: acknowledgements.rows, timeline: timeline.rows });
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || "Erro ao abrir plano de ação" });
+    }
+    return true;
+  }
+
+  const sendPlanDocumentMatch = pathMatch(url.pathname, /^\/api\/action-plan-documents\/(?<id>[0-9a-f-]+)\/send$/i);
+  if (sendPlanDocumentMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const client = await pool.connect();
+      let document;
+      try {
+        await client.query("begin");
+        const result = await client.query(
+          `update action_plan_documents set status='available_to_responsible',reviewed_by_user_id=$3,reviewed_at=now(),
+             sent_to_responsible_at=now(),updated_at=now() where id=$1 and unit_id=$2 returning *`,
+          [sendPlanDocumentMatch.id, unitId, user.id]
+        );
+        document = result.rows[0];
+        if (!document) throw new Error("Documento não encontrado.");
+        await client.query("update action_plans set status='available_to_responsible',auditor_reviewed_at=now(),sent_to_responsible_at=now(),updated_at=now() where action_plan_document_id=$1", [document.id]);
+        if (document.assigned_to_user_id) {
+          await notify(client, { unitId, recipientId: document.assigned_to_user_id, title: "Plano de ação disponível", body: document.title,
+            type: "action_plan_assigned", entityType: "action_plan_document", entityId: document.id, key: `action-plan-document:${document.id}` });
+        }
+        await client.query("commit");
+      } catch (error) { await client.query("rollback"); throw error; }
+      finally { client.release(); }
+      sendJson(response, 200, { document });
+    } catch (error) { sendJson(response, 500, { error: error.message || "Erro ao enviar plano" }); }
+    return true;
+  }
+
+  const acknowledgePlanMatch = pathMatch(url.pathname, /^\/api\/action-plan-documents\/(?<id>[0-9a-f-]+)\/acknowledge$/i);
+  if (acknowledgePlanMatch && request.method === "POST") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const body = await readJsonBody(request);
+      const client = await pool.connect();
+      let acknowledgement;
+      try {
+        await client.query("begin");
+        const document = await client.query("select * from action_plan_documents where id=$1 and unit_id=$2 and assigned_to_user_id=$3 for update", [acknowledgePlanMatch.id, unitId, user.id]);
+        if (!document.rows[0]) throw new Error("Este plano não está atribuído ao usuário conectado.");
+        const result = await client.query(
+          `insert into action_plan_acknowledgements
+             (action_plan_document_id,responsible_user_id,acknowledgement_text,signature_name,ip_address,user_agent,metadata)
+           values ($1,$2,$3,$4,$5,$6,$7::jsonb) returning *`,
+          [acknowledgePlanMatch.id, user.id, body.acknowledgementText || "Declaro ciência do plano de ação e de seus prazos.",
+            user.full_name, requestIp(request), String(request.headers["user-agent"] || "").slice(0, 512), JSON.stringify({ method: "authenticated_session" })]
+        );
+        acknowledgement = result.rows[0];
+        await client.query("update action_plan_documents set status='acknowledged',acknowledged_at=now(),updated_at=now() where id=$1", [acknowledgePlanMatch.id]);
+        await client.query("update action_plans set status='acknowledged',acknowledged_at=now(),updated_at=now() where action_plan_document_id=$1 and status in ('available_to_responsible','sent_to_responsible')", [acknowledgePlanMatch.id]);
+        await client.query("commit");
+      } catch (error) { await client.query("rollback"); throw error; }
+      finally { client.release(); }
+      sendJson(response, 201, { acknowledgement });
+    } catch (error) { sendJson(response, 400, { error: error.message || "Erro ao registrar ciência" }); }
     return true;
   }
 
@@ -1040,7 +1107,7 @@ async function handleApi(request, response, url) {
         const selected = await client.query(
           `select ap.*,a.auditor_user_id from action_plans ap
            left join audits a on a.id=ap.origin_audit_id
-           where ap.id=$1 and ap.unit_id=$2 and ($3::boolean or ap.assigned_to_user_id=$4) for update`,
+           where ap.id=$1 and ap.unit_id=$2 and ($3::boolean or ap.assigned_to_user_id=$4) for update of ap`,
           [planFeedbackMatch.id, unitId, Boolean(user.all_areas), user.id]
         );
         plan = selected.rows[0];
@@ -1051,6 +1118,7 @@ async function handleApi(request, response, url) {
           insert into action_plan_feedback (
             action_plan_id,
             submitted_by_user_id,
+            action_plan_document_item_id,
             evidence_file_id,
             response_file_id,
             observation,
@@ -1058,21 +1126,25 @@ async function handleApi(request, response, url) {
             completion_status,
             delay_justification,
             capture_method,
-            status
+            requested_due_at,
+            status,
+            deadline_status
           )
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'submitted')
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,'submitted',case when $11::timestamptz is null then null else 'requested' end)
           returning *
         `,
         [
           planFeedbackMatch.id,
           user?.id || null,
+          body.documentItemId || null,
           body.evidenceFileId || null,
           body.responseFileId || null,
           body.observation || null,
           body.correctionSummary || null,
           body.completionStatus || "completed",
           body.delayJustification || null,
-          body.captureMethod || "upload"
+          body.captureMethod || "upload",
+          body.requestedDueAt || null
         ]
         );
         await client.query(
@@ -1152,6 +1224,7 @@ async function handleApi(request, response, url) {
           `
             insert into action_plan_review_events (
               action_plan_id,
+              action_plan_document_item_id,
               feedback_id,
               reviewer_user_id,
               decision,
@@ -1160,11 +1233,12 @@ async function handleApi(request, response, url) {
               resubmission_due_at,
               visible_to_responsible_at
             )
-            values ($1, $2, $3, $4, $5, $6, $7, now())
+            values ($1,$2,$3,$4,$5,$6,$7,$8,now())
             returning *
           `,
           [
             planReviewMatch.id,
+            body.documentItemId || null,
             body.feedbackId || plan?.last_feedback_id || null,
             user?.id || null,
             body.decision,
@@ -1173,6 +1247,32 @@ async function handleApi(request, response, url) {
             body.resubmissionDueAt || null
           ]
         );
+        await client.query(
+          `update action_plan_feedback set status=$2,reviewed_by_user_id=$3,reviewed_at=now(),review_note=$4,
+             deadline_status=case when deadline_status='requested' then $2 else deadline_status end,
+             deadline_reviewed_by_user_id=case when deadline_status='requested' then $3 else deadline_reviewed_by_user_id end,
+             deadline_reviewed_at=case when deadline_status='requested' then now() else deadline_reviewed_at end,
+             deadline_review_note=case when deadline_status='requested' then $4 else deadline_review_note end,updated_at=now()
+           where id=coalesce($1,(select last_feedback_id from action_plans where id=$5))`,
+          [body.feedbackId || null, body.decision, user.id, body.justification || null, planReviewMatch.id]
+        );
+        if (plan?.action_plan_document_id) {
+          await client.query(
+            `update action_plan_documents d set status=case
+               when not exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status<>'approved') then 'approved'
+               when exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status in ('rejected','reopened')) then 'reopened'
+               else 'pending_review' end,
+             closed_at=case when not exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status<>'approved') then now() else null end,
+             updated_at=now() where d.id=$1`, [plan.action_plan_document_id]
+          );
+        }
+        if (plan?.assigned_to_user_id && plan.assigned_to_user_id !== user.id) {
+          await notify(client, { unitId, recipientId: plan.assigned_to_user_id,
+            title: body.decision === "approved" ? "Evidência aprovada" : "Correção solicitada",
+            body: body.justification || (body.decision === "approved" ? "A evidência enviada foi aprovada." : "Revise o item e envie uma nova evidência."),
+            type: body.decision === "approved" ? "action_plan_approved" : "action_plan_rejected",
+            entityType: "action_plan", entityId: plan.id, key: `review:${event.rows[0].id}` });
+        }
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");

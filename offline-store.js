@@ -10,6 +10,14 @@
   let retryDelay = 2000;
   let syncOptions = {};
 
+  function userScope() {
+    return String(syncOptions.userScope || "anonymous");
+  }
+
+  function scopedKey(key) {
+    return `${userScope()}:${key}`;
+  }
+
   function committed(transaction) {
     return new Promise((resolve, reject) => {
       transaction.oncomplete = resolve;
@@ -99,6 +107,7 @@
     const entities = transaction.objectStore(ENTITY_STORE);
     const clientOperationId = operation.clientOperationId || uid("op");
     const payload = {
+      userScope: userScope(),
       clientOperationId,
       entityType: operation.entityType,
       entityId: operation.entityId || null,
@@ -119,13 +128,14 @@
         transaction.abort();
         return;
       }
-      const sequence = meta.get("sequence");
+      const sequenceKey = scopedKey("sequence");
+      const sequence = meta.get(sequenceKey);
       sequence.onsuccess = () => {
         payload.clientSequence = (sequence.result?.value || 0) + 1;
-        meta.put({ key: "sequence", value: payload.clientSequence });
+        meta.put({ key: sequenceKey, value: payload.clientSequence });
         payload.dependsOn = [...new Set(operation.dependsOn || [])];
         const p = payload.payload;
-        const auditKey = "audit:" + p.localAuditId;
+        const auditKey = scopedKey("audit:" + p.localAuditId);
         const audit = entities.get(auditKey);
         audit.onsuccess = () => {
           if (payload.entityType !== "audit" || payload.operation !== "create") {
@@ -136,12 +146,12 @@
           if (operation.localFileRecord) transaction.objectStore(FILE_STORE).put(operation.localFileRecord);
           store.put(payload);
           if (p.localAuditId) {
-            entities.put({ ...audit.result, key: auditKey, localAuditId: p.localAuditId,
+            entities.put({ ...audit.result, key: auditKey, userScope: userScope(), localAuditId: p.localAuditId,
               ...(payload.entityType === "audit" && payload.operation === "create" ? { ...p, createOperationId: clientOperationId } : {}),
               lastOperationId: clientOperationId, updatedAt: nowIso() });
           }
           if (payload.entityType === "audit_answer") {
-            entities.put({ key: "answer:" + p.localAuditId + ":" + p.questionId, ...p, operationId: clientOperationId, updatedAt: nowIso() });
+            entities.put({ key: scopedKey("answer:" + p.localAuditId + ":" + p.questionId), userScope: userScope(), ...p, operationId: clientOperationId, updatedAt: nowIso() });
           }
         };
       };
@@ -173,7 +183,10 @@
     const store = txStore(db, OPERATION_STORE);
     const index = store.index("status_created");
     const range = IDBKeyRange.bound([status, ""], [status, "\uffff"]);
-    try { return await requestToPromise(index.getAll(range)); } finally { db.close(); }
+    try {
+      const rows = await requestToPromise(index.getAll(range));
+      return rows.filter((row) => row.userScope === userScope());
+    } finally { db.close(); }
   }
 
   async function listSyncableOperations() {
@@ -187,6 +200,7 @@
   function fileRecord(file, metadata = {}) {
     const localFileId = metadata.localFileId || uid("file");
     const payload = {
+      userScope: userScope(),
       localFileId,
       file,
       fileName: metadata.fileName || file?.name || "evidencia",
@@ -210,7 +224,10 @@
 
   async function getFile(localFileId) {
     const db = await openDb();
-    try { return await requestToPromise(txStore(db, FILE_STORE).get(localFileId)); } finally { db.close(); }
+    try {
+      const file = await requestToPromise(txStore(db, FILE_STORE).get(localFileId));
+      return file?.userScope === userScope() ? file : null;
+    } finally { db.close(); }
   }
 
   async function setMeta(key, value) {
@@ -268,9 +285,9 @@
       const records = await requestToPromise(txStore(db, ENTITY_STORE).getAll());
       const files = await requestToPromise(txStore(db, FILE_STORE).getAll());
       return {
-        audit: records.find((item) => item.key === "audit:" + localAuditId) || null,
-        answers: records.filter((item) => item.key.startsWith("answer:" + localAuditId + ":")),
-        files: files.filter((item) => item.localAuditId === localAuditId)
+        audit: records.find((item) => item.key === scopedKey("audit:" + localAuditId)) || null,
+        answers: records.filter((item) => item.key.startsWith(scopedKey("answer:" + localAuditId + ":"))),
+        files: files.filter((item) => item.userScope === userScope() && item.localAuditId === localAuditId)
       };
     } finally { db.close(); }
   }
@@ -287,7 +304,7 @@
 
   async function localEntity(key) {
     const db = await openDb();
-    try { return await requestToPromise(txStore(db, ENTITY_STORE).get(key)); } finally { db.close(); }
+    try { return await requestToPromise(txStore(db, ENTITY_STORE).get(scopedKey(key))); } finally { db.close(); }
   }
 
   async function patchEntity(key, patch, expectedOperationId = null) {
@@ -295,7 +312,8 @@
     const transaction = db.transaction(ENTITY_STORE, "readwrite");
     const done = committed(transaction);
     const store = transaction.objectStore(ENTITY_STORE);
-    const request = store.get(key);
+    const storageKey = scopedKey(key);
+    const request = store.get(storageKey);
     request.onsuccess = () => {
       if (request.result && (!expectedOperationId || request.result.operationId === expectedOperationId)) store.put({ ...request.result, ...patch });
     };
@@ -308,17 +326,18 @@
     const done = committed(transaction);
     const store = transaction.objectStore(META_STORE);
     let value;
-    const request = store.get("deviceUid");
+    const key = scopedKey("deviceUid");
+    const request = store.get(key);
     request.onsuccess = () => {
       value = request.result?.value || uid("device");
-      store.put({ key: "deviceUid", value });
+      store.put({ key, value });
     };
     try { await done; } finally { db.close(); }
     return value;
   }
 
   async function cacheBootstrap(payload) {
-    await setMeta("bootstrap", payload);
+    await setMeta(scopedKey("bootstrap"), payload);
     if (navigator.storage?.persist) await navigator.storage.persist().catch(() => false);
     return payload;
   }
@@ -460,6 +479,7 @@
     getFile,
     setMeta,
     getMeta,
+    deviceUid,
     queueAuditStart,
     queueAuditAnswer,
     queueActionPlanFeedback,
@@ -470,7 +490,7 @@
     getAuditSnapshot,
     localEntity,
     cacheBootstrap,
-    getCachedBootstrap: () => getMeta("bootstrap"),
+    getCachedBootstrap: () => getMeta(scopedKey("bootstrap")),
     queueAuditFinalize: (payload) => saveOperation({ entityType: "audit", operation: "finalize", payload })
   };
 

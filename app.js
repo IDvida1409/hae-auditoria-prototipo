@@ -294,6 +294,7 @@ let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 
 let offlineNoticeTimer = null;
 let operationalActionPlans = null;
 let operationalDashboard = null;
+const pendingActionPlanEvidence = new Map();
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -1057,6 +1058,9 @@ async function loadOperationalData() {
     }
     return {
       id: plan.id,
+      documentId: plan.action_plan_document_id,
+      documentItemId: plan.document_item_id,
+      feedbackId: plan.last_feedback_id,
       area,
       title: plan.title || "Plano de ação",
       block: plan.problem_description || "Não conformidade da auditoria",
@@ -1072,6 +1076,10 @@ async function loadOperationalData() {
       itemDecisions: {}
     };
   }).filter((row) => row.area);
+}
+
+function planFromNotificationEntity(entityId) {
+  return planningActionRows().find((row) => row.id === entityId || row.documentId === entityId);
 }
 
 function localAuditFor(areaId) {
@@ -6203,7 +6211,7 @@ function exitChartPresentationMode() {
   }
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   if (event.target.closest("[data-locked-module], [data-locked-area]")) {
     accessNotice = { type: "error", text: "Este acesso pertence somente ao administrador ou ao responsável da área indicada." };
     render();
@@ -6235,7 +6243,7 @@ document.addEventListener("click", (event) => {
       state.actionDeadlineModal = false;
       state.planningView = notificationItem.dataset.notificationPlanningView || "plans";
       const planId = notificationItem.dataset.notificationPlanId;
-      const plan = planningActionRows().find((row) => row.id === planId);
+      const plan = planFromNotificationEntity(planId);
       if (plan) {
         state.planningPlanId = plan.id;
         state.planningAreaId = plan.area.id;
@@ -6550,6 +6558,16 @@ document.addEventListener("click", (event) => {
   const confirmResponsibleConsent = event.target.closest("[data-confirm-responsible-consent]");
   if (confirmResponsibleConsent) {
     const planId = confirmResponsibleConsent.dataset.confirmResponsibleConsent;
+    const plan = planningActionRows().find((row) => row.id === planId);
+    if (plan?.documentId && location.protocol !== "file:") {
+      try {
+        await operationalRequest(`action-plan-documents/${plan.documentId}/acknowledge`, { method: "POST", body: "{}" });
+      } catch (error) {
+        setPlanningNotice(error.message);
+        render();
+        return;
+      }
+    }
     const now = new Date();
     state.actionPlanAcknowledgements = {
       ...state.actionPlanAcknowledgements,
@@ -6578,6 +6596,25 @@ document.addEventListener("click", (event) => {
     }
     const [year, month, day] = dateValue.split("-");
     const requestedDue = `${day}/${month}/${year}`;
+    if (location.protocol !== "file:") {
+      try {
+        await operationalRequest(`action-plans/${plan.id}/feedback`, {
+          method: "POST",
+          body: JSON.stringify({
+            documentItemId: plan.documentItemId,
+            completionStatus: "delayed",
+            delayJustification: reason,
+            requestedDueAt: `${dateValue}T12:00:00.000Z`,
+            observation: document.querySelector("[data-deadline-reason-type]")?.value || "Solicitação de novo prazo"
+          })
+        });
+        await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+      } catch (error) {
+        setPlanningNotice(error.message);
+        render();
+        return;
+      }
+    }
     updatePlanningPlan(plan.id, {
       status: "pending_review",
       responsibleSubmitted: true,
@@ -6600,6 +6637,47 @@ document.addEventListener("click", (event) => {
     const items = actionPlanPreviewItems(plan.area, plan.ncs);
     const responses = state.actionPlanResponses?.[plan.id] || {};
     if (items.some((_, index) => !String(responses[index]?.text || "").trim())) return;
+    if (location.protocol !== "file:") {
+      try {
+        const evidenceFile = pendingActionPlanEvidence.get(`${plan.id}:0`);
+        let evidenceFileId = null;
+        if (evidenceFile) {
+          const deviceUid = await window.HAE_OFFLINE.deviceUid();
+          const upload = await fetch("/api/offline-files", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "content-type": evidenceFile.type || "application/octet-stream",
+              "x-device-uid": deviceUid,
+              "x-local-file-id": `plan-${plan.id}-${Date.now()}`,
+              "x-file-name": evidenceFile.name,
+              "x-file-type": "action_plan_photo"
+            },
+            body: evidenceFile
+          });
+          const uploaded = await upload.json().catch(() => ({}));
+          if (!upload.ok) throw new Error(uploaded.error || "Não foi possível enviar a evidência.");
+          evidenceFileId = uploaded.file.id;
+        }
+        await operationalRequest(`action-plans/${plan.id}/feedback`, {
+          method: "POST",
+          body: JSON.stringify({
+            documentItemId: plan.documentItemId,
+            correctionSummary: responses[0]?.text,
+            observation: responses[0]?.text,
+            evidenceFileId,
+            completionStatus: "completed",
+            captureMethod: evidenceFile?.type?.startsWith("image/") ? "mobile_camera" : "upload"
+          })
+        });
+        pendingActionPlanEvidence.delete(`${plan.id}:0`);
+        await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+      } catch (error) {
+        setPlanningNotice(error.message);
+        render();
+        return;
+      }
+    }
     updatePlanningPlan(plan.id, {
       status: "pending_review",
       responsibleSubmitted: true,
@@ -6629,6 +6707,16 @@ document.addEventListener("click", (event) => {
   if (sendActionPlan) {
     const plan = planningActionRows().find((row) => row.id === sendActionPlan.dataset.sendActionPlan);
     if (plan) {
+      if (plan.documentId && location.protocol !== "file:") {
+        try {
+          await operationalRequest(`action-plan-documents/${plan.documentId}/send`, { method: "POST", body: "{}" });
+          await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+        } catch (error) {
+          setPlanningNotice(error.message);
+          render();
+          return;
+        }
+      }
       const sentFromPreview = Boolean(sendActionPlan.closest(".action-plan-document"));
       updatePlanningPlan(plan.id, { status: "in_progress", source: "Enviado em 20/09/2026 às 16:55" });
       if (sentFromPreview) state.actionPlanPreview = false;
@@ -6667,6 +6755,19 @@ document.addEventListener("click", (event) => {
       return;
     }
     if (plan) {
+      if (location.protocol !== "file:") {
+        try {
+          await operationalRequest(`action-plans/${plan.id}/review`, {
+            method: "POST",
+            body: JSON.stringify({ documentItemId: plan.documentItemId, feedbackId: plan.feedbackId, decision: "approved", justification: "Evidência aprovada pelo auditor." })
+          });
+          await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+        } catch (error) {
+          setPlanningNotice(error.message);
+          render();
+          return;
+        }
+      }
       updatePlanningPlan(plan.id, { itemDecisions: { ...(plan.itemDecisions || {}), [itemIndex]: { status: "approved" } } });
       setPlanningNotice(`NC ${String(itemIndex + 1).padStart(2, "0")} aprovada. Continue a análise das demais evidências.`);
     }
@@ -6686,6 +6787,19 @@ document.addEventListener("click", (event) => {
     }
     if (plan && confirmPlanDecision.dataset.confirmPlanDecision === "item_rejected") {
       const itemIndex = Number(confirmPlanDecision.dataset.itemIndex);
+      if (location.protocol !== "file:") {
+        try {
+          await operationalRequest(`action-plans/${plan.id}/review`, {
+            method: "POST",
+            body: JSON.stringify({ documentItemId: plan.documentItemId, feedbackId: plan.feedbackId, decision: "rejected", justification: reason, allowResubmission: true })
+          });
+          await Promise.all([loadOperationalData(), loadAccessNotifications()]);
+        } catch (error) {
+          setPlanningNotice(error.message);
+          render();
+          return;
+        }
+      }
       updatePlanningPlan(plan.id, { itemDecisions: { ...(plan.itemDecisions || {}), [itemIndex]: { status: "rejected", reason } } });
       state.planningDecisionModal = false;
       setPlanningNotice(`NC ${String(itemIndex + 1).padStart(2, "0")} reprovada com justificativa. Continue a análise.`);
@@ -7057,6 +7171,7 @@ document.addEventListener("change", (event) => {
       setOfflineNotice({ phase: "error", message: "A evidência deve ter no máximo 10 MB." });
       return;
     }
+    pendingActionPlanEvidence.set(`${planId}:${itemIndex}`, file);
     state.actionPlanResponses = {
       ...state.actionPlanResponses,
       [planId]: {
@@ -7172,6 +7287,12 @@ if (reportRequest) {
       currentAccessUser = data.user;
       if (currentAccessUser.must_change_password) { location.replace("/login.html"); return; }
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
+      if (window.HAE_OFFLINE) {
+        await window.HAE_OFFLINE.configure({
+          userScope: currentAccessUser.id,
+          backendUrl: window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : location.origin
+        });
+      }
       await Promise.all([
         currentAccessUser.role === "admin" ? loadAccessUsers() : Promise.resolve(),
         loadAccessNotifications(),
