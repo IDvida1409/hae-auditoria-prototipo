@@ -13,6 +13,7 @@ const accessApi = require("./lib/access-api");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
+const { enqueueMonthlyAuditReport, validateAuditReadyToFinalize } = require("./lib/report-service");
 const { buildAndroidWeb } = require("./tools/build-android-web");
 
 const root = __dirname;
@@ -804,6 +805,7 @@ async function handleApi(request, response, url) {
             checklist_id,
             cycle_id,
             auditor_user_id,
+            responsible_user_id,
             device_id,
             local_audit_id,
             source,
@@ -812,7 +814,13 @@ async function handleApi(request, response, url) {
             offline_created,
             sync_status
           )
-          values ($1, $2, $3, $4, $5, $6, $11, $7, $8, 'in_progress', now(), $9, $10)
+          values ($1, $2, $3, $4, $5, $6,
+            coalesce((select responsible_user_id from audit_areas where id=$2),(
+              select p.user_id from user_area_permissions p join app_users u on u.id=p.user_id
+              where p.area_id=$2 and p.active=true and u.active=true and u.role='area_responsible'
+              order by p.created_at,p.id limit 1
+            )),
+            $11, $7, $8, 'in_progress', now(), $9, $10)
           on conflict (device_id, local_audit_id)
           where device_id is not null and local_audit_id is not null
           do update set local_audit_id = excluded.local_audit_id
@@ -921,9 +929,13 @@ async function handleApi(request, response, url) {
       const body = await readJsonBody(request);
       const client = await pool.connect();
       let audit;
+      let reportJob;
       const createdPlans = [];
       try {
         await client.query("begin");
+        const selectedAudit = await client.query("select * from audits where id=$1 for update", [auditFinalizeMatch.id]);
+        if (!selectedAudit.rows[0]) throw new Error("Auditoria não encontrada");
+        await validateAuditReadyToFinalize(client, selectedAudit.rows[0]);
         const score = await auditScore(client, auditFinalizeMatch.id);
         const auditResult = await client.query(
           `
@@ -946,6 +958,7 @@ async function handleApi(request, response, url) {
           dueDays: body.dueDays
         });
         createdPlans.push(...generated.actionPlans);
+        reportJob = await enqueueMonthlyAuditReport(client, audit, audit.auditor_user_id);
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");
@@ -953,9 +966,9 @@ async function handleApi(request, response, url) {
       } finally {
         client.release();
       }
-      sendJson(response, 200, { audit, actionPlans: createdPlans });
+      sendJson(response, 200, { audit, actionPlans: createdPlans, reportJob });
     } catch (error) {
-      sendJson(response, 500, { error: error.message || "Erro ao finalizar auditoria" });
+      sendJson(response, /Sincronizacao incompleta|aguardam o envio|sem perguntas/.test(error.message) ? 409 : 500, { error: error.message || "Erro ao finalizar auditoria" });
     }
     return true;
   }
@@ -975,11 +988,17 @@ async function handleApi(request, response, url) {
             dpi.id as document_item_id,
             aa.name as area_name,
             aa.slug as area_slug,
-            u.full_name as assigned_to_name
+            u.full_name as assigned_to_name,
+            creator.full_name as created_by_name,
+            d.public_code,
+            d.generated_at as document_generated_at,
+            d.generation_mode
           from action_plans ap
           join audit_areas aa on aa.id = ap.area_id
           left join action_plan_document_items dpi on dpi.action_plan_id=ap.id
           left join app_users u on u.id = ap.assigned_to_user_id
+          left join app_users creator on creator.id=ap.created_by_user_id
+          left join action_plan_documents d on d.id=ap.action_plan_document_id
           where ap.unit_id = $1
             and ($2::text is null or ap.status = $2)
             and ($3::uuid is null or ap.area_id = $3)
@@ -1059,6 +1078,40 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  const editPlanDocumentMatch = pathMatch(url.pathname, /^\/api\/action-plan-documents\/(?<id>[0-9a-f-]+)\/items$/i);
+  if (editPlanDocumentMatch && request.method === "PATCH") {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const unitId = await defaultUnitId(pool);
+      const user = await currentUser(pool, request, unitId);
+      const body = await readJsonBody(request);
+      if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100) throw new Error("Informe os itens do plano.");
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const document = await client.query("select * from action_plan_documents where id=$1 and unit_id=$2 and status='under_auditor_review' for update", [editPlanDocumentMatch.id, unitId]);
+        if (!document.rows[0]) throw new Error("Este plano não está disponível para edição.");
+        for (const item of body.items) {
+          const notes = String(item.auditorNotes || "").trim();
+          const correction = String(item.requiredCorrection || "").trim();
+          if (!item.itemId || notes.length > 5000 || !correction || correction.length > 5000) throw new Error("Confira observação e ação orientada de cada NC.");
+          const updated = await client.query(
+            `update action_plan_document_items set auditor_notes=$3,required_correction=$4,updated_at=now()
+             where id=$1 and action_plan_document_id=$2 returning action_plan_id`,
+            [item.itemId, editPlanDocumentMatch.id, notes || null, correction]
+          );
+          if (!updated.rows[0]) throw new Error("Item não pertence ao plano.");
+          await client.query("update action_plans set locked_audit_notes_snapshot=$2,corrective_action=$3,auditor_complement_text=$3,updated_at=now() where id=$1", [updated.rows[0].action_plan_id, notes || null, correction]);
+        }
+        await client.query("commit");
+      } catch (error) { await client.query("rollback"); throw error; }
+      finally { client.release(); }
+      sendJson(response, 200, { ok: true });
+    } catch (error) { sendJson(response, 400, { error: error.message || "Não foi possível salvar o plano." }); }
+    return true;
+  }
+
   const sendPlanDocumentMatch = pathMatch(url.pathname, /^\/api\/action-plan-documents\/(?<id>[0-9a-f-]+)\/send$/i);
   if (sendPlanDocumentMatch && request.method === "POST") {
     try {
@@ -1072,11 +1125,12 @@ async function handleApi(request, response, url) {
         await client.query("begin");
         const result = await client.query(
           `update action_plan_documents set status='available_to_responsible',reviewed_by_user_id=$3,reviewed_at=now(),
-             sent_to_responsible_at=now(),updated_at=now() where id=$1 and unit_id=$2 returning *`,
+             sent_to_responsible_at=now(),updated_at=now()
+           where id=$1 and unit_id=$2 and status='under_auditor_review' and assigned_to_user_id is not null returning *`,
           [sendPlanDocumentMatch.id, unitId, user.id]
         );
         document = result.rows[0];
-        if (!document) throw new Error("Documento não encontrado.");
+        if (!document) throw new Error("Plano indisponível para envio ou sem responsável atribuído.");
         await client.query("update action_plans set status='available_to_responsible',auditor_reviewed_at=now(),sent_to_responsible_at=now(),updated_at=now() where action_plan_document_id=$1", [document.id]);
         if (document.assigned_to_user_id) {
           await notify(client, { unitId, recipientId: document.assigned_to_user_id, title: "Plano de ação disponível", body: document.title,

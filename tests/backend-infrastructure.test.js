@@ -7,6 +7,17 @@ const { validateOperation, canonical, enqueue, processOperations, applyOperation
 const { pageLimit, userValues } = require("../lib/operational-api");
 const storage = require("../lib/file-storage");
 const { migrate } = require("../lib/database");
+const { validateAuditReadyToFinalize } = require("../lib/report-service");
+
+test("finalization waits for every answer and required NC photo", async () => {
+  const audit = { id: "audit-1", checklist_id: "checklist-1" };
+  const db = { query: async () => ({ rows: [{ expected: 3, answered: 2, nc_without_evidence: 0 }] }) };
+  await assert.rejects(validateAuditReadyToFinalize(db, audit), /2 de 3 respostas/);
+  db.query = async () => ({ rows: [{ expected: 3, answered: 3, nc_without_evidence: 1 }] });
+  await assert.rejects(validateAuditReadyToFinalize(db, audit), /foto/);
+  db.query = async () => ({ rows: [{ expected: 3, answered: 3, nc_without_evidence: 0 }] });
+  assert.equal((await validateAuditReadyToFinalize(db, audit)).answered, 3);
+});
 
 test("offline answers accept upsert and reject unsupported operations", () => {
   const operation = { clientOperationId: "operation-1", entityType: "audit_answer", operation: "upsert", payload: { answer: "C" } };
@@ -102,8 +113,9 @@ test("acknowledgement is committed in the same transaction as audit finalization
     async query(sql) {
       calls.push(sql);
       if (sql.startsWith("select * from sync_queue")) return { rows: [op] };
-      if (sql.startsWith("select a.* from audits")) return { rows: [{ id: "audit-1", status: "in_progress" }] };
-      if (sql.startsWith("update audits")) return { rows: [{ id: "audit-1", status: "finished", final_score: 8 }] };
+      if (sql.startsWith("select a.* from audits")) return { rows: [{ id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1", cycle_id: "cycle-1", auditor_user_id: "user-1", status: "in_progress" }] };
+      if (sql.includes("as expected") && sql.includes("as answered")) return { rows: [{ expected: 1, answered: 1, nc_without_evidence: 0 }] };
+      if (sql.startsWith("update audits")) return { rows: [{ id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1", cycle_id: "cycle-1", auditor_user_id: "user-1", status: "finished", final_score: 8 }] };
       if (sql.startsWith("update sync_queue set status='synced'")) return { rows: [{ ...op, status: "synced" }] };
       return { rows: [] };
     },
@@ -137,6 +149,7 @@ test("failed migration rolls back and releases the cross-process lock", async ()
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {
   const bytes = Buffer.from("test evidence content");
   let saved = null;
+  let savedContent = null;
   const calls = [];
   const client = {
     async query(sql, parameters) {
@@ -146,6 +159,7 @@ test("photo upload stores actual bytes, validates retransmission and cleans temp
         saved = { id: "file-1", checksum: parameters[5], storage_key: parameters[5], file_size_bytes: parameters[8] };
         return { rows: [saved] };
       }
+      if (sql.startsWith("insert into stored_file_contents")) savedContent = parameters[1];
       return { rows: [] };
     },
     release() {}
@@ -158,12 +172,10 @@ test("photo upload stores actual bytes, validates retransmission and cleans temp
   };
   try {
     const first = await storage.upload(pool, request(bytes), { id: "user-1" }, { id: "device-1" }, "unit-1");
-    assert.deepEqual(await fs.readFile(storage.storedPath(first.storage_key)), bytes);
+    assert.deepEqual(savedContent, bytes);
     const second = await storage.upload(pool, request(bytes), { id: "user-1" }, { id: "device-1" }, "unit-1");
     assert.equal(second.id, first.id);
     assert.equal(calls.filter((sql) => sql.startsWith("insert into stored_files")).length, 1);
     await assert.rejects(storage.upload(pool, request(Buffer.from("changed")), { id: "user-1" }, { id: "device-1" }, "unit-1"), /conteudo diferente/);
-  } finally {
-    if (saved) await fs.unlink(storage.storedPath(saved.storage_key)).catch(() => {});
-  }
+  } finally { assert.equal(calls.includes("rollback"), true); }
 });

@@ -184,7 +184,18 @@ async function main() {
     assert.equal(resolution.original.status, "ignored");
     assert.equal(resolution.replacement.status, "synced");
     assert.equal(resolution.replacement.result_payload.answer.answer, "C");
-    const finalization = { clientOperationId: "finish-" + localAuditId, clientSequence: 5, entityType: "audit", operation: "finalize", dependsOn: [photoOp.clientOperationId], payload: { localAuditId } };
+    const areaChecklist = offlineBootstrap.checklists.find((item) => item.area_id === area.id);
+    const remainingAreaAnswers = areaChecklist.blocks.flatMap((block) => block.questions)
+      .filter((item) => item.id !== question.id)
+      .map((item, index) => ({
+        clientOperationId: `answer-${localAuditId}-${index}`,
+        clientSequence: 5 + index,
+        entityType: "audit_answer",
+        operation: "upsert",
+        payload: { localAuditId, questionId: item.id, answer: "C" }
+      }));
+    await json("/api/sync-queue", { deviceUid, operations: remainingAreaAnswers }, "POST", token);
+    const finalization = { clientOperationId: "finish-" + localAuditId, clientSequence: 5 + remainingAreaAnswers.length, entityType: "audit", operation: "finalize", dependsOn: [photoOp.clientOperationId, ...remainingAreaAnswers.map((item) => item.clientOperationId)], payload: { localAuditId } };
     const finished = await json("/api/sync-queue", { deviceUid, operations: [finalization] }, "POST", token);
     assert.equal(finished.complete, true);
     assert.equal(finished.operations[0].result_payload.audit.status, "finished");
@@ -195,10 +206,24 @@ async function main() {
     const residueChecklist = offlineBootstrap.checklists.find((item) => item.area_id === residueArea.id);
     const residueQuestion = residueChecklist.blocks.flatMap((block) => block.questions)[0];
     const ncAuditId = crypto.randomUUID();
-    const ncCreate = { clientOperationId: "create-" + ncAuditId, clientSequence: 6, entityType: "audit", operation: "create", payload: { localAuditId: ncAuditId, areaSlug: residueArea.slug } };
-    const ncAnswer = { clientOperationId: "answer-" + ncAuditId, clientSequence: 7, entityType: "audit_answer", operation: "upsert", dependsOn: [ncCreate.clientOperationId], payload: { localAuditId: ncAuditId, questionId: residueQuestion.id, answer: "NC", notes: "Recipiente sem identificação" } };
-    const ncFinish = { clientOperationId: "finish-" + ncAuditId, clientSequence: 8, entityType: "audit", operation: "finalize", dependsOn: [ncAnswer.clientOperationId], payload: { localAuditId: ncAuditId, generationMode: "automatic" } };
-    const ncFinished = await json("/api/sync-queue", { deviceUid, operations: [ncCreate, ncAnswer, ncFinish] }, "POST", token);
+    const ncCreate = { clientOperationId: "create-" + ncAuditId, clientSequence: 100, entityType: "audit", operation: "create", payload: { localAuditId: ncAuditId, areaSlug: residueArea.slug } };
+    const residueQuestions = residueChecklist.blocks.flatMap((block) => block.questions);
+    const residueAnswers = residueQuestions.map((item, index) => ({
+      clientOperationId: `answer-${ncAuditId}-${index}`,
+      clientSequence: 101 + index,
+      entityType: "audit_answer",
+      operation: "upsert",
+      dependsOn: [ncCreate.clientOperationId],
+      payload: { localAuditId: ncAuditId, questionId: item.id, answer: item.id === residueQuestion.id ? "NC" : "C", notes: item.id === residueQuestion.id ? "Recipiente sem identificação" : null }
+    }));
+    await json("/api/sync-queue", { deviceUid, operations: [ncCreate, ...residueAnswers] }, "POST", token);
+    const ncHeaders = { ...headers, "x-local-file-id": "photo-nc", "x-file-name": "photo-nc.png" };
+    const ncUpload = await fetch(base + "/api/offline-files", { method: "POST", headers: ncHeaders, body: bytes });
+    assert.ok(ncUpload.ok);
+    const ncPhoto = { clientOperationId: "photo-" + ncAuditId, clientSequence: 101 + residueAnswers.length, entityType: "stored_file", operation: "upload", dependsOn: [residueAnswers[0].clientOperationId], payload: { localAuditId: ncAuditId, localFileId: "photo-nc", entityType: "audit_answer", questionId: residueQuestion.id } };
+    await json("/api/sync-queue", { deviceUid, operations: [ncPhoto] }, "POST", token);
+    const ncFinish = { clientOperationId: "finish-" + ncAuditId, clientSequence: 102 + residueAnswers.length, entityType: "audit", operation: "finalize", dependsOn: [ncPhoto.clientOperationId, ...residueAnswers.map((item) => item.clientOperationId)], payload: { localAuditId: ncAuditId, generationMode: "automatic" } };
+    const ncFinished = await json("/api/sync-queue", { deviceUid, operations: [ncFinish] }, "POST", token);
     assert.equal(ncFinished.complete, true);
     const generatedPayload = ncFinished.operations.find((item) => item.client_operation_id === ncFinish.clientOperationId).result_payload;
     assert.equal(generatedPayload.actionPlans.length, 1);
@@ -255,12 +280,14 @@ async function main() {
     }
     assert.equal(completed.status, "completed", completed.error_message || "PDF generation did not complete");
     const reports = await json("/api/reports", null, "GET", token);
-    assert.equal(reports.reports.length, 1);
-    const pdfResponse = await fetch(base + reports.reports[0].file_url, { headers: { cookie: authenticatedCookie } });
+    assert.ok(reports.reports.length >= 2);
+    const areaReport = reports.reports.find((item) => item.area_id === area.id);
+    assert.ok(areaReport);
+    const pdfResponse = await fetch(base + areaReport.file_url, { headers: { cookie: authenticatedCookie } });
     const pdf = Buffer.from(await pdfResponse.arrayBuffer());
     assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
     const versions = await json("/api/reports/" + completed.report_id + "/versions", null, "GET", token);
-    assert.equal(versions.versions.length, 1);
+    assert.ok(versions.versions.length >= 1);
     const notifications = await json("/api/notifications", null, "GET", token);
     assert.ok(notifications.notifications.some((item) => item.notification_type === "report_ready"));
     console.log("PASS: real PostgreSQL migrations, 437 checklist questions, user/session APIs, offline audit/answer application, retransmission, actual photo upload/link/download, conflict resolution, finalization, configuration/document APIs, real PDF generation, report history and automatic notification.");

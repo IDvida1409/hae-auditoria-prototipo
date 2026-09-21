@@ -308,7 +308,10 @@ let operationalActionPlans = null;
 let operationalDashboard = null;
 let operationalReports = null;
 let operationalAudits = null;
+let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
+const pendingAuditStarts = new Map();
+const pendingAuditWrites = new Map();
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -565,6 +568,21 @@ function setOfflineNotice(detail) {
 }
 
 window.addEventListener("offline:sync-status", (event) => setOfflineNotice(event.detail || {}));
+window.addEventListener("offline:sync-complete", async (event) => {
+  const finalized = (event.detail?.results || []).find((result) => result?.entityType === "audit" && result?.audit?.status === "finished");
+  if (!finalized) return;
+  const area = uiAreaFromBackendId(finalized.audit.area_id);
+  if (area) {
+    state.offlineAudits = {
+      ...state.offlineAudits,
+      [area.id]: { ...state.offlineAudits?.[area.id], status: "finished", serverId: finalized.audit.id, finishedAt: finalized.audit.finished_at }
+    };
+    saveState();
+  }
+  await Promise.all([loadOperationalData(), loadAccessNotifications()]).catch(() => {});
+  render();
+  setTimeout(() => loadOperationalData().then(() => render()).catch(() => {}), 6000);
+});
 window.addEventListener("offline", () => setOfflineNotice({ phase: "offline", pending: offlineNotice?.pending || 0 }));
 window.addEventListener("online", () => {
   if (offlineNotice?.phase === "offline") {
@@ -673,7 +691,7 @@ const monthIds = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set",
 const today = new Date();
 const currentMonthId = `${monthIds[today.getMonth()]}/${String(today.getFullYear()).slice(-2)}`;
 const futureMonthIds = new Set(months.map(([id]) => id).filter((id) => months.findIndex(([month]) => month === id) > months.findIndex(([month]) => month === currentMonthId)));
-const stateStorageKey = "hae-auditoria-state-v3";
+const stateStorageKey = "hae-auditoria-state-v4";
 
 const monthLines = Object.fromEntries(months.map(([id]) => [id, null]));
 
@@ -805,6 +823,7 @@ function defaultState() {
     reportKind: "monthly",
     answers: {},
     auditNotes: {},
+    auditEvidence: {},
     offlineAudits: {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -837,7 +856,8 @@ function defaultState() {
     settingsMenuExpanded: false,
     reportFolderArea: null,
     reportPdfSource: false,
-    leaveAuditConfirm: false
+    leaveAuditConfirm: false,
+    auditFinalizeModal: false
   };
 }
 
@@ -853,6 +873,7 @@ function persistableState(source = state) {
     reportKind: source.reportKind,
     answers: source.answers,
     auditNotes: source.auditNotes,
+    auditEvidence: source.auditEvidence,
     offlineAudits: source.offlineAudits,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
@@ -894,6 +915,7 @@ function normalizeSavedState(saved = {}) {
     reportKind: merged.reportKind === "comparison" ? "comparison" : "monthly",
     answers: merged.answers && typeof merged.answers === "object" ? merged.answers : {},
     auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
+    auditEvidence: merged.auditEvidence && typeof merged.auditEvidence === "object" ? merged.auditEvidence : {},
     offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -924,7 +946,8 @@ function normalizeSavedState(saved = {}) {
     actionDeadlineModal: false,
     feedbackExpanded: false,
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
-    leaveAuditConfirm: false
+    leaveAuditConfirm: false,
+    auditFinalizeModal: false
   };
 }
 
@@ -951,8 +974,6 @@ let state = readSavedState();
 const hashView = viewFromHash();
 if (hashView) state.view = hashView;
 if (state.view === "settings") state.settingsMenuExpanded = true;
-let backendReady = false;
-let backendSaveTimer = null;
 let offlineBootstrap = null;
 let backendQuestionIds = new Map();
 
@@ -963,41 +984,7 @@ function saveState() {
   try {
     localStorage.setItem(stateStorageKey, JSON.stringify(snapshot));
   } catch {
-    // O navegador pode bloquear storage em alguns modos; nesse caso a API ainda tenta salvar.
-  }
-
-  if (!backendReady || location.protocol === "file:" || currentAccessUser?.role !== "admin") return;
-  clearTimeout(backendSaveTimer);
-  backendSaveTimer = setTimeout(() => {
-    fetch(apiUrl("/api/state"), {
-      method: "PUT",
-      credentials: apiCredentials,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ state: snapshot })
-    }).catch(() => {});
-  }, 250);
-}
-
-async function hydrateStateFromBackend() {
-  if (location.protocol === "file:") return;
-  try {
-    const response = await fetch(apiUrl("/api/state"), { cache: "no-store", credentials: apiCredentials });
-    if (!response.ok) return;
-    const payload = await response.json();
-    if (payload?.state) {
-      state = normalizeSavedState({
-        ...persistableState(),
-        ...payload.state,
-        planningDataVersion: payload.state.planningDataVersion
-      });
-      const hashView = viewFromHash();
-      if (hashView) state.view = hashView;
-      applyCurrentUserScope();
-      render({ skipSave: true });
-    }
-    backendReady = true;
-  } catch {
-    backendReady = false;
+    // O IndexedDB mantém a fila operacional mesmo se o navegador recusar preferências locais.
   }
 }
 
@@ -1091,6 +1078,9 @@ function planningStatusFromBackend(status) {
   return {
     draft: "awaiting_send",
     generated: "awaiting_send",
+    under_auditor_review: "awaiting_send",
+    reviewed: "awaiting_send",
+    ready_to_send: "awaiting_send",
     available_to_responsible: "in_progress",
     sent_to_responsible: "in_progress",
     acknowledged: "in_progress",
@@ -1120,6 +1110,15 @@ async function loadOperationalData() {
   operationalDashboard = dashboard;
   operationalReports = reports.reports || [];
   operationalAudits = audits.audits || [];
+  const latestFinished = new Map();
+  for (const audit of operationalAudits) {
+    if (audit.status === "finished" && !latestFinished.has(audit.area_id)) latestFinished.set(audit.area_id, audit);
+  }
+  const detailEntries = await Promise.all([...latestFinished.values()].map(async (audit) => {
+    try { return [String(audit.area_id), await operationalRequest(`audits/${audit.id}`)]; }
+    catch { return [String(audit.area_id), null]; }
+  }));
+  operationalAuditDetails = new Map(detailEntries.filter(([, detail]) => detail));
   const scores = new Map((dashboard.scores || []).map((row) => [String(row.area_id), {
     score: Number(row.score),
     audits: Number(row.audits || 0)
@@ -1140,33 +1139,63 @@ async function loadOperationalData() {
   monthLines[currentMonthId] = areaData.some((area) => area.score != null)
     ? areaData.map((area) => area.score)
     : null;
-  operationalActionPlans = (plans.actionPlans || []).map((plan) => {
+  const groupedPlans = new Map();
+  for (const plan of plans.actionPlans || []) {
     const area = uiAreaFromBackendId(plan.area_id) || areaData.find((item) => item.id === plan.area_slug);
     if (area) {
       area.pending += ["approved", "cancelled"].includes(plan.status) ? 0 : 1;
       area.ncs += 1;
       if (["high", "critical"].includes(plan.locked_risk_snapshot)) area.critical += 1;
     }
-    return {
-      id: plan.id,
-      documentId: plan.action_plan_document_id,
+    if (!area) continue;
+    const groupId = plan.action_plan_document_id || plan.id;
+    const item = {
+      actionPlanId: plan.id,
       documentItemId: plan.document_item_id,
       feedbackId: plan.last_feedback_id,
+      status: planningStatusFromBackend(plan.status),
+      question: plan.locked_question_snapshot || plan.problem_description || plan.title,
+      observation: plan.locked_audit_notes_snapshot || "",
+      correction: plan.corrective_action || plan.automatic_correction_text || "Corrigir a não conformidade e anexar a evidência.",
+      riskLevel: plan.locked_risk_snapshot || "low",
+      evidenceFileIds: plan.locked_original_evidence_file_ids || [],
+      dueAt: plan.due_at,
+      deadlineRequested: Boolean(plan.deadline_requested_at),
+      requestedDue: plan.requested_due_at,
+      deadlineReason: plan.deadline_request_reason || ""
+    };
+    const existing = groupedPlans.get(groupId);
+    if (existing) {
+      existing.backendItems.push(item);
+      existing.ncs = existing.backendItems.length;
+      if (item.status === "pending_review") existing.status = "pending_review";
+      existing.deadlineRequested ||= item.deadlineRequested;
+      continue;
+    }
+    groupedPlans.set(groupId, {
+      id: groupId,
+      documentId: plan.action_plan_document_id,
       area,
-      title: plan.title || "Plano de ação",
+      title: plan.public_code || `Plano de ação - ${area.name}`,
       block: plan.problem_description || "Não conformidade da auditoria",
       owner: plan.assigned_to_name || area?.name || "Responsável da área",
+      auditorName: plan.created_by_name || "Auditor não identificado",
+      publicCode: plan.public_code || "",
+      generatedAt: plan.document_generated_at || plan.created_at,
+      generationMode: plan.generation_mode,
       status: planningStatusFromBackend(plan.status),
       due: shortDate(plan.due_at),
       ncs: 1,
+      backendItems: [item],
       attempts: Number(plan.resubmission_attempt || 0),
       source: plan.creation_source === "audit_nc" ? "Auditoria" : "Plano de ação",
-      deadlineRequested: Boolean(plan.deadline_requested_at),
+      deadlineRequested: item.deadlineRequested,
       requestedDue: shortDate(plan.requested_due_at),
       deadlineReason: plan.deadline_request_reason || "",
       itemDecisions: {}
-    };
-  }).filter((row) => row.area);
+    });
+  }
+  operationalActionPlans = [...groupedPlans.values()];
 }
 
 function planFromNotificationEntity(entityId) {
@@ -1175,17 +1204,40 @@ function planFromNotificationEntity(entityId) {
 
 function localAuditFor(areaId) {
   const audit = state.offlineAudits?.[areaId];
-  return audit?.status === "in_progress" ? audit : null;
+  return audit?.status === "in_progress" && auditIsCurrentMonth(audit.startedAt) ? audit : null;
+}
+
+function auditIsCurrentMonth(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
 async function ensureLocalAudit(areaId) {
   const existing = localAuditFor(areaId);
   if (existing) return existing;
+  if (pendingAuditStarts.has(areaId)) return pendingAuditStarts.get(areaId);
+  const startPromise = createLocalAudit(areaId);
+  pendingAuditStarts.set(areaId, startPromise);
+  try {
+    return await startPromise;
+  } finally {
+    pendingAuditStarts.delete(areaId);
+  }
+}
+
+async function createLocalAudit(areaId) {
   if (!window.HAE_OFFLINE) throw new Error("Armazenamento offline indisponível neste navegador.");
   if (!offlineBootstrap) await loadOfflineBootstrap();
   const backendArea = (offlineBootstrap?.areas || []).find((area) => area.slug === areaId);
   const backendChecklist = backendArea?.checklist || (offlineBootstrap?.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea?.id));
   if (!backendChecklist) throw new Error("Checklist ainda não foi preparado neste aparelho. Conecte-se uma vez e tente novamente.");
+  if (state.offlineAudits?.[areaId] && !auditIsCurrentMonth(state.offlineAudits[areaId].startedAt)) {
+    delete state.answers[areaId];
+    delete state.auditNotes[areaId];
+    delete state.auditEvidence[areaId];
+  }
   const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString() };
   await window.HAE_OFFLINE.queueAuditStart({
@@ -1202,16 +1254,32 @@ async function ensureLocalAudit(areaId) {
 }
 
 async function queueChecklistAnswer(areaId, questionId, answer, notes = "") {
-  const audit = await ensureLocalAudit(areaId);
-  const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
-  if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
-  return window.HAE_OFFLINE.queueAuditAnswer({
-    localAuditId: audit.localAuditId,
-    questionId: backendQuestionId,
-    answer,
-    notes: notes.trim() || null,
-    answeredAt: new Date().toISOString()
+  const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
+  const write = previous.catch(() => {}).then(async () => {
+    const audit = await ensureLocalAudit(areaId);
+    const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+    if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
+    return window.HAE_OFFLINE.queueAuditAnswer({
+      localAuditId: audit.localAuditId,
+      questionId: backendQuestionId,
+      answer,
+      notes: notes.trim() || null,
+      answeredAt: new Date().toISOString()
+    });
   });
+  pendingAuditWrites.set(areaId, write);
+  try {
+    return await write;
+  } finally {
+    if (pendingAuditWrites.get(areaId) === write) pendingAuditWrites.delete(areaId);
+  }
+}
+
+async function waitForAuditWrites(areaId) {
+  const start = pendingAuditStarts.get(areaId);
+  if (start) await start;
+  const write = pendingAuditWrites.get(areaId);
+  if (write) await write;
 }
 
 function formatCurrentDate(date = new Date()) {
@@ -1297,7 +1365,15 @@ function blockSummaries(area) {
 }
 
 function questionRowsForArea(area) {
-  const areaAnswers = hasAreaResult(area) ? answersForArea(area.id) : {};
+  const detail = operationalAuditDetails.get(String(area.backendId));
+  const reverseIds = new Map([...backendQuestionIds.entries()]
+    .filter(([key]) => key.startsWith(`${area.id}:`))
+    .map(([key, backendId]) => [String(backendId), key.slice(area.id.length + 1)]));
+  const realAnswers = new Map((detail?.answers || []).map((answer) => [reverseIds.get(String(answer.question_id)), answer]));
+  const filesByAnswer = new Map();
+  for (const file of detail?.files || []) {
+    if (file.entity_type === "audit_answer" && !filesByAnswer.has(String(file.entity_id))) filesByAnswer.set(String(file.entity_id), file.id);
+  }
   const rows = blocksForArea(area).flatMap((block) =>
     (block.questions || []).map((question) => ({
       ...question,
@@ -1307,7 +1383,9 @@ function questionRowsForArea(area) {
   );
   return rows.map((question) => ({
     ...question,
-    answer: areaAnswers[question.id] || "X"
+    answer: realAnswers.get(question.id)?.answer || "X",
+    notes: realAnswers.get(question.id)?.notes || "",
+    evidenceFileId: filesByAnswer.get(String(realAnswers.get(question.id)?.id)) || null
   }));
 }
 
@@ -1358,11 +1436,12 @@ function actionPlansForArea(area) {
 }
 
 function reportResponsibleName(area) {
-  return area.id === "area-residuos" ? "Carlos Teste" : "Liderança da área auditada";
+  if (isAreaResponsible() && canAccessArea(area.id)) return currentAccessUser?.full_name || "Responsável da área";
+  return settingsUsers.find((user) => user.role === "area_responsible" && user.area_name === area.name)?.full_name || "Responsável não atribuído";
 }
 
 function reportAuditorName() {
-  return "Teste 1";
+  return currentAccessUser?.full_name || "Auditor não identificado";
 }
 
 function actionPlanStats(area) {
@@ -3907,12 +3986,7 @@ function reportNcRows(area, limit = 8) {
 }
 
 function reportObservationForQuestion(row) {
-  const text = `${row.text} ${row.blockTitle}`.toLowerCase();
-  if (text.includes("resíduo") || text.includes("lixo")) return "Falha em segregação ou armazenamento temporário.";
-  if (text.includes("validade") || text.includes("documento")) return "Registro pendente ou documento sem atualização.";
-  if (text.includes("temperatura") || text.includes("conservação")) return "Controle de tempo e temperatura a regularizar.";
-  if (text.includes("higien")) return "Rotina de higienização sem evidência suficiente.";
-  return "NC identificada durante a inspeção do setor.";
+  return row.notes || "Sem observação adicional registrada.";
 }
 
 function reportPlanForQuestion(area, row, index) {
@@ -3943,15 +4017,11 @@ function reportNcDetailRows(area) {
 }
 
 function reportEvidenceImageForQuestion(row) {
-  const text = `${row.text} ${row.blockTitle}`.toLowerCase();
-  if (text.includes("utens") || text.includes("equipamento") || text.includes("móveis")) {
-    return "assets/report-evidence-utensilios.png?v=monthly-evidence-1";
-  }
-  return "assets/report-evidence-utensilios.png?v=monthly-evidence-1";
+  return row.evidenceFileId ? apiUrl(`/api/files/${row.evidenceFileId}/content`) : null;
 }
 
 function reportEvidenceGrid(area) {
-  const rows = reportNcRows(area, 4);
+  const rows = reportNcRows(area, 4).filter((row) => row.evidenceFileId);
   if (!rows.length) return `<p class="report-muted">Sem evidências fotográficas vinculadas para esta área.</p>`;
   return `
     <div class="${rows.length === 1 ? "report-evidence-list" : "report-evidence-grid"}">
@@ -4807,11 +4877,11 @@ function areaDetailPage() {
           <section class="surface detail-side-card">
             <h3>Evidências fotográficas</h3>
             <div class="photo-grid">
-              ${areaNcRows.slice(0, 3)
+              ${areaNcRows.filter((row) => row.evidenceFileId).slice(0, 3)
                 .map((row) => `<button class="photo-thumb has-photo" data-open-evidence-gallery type="button" title="Ver evidência do item ${String(row.number).padStart(2, "0")}"><img src="${reportEvidenceImageForQuestion(row)}" alt="Evidência do item ${String(row.number).padStart(2, "0")}" /></button>`)
                 .join("")}
             </div>
-            <button class="link-inline" data-open-evidence-gallery type="button">Ver evidências ${svgIcon("arrow")}</button>
+            ${areaNcRows.some((row) => row.evidenceFileId) ? `<button class="link-inline" data-open-evidence-gallery type="button">Ver evidências ${svgIcon("arrow")}</button>` : '<p class="small-muted">Nenhuma foto vinculada.</p>'}
           </section>
           <section class="surface detail-side-card">
             <h3>Plano de ação</h3>
@@ -4848,7 +4918,7 @@ function areaDetailPage() {
         <div class="detail-modal-backdrop">
           <section class="detail-modal evidence-gallery-modal surface" role="dialog" aria-modal="true" aria-label="Evidências fotográficas da área">
             <div class="detail-modal-head"><div><span class="modal-kicker">${escapeHtml(area.name)}</span><h2>Evidências fotográficas</h2><p>${areaNcRows.length} registros vinculados às não conformidades.</p></div><button class="panel-close" data-close-evidence-gallery title="Fechar">${icons.close}</button></div>
-            <div class="detail-modal-body"><div class="detail-evidence-grid">${areaNcRows.map((row) => `<article class="detail-evidence-card"><img src="${reportEvidenceImageForQuestion(row)}" alt="Evidência do item ${String(row.number).padStart(2, "0")}" /><div><strong>Item ${String(row.number).padStart(2, "0")} · ${escapeHtml(row.blockTitle)}</strong><p>${escapeHtml(reportFullText(row.text))}</p><span>Risco ${(riskMeta[row.riskLevel] || riskMeta.none).label}</span></div></article>`).join("")}</div></div>
+            <div class="detail-modal-body"><div class="detail-evidence-grid">${areaNcRows.filter((row) => row.evidenceFileId).map((row) => `<article class="detail-evidence-card"><img src="${reportEvidenceImageForQuestion(row)}" alt="Evidência do item ${String(row.number).padStart(2, "0")}" /><div><strong>Item ${String(row.number).padStart(2, "0")} · ${escapeHtml(row.blockTitle)}</strong><p>${escapeHtml(reportFullText(row.text))}</p><span>Risco ${(riskMeta[row.riskLevel] || riskMeta.none).label}</span></div></article>`).join("")}</div></div>
           </section>
         </div>
       ` : ""}
@@ -4914,16 +4984,26 @@ function startAuditPage() {
         <div class="start-grid">
           ${areaData
             .map(
-              (area) => `
+              (area) => {
+                const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
+                const remoteAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) && auditIsCurrentMonth(audit.started_at || audit.created_at));
+                const localAudit = auditIsCurrentMonth(state.offlineAudits?.[area.id]?.startedAt) ? state.offlineAudits[area.id] : null;
+                const finished = remoteAudit?.status === "finished" || localAudit?.status === "finished";
+                const pendingSync = localAudit?.status === "finalizing";
+                const onOtherDevice = remoteAudit?.status === "in_progress" && localAudit?.status !== "in_progress";
+                const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
+                const label = finished ? "Auditoria finalizada" : pendingSync ? "Aguardando sincronização" : onOtherDevice ? "Em andamento em outro aparelho" : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
+                return `
                 <article class="start-tile">
                   <img src="assets/icons/${area.icon}" alt="" />
                   <div>
                     <h3>${area.name}</h3>
                     <p>${area.subtitle}</p>
                   </div>
-                  <button class="outline-btn" data-start-area="${area.id}">Iniciar auditoria ${svgIcon("arrow")}</button>
+                  <button class="outline-btn" ${finished || pendingSync || onOtherDevice ? "disabled" : `data-start-area="${area.id}"`}>${label} ${finished || pendingSync || onOtherDevice ? "" : svgIcon("arrow")}</button>
                 </article>
-              `
+              `;
+              }
             )
             .join("")}
         </div>
@@ -4942,6 +5022,7 @@ function startAuditPage() {
 
 function checklistPage() {
   const area = areaById(state.selectedArea);
+  const areaResponsibleName = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id)?.responsible_name || "Responsável não atribuído";
   const blocks = blocksForArea(area);
   const questions = questionsForArea(area);
   const areaAnswers = answersForArea(area.id);
@@ -4962,6 +5043,12 @@ function checklistPage() {
   const showAllBlocks = Boolean(state.checklistBlocksOpen);
   const sidebarBlocks = showAllBlocks ? blocks : [currentBlock];
   const blocksButtonLabel = showAllBlocks ? "Fechar blocos" : "Ver todos os blocos";
+  const currentBlockIndex = blocks.findIndex((block) => block.id === currentBlock?.id);
+  const nextIncompleteBlock = blocks.slice(currentBlockIndex + 1).find((block) => (block.questions || []).some((question) => !areaAnswers[question.id]))
+    || blocks.find((block, index) => index !== currentBlockIndex && (block.questions || []).some((question) => !areaAnswers[question.id]));
+  const allAnswered = answeredCount === questions.length && questions.length > 0;
+  const missingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && !state.auditEvidence?.[area.id]?.[question.id]).length;
+  const readyToFinalize = allAnswered && missingEvidenceCount === 0;
 
   if (!blocks.length) {
     return `
@@ -5056,7 +5143,7 @@ function checklistPage() {
                       <div class="action-form">
                         <div class="note-field"><label>O que deve ser corrigido</label><input placeholder="Ex.: item fora do padrão" /></div>
                         <div class="note-field"><label>Ação necessária</label><input placeholder="Ex.: corrigir e registrar evidência" /></div>
-                        <div class="note-field"><label>Responsável</label><input placeholder="Nome do responsável" /></div>
+                        <div class="note-field"><label>Responsável</label><input value="${escapeHtml(areaResponsibleName)}" readonly /></div>
                         <div class="note-field"><label>Prazo</label><input type="date" /></div>
                       </div>
                     </div>
@@ -5069,14 +5156,16 @@ function checklistPage() {
             <button class="outline-btn" data-checklist-page="${pageIndex - 1}" ${pageIndex === 0 ? "disabled" : ""}><span class="desktop-action-label">Perguntas anteriores</span><span class="mobile-action-label">Anteriores</span></button>
             <span class="audit-page-summary"><b>${pageStart}-${pageEnd}</b> de ${blockQuestions.length}</span>
             ${pageIndex >= totalPages - 1
-              ? '<button class="outline-btn audit-end-btn" type="button" disabled>Fim do bloco</button>'
+              ? nextIncompleteBlock
+                ? `<button class="primary-btn" data-next-checklist-block="${nextIncompleteBlock.id}">Próximo bloco ${svgIcon("arrow")}</button>`
+                : '<button class="outline-btn audit-end-btn" type="button" disabled>Fim do checklist</button>'
               : `<button class="primary-btn" data-checklist-page="${pageIndex + 1}"><span class="desktop-action-label">Próximas perguntas</span><span class="mobile-action-label">Próximas</span> ${svgIcon("arrow")}</button>`}
           </section>
         </div>
         <section class="audit-footer surface" style="margin-top:12px">
           <button class="outline-btn" data-request-leave-audit><span class="desktop-action-label">Voltar para áreas</span><span class="mobile-action-label">Áreas</span></button>
           <span class="audit-total-summary"><b>${questions.length}</b> perguntas <i>•</i> <b>${blocks.length}</b> blocos</span>
-          <button class="primary-btn" data-finalize-audit><span class="desktop-action-label">Finalizar auditoria</span><span class="mobile-action-label">Finalizar</span> ${svgIcon("arrow")}</button>
+          <button class="primary-btn" data-finalize-audit ${readyToFinalize ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Anexe ${missingEvidenceCount} foto(s) de NC` : "Finalizar auditoria"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `${missingEvidenceCount} foto(s)` : "Finalizar"}</span> ${readyToFinalize ? svgIcon("arrow") : ""}</button>
         </section>
       </div>
       ${showAllBlocks ? '<button class="mobile-blocks-backdrop" data-checklist-blocks type="button" aria-label="Fechar lista de blocos"></button>' : ""}
@@ -5115,6 +5204,19 @@ function checklistPage() {
             <div>
               <button class="outline-btn" data-cancel-leave-audit>Continuar auditoria</button>
               <button class="primary-btn" data-confirm-leave-audit>Voltar para áreas</button>
+            </div>
+          </section>
+        </div>
+      ` : ""}
+      ${state.auditFinalizeModal ? `
+        <div class="leave-audit-backdrop">
+          <section class="leave-audit-modal audit-finalize-modal surface">
+            <h2>Finalizar auditoria</h2>
+            <p>As respostas e fotos serão confirmadas no servidor antes do fechamento. Como deseja preparar o plano de ação das não conformidades?</p>
+            <div class="audit-finalize-options">
+              <button class="primary-btn" data-confirm-finalize-mode="automatic">Gerar e enviar automaticamente</button>
+              <button class="outline-btn" data-confirm-finalize-mode="automatic_reviewed">Preparar para minha revisão</button>
+              <button class="outline-btn" data-cancel-finalize-audit>Cancelar</button>
             </div>
           </section>
         </div>
@@ -5835,7 +5937,22 @@ function planningPlansTable(rows = planningActionRows(), options = {}) {
   `;
 }
 
-function actionPlanPreviewItems(area, count = 3) {
+function actionPlanPreviewItems(area, count = 3, plan = null) {
+  if (plan?.backendItems?.length) {
+    const riskMap = { low: "baixo", moderate: "moderado", medium: "medio", high: "critico", critical: "critico" };
+    return plan.backendItems.map((item, index) => ({
+      id: item.actionPlanId,
+      actionPlanId: item.actionPlanId,
+      documentItemId: item.documentItemId,
+      feedbackId: item.feedbackId,
+      text: item.question,
+      blockTitle: `Não conformidade ${String(index + 1).padStart(2, "0")}`,
+      riskLevel: riskMap[item.riskLevel] || "baixo",
+      observation: item.observation,
+      correction: item.correction,
+      evidenceFileIds: item.evidenceFileIds || []
+    }));
+  }
   const itemCount = Math.max(1, Math.min(Number(count) || 3, 8));
   const rows = reportNcRows(area, itemCount);
   const fallbacks = questionRowsForArea(area).slice(0, itemCount);
@@ -5843,6 +5960,7 @@ function actionPlanPreviewItems(area, count = 3) {
 }
 
 function actionPlanInstructionFor(row, index) {
+  if (row.correction) return row.correction;
   const instructions = [
     "Realizar a higienização completa do utensílio e revisar a rotina de inspeção antes do uso.",
     "Corrigir a condição identificada, orientar a equipe e registrar a verificação no controle da área.",
@@ -5863,17 +5981,19 @@ function planningItemReview(plan, index) {
 
 function planningDeadlineModal() {
   if (!state.actionDeadlineModal) return "";
+  const plan = planningActionRows().find((row) => row.id === state.planningPlanId);
+  const items = actionPlanPreviewItems(plan?.area, plan?.ncs || 0, plan);
   return `
     <div class="action-plan-modal-backdrop" role="presentation">
       <section class="action-plan-modal surface" role="dialog" aria-modal="true" aria-labelledby="deadline-modal-title">
         <button class="panel-close" data-close-deadline-modal title="Fechar">${icons.close}</button>
         <span class="eyebrow">Solicitação de prazo</span>
         <h2 id="deadline-modal-title">Solicitar alteração do prazo</h2>
-        <p>Explique por que a ação não poderá ser concluída até 15/10/2026. O auditor analisará a justificativa antes de validar uma nova data.</p>
+        <p>Explique por que a ação não poderá ser concluída até ${escapeHtml(plan?.due || "o prazo atual")}. O auditor analisará a justificativa antes de validar uma nova data.</p>
         <div class="action-plan-form-grid">
           <label class="action-plan-field is-wide"><span>Motivo da solicitação</span><select data-deadline-reason-type><option>Manutenção ou obra</option><option>Compra de peça ou equipamento</option><option>Contratação de serviço</option><option>Outro motivo</option></select></label>
-          <label class="action-plan-field"><span>Novo prazo solicitado</span><input data-deadline-date type="date" value="2026-12-15" /></label>
-          <label class="action-plan-field"><span>Item relacionado</span><select data-deadline-item><option value="all">Todos os itens do plano</option><option value="0">NC 01</option><option value="1">NC 02</option><option value="2">NC 03</option></select></label>
+          <label class="action-plan-field"><span>Novo prazo solicitado</span><input data-deadline-date type="date" min="${new Date().toISOString().slice(0, 10)}" /></label>
+          <label class="action-plan-field"><span>Item relacionado</span><select data-deadline-item>${items.map((_, index) => `<option value="${index}">NC ${String(index + 1).padStart(2, "0")}</option>`).join("")}</select></label>
           <label class="action-plan-field is-wide"><span>Justificativa detalhada</span><textarea data-deadline-reason placeholder="Ex.: a substituição da cuba depende da compra da peça e do prazo de instalação do fornecedor."></textarea></label>
           <label class="action-plan-upload is-wide">${svgIcon("document")}<span><strong>Anexar comprovante</strong><small>Orçamento, ordem de serviço, foto ou outro documento</small></span><input type="file" hidden /></label>
         </div>
@@ -5912,7 +6032,7 @@ function planningDecisionModal() {
         <button class="panel-close" data-close-plan-decision title="Fechar">${icons.close}</button>
         <span class="eyebrow">Decisão do auditor</span>
         <h2 id="decision-modal-title">${isDeadline ? "Recusar solicitação de prazo" : isItem ? `Reprovar evidência da NC ${String(Number(itemIndex) + 1).padStart(2, "0")}` : "Reprovar devolutiva"}</h2>
-        <p>${isDeadline ? `Explique por que o novo prazo solicitado para ${escapeHtml(plan.requestedDue || "15/12/2026")} não será aceito.` : isItem ? "Explique exatamente o que está incompleto nesta evidência e o que o responsável deverá corrigir." : "Informe objetivamente o que precisa ser corrigido ou complementado pelo responsável."}</p>
+        <p>${isDeadline ? `Explique por que o novo prazo solicitado para ${escapeHtml(plan.requestedDue || "a data informada")} não será aceito.` : isItem ? "Explique exatamente o que está incompleto nesta evidência e o que o responsável deverá corrigir." : "Informe objetivamente o que precisa ser corrigido ou complementado pelo responsável."}</p>
         <label class="action-plan-field is-wide"><span>Justificativa obrigatória</span><textarea data-plan-decision-reason placeholder="${isDeadline ? "Ex.: o prazo solicitado ultrapassa a próxima auditoria; apresente uma data intermediária e o comprovante do fornecedor." : "Ex.: a evidência não demonstra a correção completa do item e precisa ser refeita."}"></textarea></label>
         <div class="action-plan-modal-error" data-plan-decision-error hidden>Informe a justificativa antes de confirmar.</div>
         <div class="action-plan-modal-actions">
@@ -5935,8 +6055,8 @@ function planningDeadlineRecord(plan, items = []) {
       : ["Aguardando decisão do auditor", "A solicitação ainda não foi aprovada nem recusada.", "warning"];
   return `
     <section class="action-plan-deadline-record">
-      <div class="action-plan-deadline-head"><div>${svgIcon("clock")}<span><small>Solicitação registrada na devolutiva</small><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "15/12/2026")}</strong></span></div><span class="planning-status is-${decisionCopy[2]}">${decisionCopy[0]}</span></div>
-      <div class="action-plan-deadline-grid"><div><span>Observação do responsável</span><p>${escapeHtml(plan.deadlineReason || "Solicito alteração do prazo devido à compra de peça e ao agendamento da manutenção especializada.")}</p></div><div><span>Não conformidade vinculada</span><p>${escapeHtml(linkedLabel)}</p></div></div>
+      <div class="action-plan-deadline-head"><div>${svgIcon("clock")}<span><small>Solicitação registrada na devolutiva</small><strong>Novo prazo solicitado: ${escapeHtml(plan.requestedDue || "Não informado")}</strong></span></div><span class="planning-status is-${decisionCopy[2]}">${decisionCopy[0]}</span></div>
+      <div class="action-plan-deadline-grid"><div><span>Observação do responsável</span><p>${escapeHtml(plan.deadlineReason || "Não informada.")}</p></div><div><span>Não conformidade vinculada</span><p>${escapeHtml(linkedLabel)}</p></div></div>
       ${plan.deadlineRequested ? `<div class="action-plan-deadline-actions"><span>Decisão do auditor sobre esta solicitação</span><div><button class="outline-btn is-danger" data-plan-decision="deadline_rejected" data-plan-id="${escapeHtml(plan.id)}" type="button">Recusar prazo</button><button class="primary-btn" data-plan-decision="deadline_approved" data-plan-id="${escapeHtml(plan.id)}" type="button">Aprovar novo prazo</button></div></div>` : ""}
       ${plan.deadlineDecision ? `<div class="action-plan-decision-note is-${plan.deadlineDecision}"><strong>Decisão do auditor</strong><span>${escapeHtml(decisionCopy[1])}</span>${plan.decisionReason ? `<p><b>Justificativa:</b> ${escapeHtml(plan.decisionReason)}</p>` : ""}</div>` : ""}
     </section>`;
@@ -5972,17 +6092,13 @@ function planningPreviewFooter(plan, itemCount = 0) {
 
 function planningPlanPreview() {
   const plan = planningActionRows().find((row) => row.id === state.planningPlanId) || planningActionRows().find((row) => row.area.id === state.planningAreaId) || planningActionRows()[0];
+  if (!plan) return emptyDataState("Nenhum plano de ação disponível.");
   const area = plan.area;
-  const items = actionPlanPreviewItems(area, plan.ncs);
+  const items = actionPlanPreviewItems(area, plan.ncs, plan);
   const isDraft = plan.status === "awaiting_send";
   const hasResponse = ["pending_review", "approved", "rejected"].includes(plan.status) || plan.deadlineRequested || Boolean(plan.deadlineDecision);
   const effectiveStatus = plan.deadlineRequested ? "extension_requested" : plan.status;
   const [statusLabel, statusTone] = planningStatusMeta(effectiveStatus);
-  const responseCopy = [
-    "A equipe realizou a higienização completa, revisou o utensílio e atualizou a rotina de conferência antes do uso.",
-    "O registro foi corrigido, a liderança orientou o turno e incluiu uma dupla checagem no encerramento.",
-    "O item foi identificado e os demais recipientes do setor foram revisados conforme o padrão orientado."
-  ];
   const responsibleView = isAreaResponsible();
   const acknowledgement = state.actionPlanAcknowledgements?.[plan.id];
   const responsibleResponses = state.actionPlanResponses?.[plan.id] || {};
@@ -5996,23 +6112,40 @@ function planningPlanPreview() {
       </div>
       ${responsibleView ? `<div class="action-plan-editing-note"><strong>Plano disponível para resposta</strong><span>${acknowledgement ? "Ciência confirmada. Preencha as correções e evidências de cada NC." : "Confirme a ciência para liberar o preenchimento."}</span></div>` : isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
-        <header class="action-plan-doc-header"><div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div><div><span>PLANO DE AÇÃO VIGENTE</span><strong>PA-2026-${escapeHtml(area.id.slice(0, 2).toUpperCase())}-${escapeHtml(plan.id.slice(-3).toUpperCase())}</strong></div></header>
-        <section class="action-plan-title-block"><div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano emitido em 20/09/2026 às 16:42 · Auditoria de setembro/2026</p></div><img src="assets/icons/${area.icon}" alt="" /></section>
-        <section class="action-plan-meta-grid"><div><span>Responsável</span><strong>${escapeHtml(plan.owner)}</strong></div><div><span>Auditor</span><strong>teste.01</strong></div><div><span>Emitido em</span><strong>20/09/2026</strong></div><div><span>Prazo atual</span><strong>${escapeHtml(plan.due)}</strong></div></section>
+        <header class="action-plan-doc-header"><div class="action-plan-brand"><img src="assets/idauditor-logo.png" alt="IDAuditor" /><span>Gestão de auditorias</span></div><div><span>PLANO DE AÇÃO VIGENTE</span><strong>${escapeHtml(plan.publicCode || plan.id)}</strong></div></header>
+        <section class="action-plan-title-block"><div><span class="eyebrow">Área auditada</span><h1>${escapeHtml(area.name)}</h1><p>Plano emitido em ${escapeHtml(plan.generatedAt ? new Date(plan.generatedAt).toLocaleString("pt-BR") : "data não registrada")}</p></div><img src="assets/icons/${area.icon}" alt="" /></section>
+        <section class="action-plan-meta-grid"><div><span>Responsável</span><strong>${escapeHtml(plan.owner)}</strong></div><div><span>Auditor</span><strong>${escapeHtml(plan.auditorName)}</strong></div><div><span>Emitido em</span><strong>${escapeHtml(plan.generatedAt ? new Date(plan.generatedAt).toLocaleDateString("pt-BR") : "Não registrado")}</strong></div><div><span>Prazo atual</span><strong>${escapeHtml(plan.due)}</strong></div></section>
         <section class="action-plan-instructions"><div class="action-plan-section-icon">${svgIcon("idea")}</div><div><h2>Como responder este plano</h2><ol><li>Leia cada não conformidade e a orientação registrada pelo auditor.</li><li>Realize a correção e descreva objetivamente o que foi feito.</li><li>Anexe uma foto tirada agora ou escolha um arquivo do aparelho.</li><li>Se o prazo não for suficiente, solicite uma nova data vinculada à NC correspondente.</li><li>Revise todas as respostas antes de assinar e enviar a devolutiva.</li></ol></div></section>
-        <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : "25 dias"}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
+        <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : escapeHtml(plan.due || "Não definido")}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(index === 0 ? "critico" : row.riskLevel)}</div><div class="action-plan-nc-body"><figure class="action-plan-source-photo crop-${index + 1}"><img src="assets/report-evidence-utensilios.png?v=monthly-evidence-1" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure><div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(reportObservationForQuestion(row))}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : hasResponse ? escapeHtml(responseCopy[index % responseCopy.length]) : ""}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName ? `Evidência: ${escapeHtml(responsibleResponses[index].evidenceName)}` : "Nenhuma evidência selecionada"}</small>` : hasResponse ? `<figure class="action-plan-return-evidence"><img src="assets/report-evidence-utensilios.png" alt="Evidência enviada pelo responsável" /><figcaption>Evidência enviada · 19/09/2026</figcaption></figure>` : `<small class="action-plan-awaiting-copy">A evidência será adicionada pelo responsável após o envio.</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${hasResponse ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : ""}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName ? `Evidência: ${escapeHtml(responsibleResponses[index].evidenceName)}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${hasResponse ? "Devolutiva recebida e disponível para análise." : "A evidência será adicionada pelo responsável após o envio."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
-        <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido e assinado por</span><div class="action-plan-auditor-signature"><strong>teste.01</strong><span>Auditor responsável · Administrador</span><small>Assinatura eletrônica registrada em 20/09/2026 às 16:42</small></div></div>${acknowledgement || hasResponse ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(currentAccessUser?.full_name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement?.signedAtLabel || "19/09/2026 às 14:13")}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito automaticamente quando o responsável confirmar o recebimento.</small></div>`}</section>
+        <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido por</span><div class="action-plan-auditor-signature"><strong>${escapeHtml(plan.auditorName)}</strong><span>Auditor responsável</span><small>Registro autenticado no sistema</small></div></div>${acknowledgement ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(acknowledgement.name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement.signedAtLabel)}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito quando o responsável confirmar o recebimento.</small></div>`}</section>
         ${responsibleView ? responsiblePlanFooter(plan, items) : planningPreviewFooter(plan, items.length)}
       </article>
       ${planningDeadlineModal()}
       ${planningDecisionModal()}
       ${responsibleAcknowledgementModal(plan)}
     </div>`;
+}
+
+async function savePlanningDraft(plan) {
+  if (!plan?.documentId || !plan.backendItems?.length) throw new Error("Plano não vinculado ao banco de dados.");
+  const cards = [...document.querySelectorAll(".action-plan-preview-shell .action-plan-nc-card")];
+  if (cards.length !== plan.backendItems.length) throw new Error("Os itens do plano não foram carregados por completo.");
+  const items = cards.map((card, index) => {
+    const fields = card.querySelectorAll(".action-plan-auditor-copy textarea");
+    return {
+      itemId: plan.backendItems[index].documentItemId,
+      auditorNotes: fields[0]?.value.trim() || "",
+      requiredCorrection: fields[1]?.value.trim() || ""
+    };
+  });
+  if (items.some((item) => !item.itemId || !item.requiredCorrection)) throw new Error("Preencha a ação orientada de cada NC.");
+  await operationalRequest(`action-plan-documents/${plan.documentId}/items`, { method: "PATCH", body: JSON.stringify({ items }) });
+  await loadOperationalData();
 }
 
 function planningPlansContent() {
@@ -6162,7 +6295,7 @@ function setPlanningNotice(message = "") {
 
 function applyPlanningDecision(plan, decision, reason = "") {
   if (decision === "approved" || decision === "rejected") {
-    updatePlanningPlan(plan.id, { status: decision, decisionReason: reason, source: "Decidido em 20/09/2026" });
+    updatePlanningPlan(plan.id, { status: decision, decisionReason: reason, source: `Decidido em ${new Date().toLocaleString("pt-BR")}` });
     setPlanningNotice(`Devolutiva de ${plan.area.name} ${decision === "approved" ? "aprovada e encerrada" : "reprovada e devolvida com justificativa"}.`);
     addPlanningNotification(`action_plan_${decision}`, plan, `Devolutiva ${decision === "approved" ? "aprovada" : "reprovada"} - ${plan.area.name}`, reason || "A decisão do auditor foi registrada no histórico do plano.", "sent");
     state.planningView = "history";
@@ -6173,11 +6306,11 @@ function applyPlanningDecision(plan, decision, reason = "") {
       deadlineRequested: false,
       deadlineDecision: approved ? "approved" : "rejected",
       decisionReason: reason,
-      due: approved ? (plan.requestedDue || "15/12/2026") : plan.due,
+      due: approved ? (plan.requestedDue || plan.due) : plan.due,
       source: approved ? "Novo prazo aprovado" : "Novo prazo recusado"
     });
     setPlanningNotice(`Solicitação de prazo de ${plan.area.name} ${approved ? "aprovada" : "recusada com justificativa"}.`);
-    addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || "15/12/2026"}.` : reason, "sent");
+    addPlanningNotification("action_plan_deadline_decided", plan, `Prazo ${approved ? "aprovado" : "recusado"} - ${plan.area.name}`, approved ? `Novo vencimento: ${plan.requestedDue || plan.due}.` : reason, "sent");
     state.planningView = "feedback";
     state.actionPlanPreview = true;
     state.actionDeadlineModal = false;
@@ -6623,8 +6756,8 @@ document.addEventListener("click", async (event) => {
     state.actionPlanAcknowledgements = {
       ...state.actionPlanAcknowledgements,
       [planId]: {
-        userId: currentAccessUser?.id || "carlos.01",
-        name: currentAccessUser?.full_name || "Carlos Lima",
+        userId: currentAccessUser?.id || "",
+        name: currentAccessUser?.full_name || "Responsável",
         signedAt: now.toISOString(),
         signedAtLabel: `${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
       }
@@ -6647,12 +6780,14 @@ document.addEventListener("click", async (event) => {
     }
     const [year, month, day] = dateValue.split("-");
     const requestedDue = `${day}/${month}/${year}`;
+    const selectedItemIndex = itemValue === "all" ? 0 : Number(itemValue);
+    const selectedItem = plan.backendItems?.[selectedItemIndex] || plan.backendItems?.[0];
     if (location.protocol !== "file:") {
       try {
-        await operationalRequest(`action-plans/${plan.id}/feedback`, {
+        await operationalRequest(`action-plans/${selectedItem?.actionPlanId || plan.id}/feedback`, {
           method: "POST",
           body: JSON.stringify({
-            documentItemId: plan.documentItemId,
+            documentItemId: selectedItem?.documentItemId,
             completionStatus: "delayed",
             delayJustification: reason,
             requestedDueAt: `${dateValue}T12:00:00.000Z`,
@@ -6673,7 +6808,7 @@ document.addEventListener("click", async (event) => {
       requestedDue,
       deadlineReason: reason,
       deadlineItemIndex: itemValue === "all" ? null : Number(itemValue),
-      source: `Novo prazo solicitado por ${currentAccessUser?.full_name || "Carlos Lima"}`
+      source: `Novo prazo solicitado por ${currentAccessUser?.full_name || "Responsável"}`
     });
     state.actionDeadlineModal = false;
     setPlanningNotice(`Solicitação de prazo até ${requestedDue} enviada ao auditor.`);
@@ -6685,43 +6820,45 @@ document.addEventListener("click", async (event) => {
   if (submitResponsiblePlan) {
     const plan = planningActionRows().find((row) => row.id === submitResponsiblePlan.dataset.submitResponsiblePlan);
     if (!plan) return;
-    const items = actionPlanPreviewItems(plan.area, plan.ncs);
+    const items = actionPlanPreviewItems(plan.area, plan.ncs, plan);
     const responses = state.actionPlanResponses?.[plan.id] || {};
     if (items.some((_, index) => !String(responses[index]?.text || "").trim())) return;
     if (location.protocol !== "file:") {
       try {
-        const evidenceFile = pendingActionPlanEvidence.get(`${plan.id}:0`);
-        let evidenceFileId = null;
-        if (evidenceFile) {
-          const deviceUid = await window.HAE_OFFLINE.deviceUid();
-          const upload = await fetch(apiUrl("/api/offline-files"), {
+        for (const [index, item] of items.entries()) {
+          const evidenceFile = pendingActionPlanEvidence.get(`${plan.id}:${index}`);
+          let evidenceFileId = null;
+          if (evidenceFile) {
+            const deviceUid = await window.HAE_OFFLINE.deviceUid();
+            const upload = await fetch(apiUrl("/api/offline-files"), {
+              method: "POST",
+              credentials: apiCredentials,
+              headers: {
+                "content-type": evidenceFile.type || "application/octet-stream",
+                "x-device-uid": deviceUid,
+                "x-local-file-id": `plan-${item.actionPlanId}-${Date.now()}-${index}`,
+                "x-file-name": evidenceFile.name,
+                "x-file-type": "action_plan_photo"
+              },
+              body: evidenceFile
+            });
+            const uploaded = await upload.json().catch(() => ({}));
+            if (!upload.ok) throw new Error(uploaded.error || "Não foi possível enviar a evidência.");
+            evidenceFileId = uploaded.file.id;
+          }
+          await operationalRequest(`action-plans/${item.actionPlanId}/feedback`, {
             method: "POST",
-            credentials: apiCredentials,
-            headers: {
-              "content-type": evidenceFile.type || "application/octet-stream",
-              "x-device-uid": deviceUid,
-              "x-local-file-id": `plan-${plan.id}-${Date.now()}`,
-              "x-file-name": evidenceFile.name,
-              "x-file-type": "action_plan_photo"
-            },
-            body: evidenceFile
+            body: JSON.stringify({
+              documentItemId: item.documentItemId,
+              correctionSummary: responses[index]?.text,
+              observation: responses[index]?.text,
+              evidenceFileId,
+              completionStatus: "completed",
+              captureMethod: evidenceFile?.type?.startsWith("image/") ? "mobile_camera" : "upload"
+            })
           });
-          const uploaded = await upload.json().catch(() => ({}));
-          if (!upload.ok) throw new Error(uploaded.error || "Não foi possível enviar a evidência.");
-          evidenceFileId = uploaded.file.id;
+          pendingActionPlanEvidence.delete(`${plan.id}:${index}`);
         }
-        await operationalRequest(`action-plans/${plan.id}/feedback`, {
-          method: "POST",
-          body: JSON.stringify({
-            documentItemId: plan.documentItemId,
-            correctionSummary: responses[0]?.text,
-            observation: responses[0]?.text,
-            evidenceFileId,
-            completionStatus: "completed",
-            captureMethod: evidenceFile?.type?.startsWith("image/") ? "mobile_camera" : "upload"
-          })
-        });
-        pendingActionPlanEvidence.delete(`${plan.id}:0`);
         await Promise.all([loadOperationalData(), loadAccessNotifications()]);
       } catch (error) {
         setPlanningNotice(error.message);
@@ -6732,7 +6869,7 @@ document.addEventListener("click", async (event) => {
     updatePlanningPlan(plan.id, {
       status: "pending_review",
       responsibleSubmitted: true,
-      source: `Devolutiva enviada por ${currentAccessUser?.full_name || "Carlos Lima"}`
+      source: `Devolutiva enviada por ${currentAccessUser?.full_name || "Responsável"}`
     });
     state.actionPlanPreview = false;
     state.planningView = "overview";
@@ -6749,7 +6886,12 @@ document.addEventListener("click", async (event) => {
   const saveActionPlan = event.target.closest("[data-save-action-plan]");
   if (saveActionPlan) {
     const plan = planningActionRows().find((row) => row.id === saveActionPlan.dataset.saveActionPlan);
-    if (plan) setPlanningNotice(`Rascunho de ${plan.area.name} salvo. O plano continua aguardando envio.`);
+    if (plan) {
+      try {
+        await savePlanningDraft(plan);
+        setPlanningNotice(`Rascunho de ${plan.area.name} salvo no banco. O plano continua aguardando envio.`);
+      } catch (error) { setPlanningNotice(error.message); }
+    }
     render();
     return;
   }
@@ -6760,6 +6902,7 @@ document.addEventListener("click", async (event) => {
     if (plan) {
       if (plan.documentId && location.protocol !== "file:") {
         try {
+          if (sendActionPlan.closest(".action-plan-document")) await savePlanningDraft(plan);
           await operationalRequest(`action-plan-documents/${plan.documentId}/send`, { method: "POST", body: "{}" });
           await Promise.all([loadOperationalData(), loadAccessNotifications()]);
         } catch (error) {
@@ -6769,7 +6912,7 @@ document.addEventListener("click", async (event) => {
         }
       }
       const sentFromPreview = Boolean(sendActionPlan.closest(".action-plan-document"));
-      updatePlanningPlan(plan.id, { status: "in_progress", source: "Enviado em 20/09/2026 às 16:55" });
+      updatePlanningPlan(plan.id, { status: "in_progress", source: `Enviado em ${new Date().toLocaleString("pt-BR")}` });
       if (sentFromPreview) state.actionPlanPreview = false;
       setPlanningNotice(`Plano de ${plan.area.name} enviado.`);
       addPlanningNotification("action_plan", plan, `Plano enviado - ${plan.area.name}`, `O plano foi disponibilizado para ${plan.owner}.`, "sent");
@@ -6806,11 +6949,12 @@ document.addEventListener("click", async (event) => {
       return;
     }
     if (plan) {
+      const backendItem = plan.backendItems?.[itemIndex];
       if (location.protocol !== "file:") {
         try {
-          await operationalRequest(`action-plans/${plan.id}/review`, {
+          await operationalRequest(`action-plans/${backendItem?.actionPlanId || plan.id}/review`, {
             method: "POST",
-            body: JSON.stringify({ documentItemId: plan.documentItemId, feedbackId: plan.feedbackId, decision: "approved", justification: "Evidência aprovada pelo auditor." })
+            body: JSON.stringify({ documentItemId: backendItem?.documentItemId, feedbackId: backendItem?.feedbackId, decision: "approved", justification: "Evidência aprovada pelo auditor." })
           });
           await Promise.all([loadOperationalData(), loadAccessNotifications()]);
         } catch (error) {
@@ -6838,11 +6982,12 @@ document.addEventListener("click", async (event) => {
     }
     if (plan && confirmPlanDecision.dataset.confirmPlanDecision === "item_rejected") {
       const itemIndex = Number(confirmPlanDecision.dataset.itemIndex);
+      const backendItem = plan.backendItems?.[itemIndex];
       if (location.protocol !== "file:") {
         try {
-          await operationalRequest(`action-plans/${plan.id}/review`, {
+          await operationalRequest(`action-plans/${backendItem?.actionPlanId || plan.id}/review`, {
             method: "POST",
-            body: JSON.stringify({ documentItemId: plan.documentItemId, feedbackId: plan.feedbackId, decision: "rejected", justification: reason, allowResubmission: true })
+            body: JSON.stringify({ documentItemId: backendItem?.documentItemId, feedbackId: backendItem?.feedbackId, decision: "rejected", justification: reason, allowResubmission: true })
           });
           await Promise.all([loadOperationalData(), loadAccessNotifications()]);
         } catch (error) {
@@ -6869,7 +7014,7 @@ document.addEventListener("click", async (event) => {
       const rejected = decisions.filter((item) => item.status === "rejected");
       const extended = plan.deadlineDecision === "approved";
       const status = rejected.length ? "needs_correction" : extended ? "in_progress" : "approved";
-      const source = extended && !rejected ? `Prazo prorrogado até ${plan.due}` : "Análise concluída em 20/09/2026";
+      const source = extended && !rejected ? `Prazo prorrogado até ${plan.due}` : `Análise concluída em ${new Date().toLocaleString("pt-BR")}`;
       updatePlanningPlan(plan.id, { status, source });
       setPlanningNotice(rejected.length
         ? `${rejected.length} NC(s) devolvida(s) ao responsável para correção.`
@@ -7164,6 +7309,16 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const nextChecklistBlock = event.target.closest("[data-next-checklist-block]");
+  if (nextChecklistBlock) {
+    state.checklistBlock = nextChecklistBlock.dataset.nextChecklistBlock;
+    state.checklistPage = 0;
+    state.actionPlanNoticeQuestion = null;
+    render();
+    requestAnimationFrame(() => document.querySelector(".audit-progress-panel")?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    return;
+  }
+
   if (event.target.closest("[data-finalize-audit]")) {
     const areaId = state.selectedArea;
     const questions = questionsForArea(areaById(areaId));
@@ -7173,18 +7328,49 @@ document.addEventListener("click", async (event) => {
       setOfflineNotice({ phase: "error", message: `Ainda faltam ${missing} perguntas para finalizar.` });
       return;
     }
-    ensureLocalAudit(areaId)
-      .then((audit) => window.HAE_OFFLINE.queueAuditFinalize({ localAuditId: audit.localAuditId, finishedAt: new Date().toISOString() }))
-      .then(() => {
-        state.offlineAudits = {
-          ...state.offlineAudits,
-          [areaId]: { ...state.offlineAudits[areaId], status: "finalizing", finishedAt: new Date().toISOString() }
-        };
-        state.view = "start";
-        saveState();
-        render();
-      })
-      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+    const missingEvidence = questions.filter((question) => answered[question.id] === "NC" && !state.auditEvidence?.[areaId]?.[question.id]).length;
+    if (missingEvidence) {
+      setOfflineNotice({ phase: "error", message: `Ainda faltam ${missingEvidence} foto(s) obrigatória(s) das não conformidades.` });
+      return;
+    }
+    state.auditFinalizeModal = true;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-cancel-finalize-audit]")) {
+    state.auditFinalizeModal = false;
+    render();
+    return;
+  }
+
+  const confirmFinalize = event.target.closest("[data-confirm-finalize-mode]");
+  if (confirmFinalize) {
+    const areaId = state.selectedArea;
+    const generationMode = confirmFinalize.dataset.confirmFinalizeMode;
+    confirmFinalize.disabled = true;
+    try {
+      await waitForAuditWrites(areaId);
+      const audit = await ensureLocalAudit(areaId);
+      await window.HAE_OFFLINE.queueAuditFinalize({
+        localAuditId: audit.localAuditId,
+        finishedAt: new Date().toISOString(),
+        generationMode
+      });
+      state.auditFinalizeModal = false;
+      state.offlineAudits = {
+        ...state.offlineAudits,
+        [areaId]: { ...state.offlineAudits[areaId], status: "finalizing", finishedAt: new Date().toISOString(), generationMode }
+      };
+      state.view = "start";
+      saveState();
+      render();
+      window.HAE_OFFLINE.syncPending().catch(() => {});
+    } catch (error) {
+      state.auditFinalizeModal = false;
+      setOfflineNotice({ phase: "error", message: error.message });
+      render();
+    }
     return;
   }
 
@@ -7269,8 +7455,9 @@ document.addEventListener("change", (event) => {
       evidence.value = "";
       return;
     }
-    ensureLocalAudit(areaId)
-      .then(async (audit) => {
+    const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
+    const write = previous.catch(() => {}).then(async () => {
+        const audit = await ensureLocalAudit(areaId);
         const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
         if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
         if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
@@ -7282,8 +7469,19 @@ document.addEventListener("change", (event) => {
           caption: state.auditNotes?.[areaId]?.[questionId] || null,
           captureMethod: evidence.dataset.captureMethod || "gallery"
         });
-      })
-      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+        state.auditEvidence = {
+          ...state.auditEvidence,
+          [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
+        };
+        saveState();
+        render();
+      });
+    pendingAuditWrites.set(areaId, write);
+    write
+      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }))
+      .finally(() => {
+        if (pendingAuditWrites.get(areaId) === write) pendingAuditWrites.delete(areaId);
+      });
   }
 
 });
@@ -7305,7 +7503,8 @@ document.addEventListener("input", (event) => {
     }
   };
   saveState();
-  const items = actionPlanPreviewItems(areaById(state.planningAreaId), planningActionRows().find((row) => row.id === planId)?.ncs || 0);
+  const currentPlan = planningActionRows().find((row) => row.id === planId);
+  const items = actionPlanPreviewItems(areaById(state.planningAreaId), currentPlan?.ncs || 0, currentPlan);
   const complete = items.every((_, index) => String(state.actionPlanResponses?.[planId]?.[index]?.text || "").trim());
   const submit = document.querySelector(`[data-submit-responsible-plan="${CSS.escape(planId)}"]`);
   if (submit) submit.disabled = !complete;
@@ -7380,7 +7579,6 @@ if (reportRequest) {
     if (state.view === "users" && currentAccessUser.role !== "admin") state.view = "home";
     render();
     updateStartupProgress(100, "Dados sincronizados");
-    hydrateStateFromBackend();
     registerServiceWorker();
   })();
 }

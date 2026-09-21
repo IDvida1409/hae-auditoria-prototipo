@@ -1,6 +1,6 @@
 (function () {
   const DB_NAME = "idauditor-offline";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const OPERATION_STORE = "operations";
   const FILE_STORE = "files";
   const META_STORE = "meta";
@@ -63,7 +63,7 @@
       }
 
       const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onupgradeneeded = () => {
+      request.onupgradeneeded = (event) => {
         const db = request.result;
         if (!db.objectStoreNames.contains(OPERATION_STORE)) {
           const operations = db.createObjectStore(OPERATION_STORE, { keyPath: "clientOperationId" });
@@ -79,6 +79,11 @@
         }
         if (!db.objectStoreNames.contains(ENTITY_STORE)) {
           db.createObjectStore(ENTITY_STORE, { keyPath: "key" });
+        }
+        if (event.oldVersion > 0 && event.oldVersion < 3) {
+          for (const storeName of [OPERATION_STORE, FILE_STORE, META_STORE, ENTITY_STORE]) {
+            request.transaction.objectStore(storeName).clear();
+          }
         }
       };
       request.onsuccess = () => {
@@ -260,6 +265,14 @@
 
   async function queueAuditAnswer(payload) {
     return saveOperation({ entityType: "audit_answer", operation: "upsert", payload });
+  }
+
+  async function queueAuditFinalize(payload) {
+    if (activeSync) await activeSync.catch(() => {});
+    const outstanding = (await listSyncableOperations())
+      .filter((operation) => operation.payload?.localAuditId === payload.localAuditId)
+      .map((operation) => operation.clientOperationId);
+    return saveOperation({ entityType: "audit", operation: "finalize", payload, dependsOn: outstanding });
   }
 
   async function queueActionPlanFeedback(payload) {
@@ -516,7 +529,7 @@
     localEntity,
     cacheBootstrap,
     getCachedBootstrap: () => getMeta(scopedKey("bootstrap")),
-    queueAuditFinalize: (payload) => saveOperation({ entityType: "audit", operation: "finalize", payload })
+    queueAuditFinalize
   };
 
   window.addEventListener("online", () => {
