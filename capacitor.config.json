@@ -1,8 +1,18 @@
 {
   "appId": "br.com.hae.auditoria.teste",
-  "appName": "HAE Auditoria Teste",
+  "appName": "IDAuditor",
   "webDir": "www",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#f7fafc",
+      "showSpinner": false
+    }
   }
 }

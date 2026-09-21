@@ -305,6 +305,21 @@ const accessRoleLabels = {
   viewer: "Visualizador"
 };
 
+const nativeApiOrigin = window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : "";
+const apiUrl = (path) => `${nativeApiOrigin}${path}`;
+const apiCredentials = nativeApiOrigin ? "include" : "same-origin";
+
+function updateStartupProgress(percent, label) {
+  const startup = document.querySelector("[data-app-startup]");
+  if (!startup) return;
+  startup.querySelector("[data-app-startup-progress]")?.style.setProperty("width", `${percent}%`);
+  const percentNode = startup.querySelector("[data-app-startup-percent]");
+  const labelNode = startup.querySelector("[data-app-startup-label]");
+  if (percentNode) percentNode.textContent = `${percent}%`;
+  if (labelNode && label) labelNode.textContent = label;
+  if (percent >= 100) setTimeout(() => startup.classList.add("is-complete"), 220);
+}
+
 function isAreaResponsible() {
   return currentAccessUser?.role === "area_responsible";
 }
@@ -353,8 +368,8 @@ function normalizeAccessUser(user) {
 }
 
 async function accessRequest(path, options = {}) {
-  const response = await fetch(`/api/access/${path}`, {
-    credentials: "same-origin",
+  const response = await fetch(apiUrl(`/api/access/${path}`), {
+    credentials: apiCredentials,
     ...options,
     headers: { "content-type": "application/json", ...options.headers }
   });
@@ -368,8 +383,8 @@ async function accessRequest(path, options = {}) {
 }
 
 async function operationalRequest(path, options = {}) {
-  const response = await fetch(`/api/${path}`, {
-    credentials: "same-origin",
+  const response = await fetch(apiUrl(`/api/${path}`), {
+    credentials: apiCredentials,
     cache: "no-store",
     ...options,
     headers: { "content-type": "application/json", ...options.headers }
@@ -905,8 +920,9 @@ function saveState() {
   if (!backendReady || location.protocol === "file:" || currentAccessUser?.role !== "admin") return;
   clearTimeout(backendSaveTimer);
   backendSaveTimer = setTimeout(() => {
-    fetch("/api/state", {
+    fetch(apiUrl("/api/state"), {
       method: "PUT",
+      credentials: apiCredentials,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ state: snapshot })
     }).catch(() => {});
@@ -916,7 +932,7 @@ function saveState() {
 async function hydrateStateFromBackend() {
   if (location.protocol === "file:") return;
   try {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/state"), { cache: "no-store", credentials: apiCredentials });
     if (!response.ok) return;
     const payload = await response.json();
     if (payload?.state) {
@@ -986,7 +1002,7 @@ async function loadOfflineBootstrap() {
   let payload = null;
   if (location.protocol !== "file:" && navigator.onLine !== false) {
     try {
-      const response = await fetch("/api/offline-bootstrap", { cache: "no-store" });
+      const response = await fetch(apiUrl("/api/offline-bootstrap"), { cache: "no-store", credentials: apiCredentials });
       if (response.ok) {
         payload = await response.json();
         await window.HAE_OFFLINE.cacheBootstrap(payload);
@@ -6643,9 +6659,9 @@ document.addEventListener("click", async (event) => {
         let evidenceFileId = null;
         if (evidenceFile) {
           const deviceUid = await window.HAE_OFFLINE.deviceUid();
-          const upload = await fetch("/api/offline-files", {
+          const upload = await fetch(apiUrl("/api/offline-files"), {
             method: "POST",
-            credentials: "same-origin",
+            credentials: apiCredentials,
             headers: {
               "content-type": evidenceFile.type || "application/octet-stream",
               "x-device-uid": deviceUid,
@@ -7276,6 +7292,7 @@ if (reportRequest) {
   renderReportFileRequest(reportRequest);
 } else {
   (async function bootstrapAuthenticatedApp() {
+    updateStartupProgress(15, "Validando o acesso...");
     if (location.protocol === "file:") {
       currentAccessUser = { full_name: "Administrador local", role: "admin" };
       render();
@@ -7284,6 +7301,7 @@ if (reportRequest) {
     }
     try {
       const data = await accessRequest("me");
+      updateStartupProgress(35, "Carregando seu perfil...");
       currentAccessUser = data.user;
       if (currentAccessUser.must_change_password) { location.replace("/login.html"); return; }
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
@@ -7298,7 +7316,9 @@ if (reportRequest) {
         loadAccessNotifications(),
         loadOfflineBootstrap()
       ]);
+      updateStartupProgress(78, "Sincronizando checklists e notificações...");
       await loadOperationalData();
+      updateStartupProgress(94, "Preparando o painel...");
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");
       if (error.status === 401 || !cached) { location.replace("/login.html"); return; }
@@ -7308,6 +7328,7 @@ if (reportRequest) {
     applyCurrentUserScope();
     if (state.view === "users" && currentAccessUser.role !== "admin") state.view = "home";
     render();
+    updateStartupProgress(100, "Dados sincronizados");
     hydrateStateFromBackend();
     registerServiceWorker();
   })();

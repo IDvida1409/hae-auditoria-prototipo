@@ -1,4 +1,5 @@
 (function () {
+  const nativeApiOrigin = window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : "";
   const modal = document.querySelector(".access-modal");
   const title = document.getElementById("access-title");
   const status = document.getElementById("access-status");
@@ -7,8 +8,8 @@
   function applyBranding(branding) {
     logo.classList.remove("is-loading-brand");
     if (!branding?.logoPath) { logo.classList.remove("is-unit-logo"); return; }
-    const url = new URL(branding.logoPath, location.href);
-    if (url.origin !== location.origin || !url.pathname.startsWith("/assets/")) return;
+    const url = new URL(branding.logoPath, nativeApiOrigin || location.href);
+    if (!url.pathname.startsWith("/assets/")) return;
     logo.onerror = () => { logo.onerror = null; logo.src = defaultLogo; logo.alt = "IDvida"; logo.classList.remove("is-loading-brand", "is-unit-logo"); };
     logo.src = url.href;
     logo.alt = branding.name || "Hospital";
@@ -25,7 +26,7 @@
     forms[next].querySelector("input")?.focus();
   }
   async function api(path, options = {}) {
-    const response = await fetch("/api/access/" + path, { credentials: "same-origin", ...options,
+    const response = await fetch(nativeApiOrigin + "/api/access/" + path, { credentials: nativeApiOrigin ? "include" : "same-origin", ...options,
       headers: { "content-type": "application/json", ...options.headers } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

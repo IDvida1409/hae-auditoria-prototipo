@@ -39,6 +39,8 @@ for (const file of files) {
 
 const androidIndex = path.join(output, "index.html");
 fs.writeFileSync(androidIndex, fs.readFileSync(androidIndex, "utf8").replace("<body>", '<body class="android-app">'));
+const androidLogin = path.join(output, "login.html");
+fs.writeFileSync(androidLogin, fs.readFileSync(androidLogin, "utf8").replace("<body>", '<body class="android-app">'));
 
 copyDir(path.join(root, "assets"), path.join(output, "assets"));
 

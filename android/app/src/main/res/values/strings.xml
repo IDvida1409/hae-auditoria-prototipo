@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">HAE Auditoria</string>
-    <string name="title_activity_main">HAE Auditoria</string>
+    <string name="app_name">IDAuditor</string>
+    <string name="title_activity_main">IDAuditor</string>
     <string name="package_name">br.com.hae.auditoria</string>
     <string name="custom_url_scheme">br.com.hae.auditoria</string>
 </resources>

@@ -1,4 +1,4 @@
-const CACHE_NAME = "hae-auditoria-v28-login-logo-balance-1";
+const CACHE_NAME = "idauditor-v29-operational-backend";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -13,6 +13,7 @@ const APP_SHELL = [
   "/assets/idvida-login-logo.png",
   "/assets/hospital-einstein-logo.png",
   "/assets/login-reference.png",
+  "/assets/app-icon-reference.png",
   "/assets/vendor/lucide.min.js"
 ];
 
