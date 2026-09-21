@@ -10,7 +10,7 @@
       "enabled": true
     },
     "SplashScreen": {
-      "launchShowDuration": 1200,
+      "launchShowDuration": 1500,
       "backgroundColor": "#f7fafc",
       "showSpinner": false
     }

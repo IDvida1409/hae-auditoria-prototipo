@@ -15940,12 +15940,13 @@ button.planning-kpi:hover {
 }
 /* Native startup synchronization screen. */
 .app-startup { display: none; }
-.android-app .app-startup { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 28px; background: #f7fafc; color: #082d58; transition: opacity .28s ease, visibility .28s ease; }
+.android-app .app-startup { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 28px; background: #f7fafc; color: #082d58; transition: opacity .58s ease, visibility .58s ease; }
 .android-app .app-startup.is-complete { opacity: 0; visibility: hidden; }
-.android-app .app-startup img { width: min(48vw, 210px); aspect-ratio: 1; object-fit: contain; border-radius: 24%; box-shadow: 0 18px 42px rgba(2, 39, 76, .18); }
+.android-app .app-startup img { width: min(44vw, 190px); aspect-ratio: 1; object-fit: contain; animation: startup-logo-in .75s cubic-bezier(.2,.8,.2,1) both; }
 .android-app .app-startup-copy { display: grid; gap: 5px; text-align: center; }
 .android-app .app-startup-copy strong { font-size: 18px; }
 .android-app .app-startup-copy span { color: #57708b; font-size: 13px; }
 .android-app .app-startup-track { width: min(72vw, 290px); height: 7px; overflow: hidden; border-radius: 999px; background: #dce5ed; }
 .android-app .app-startup-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: #08a64b; transition: width .3s ease; }
 .android-app .app-startup b { font-size: 13px; font-variant-numeric: tabular-nums; }
+@keyframes startup-logo-in { from { opacity: 0; transform: scale(.78); } 68% { opacity: 1; transform: scale(1.045); } to { opacity: 1; transform: scale(1); } }

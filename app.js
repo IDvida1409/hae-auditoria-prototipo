@@ -317,8 +317,12 @@ function updateStartupProgress(percent, label) {
   const labelNode = startup.querySelector("[data-app-startup-label]");
   if (percentNode) percentNode.textContent = `${percent}%`;
   if (labelNode && label) labelNode.textContent = label;
-  if (percent >= 100) setTimeout(() => startup.classList.add("is-complete"), 220);
+  if (percent >= 100) setTimeout(() => startup.classList.add("is-complete"), 420);
 }
+
+const nativeStartupDelay = (milliseconds) => nativeApiOrigin
+  ? new Promise((resolve) => setTimeout(resolve, milliseconds))
+  : Promise.resolve();
 
 function isAreaResponsible() {
   return currentAccessUser?.role === "area_responsible";
@@ -7303,7 +7307,12 @@ if (reportRequest) {
       const data = await accessRequest("me");
       updateStartupProgress(35, "Carregando seu perfil...");
       currentAccessUser = data.user;
-      if (currentAccessUser.must_change_password) { location.replace("/login.html"); return; }
+      if (currentAccessUser.must_change_password) {
+        updateStartupProgress(100, "Abrindo o acesso...");
+        await nativeStartupDelay(850);
+        location.replace("/login.html");
+        return;
+      }
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
       if (window.HAE_OFFLINE) {
         await window.HAE_OFFLINE.configure({
@@ -7321,7 +7330,12 @@ if (reportRequest) {
       updateStartupProgress(94, "Preparando o painel...");
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");
-      if (error.status === 401 || !cached) { location.replace("/login.html"); return; }
+      if (error.status === 401 || !cached) {
+        updateStartupProgress(100, "Abrindo o acesso...");
+        await nativeStartupDelay(850);
+        location.replace("/login.html");
+        return;
+      }
       currentAccessUser = cached;
       accessNotice = { type: "success", text: "Modo offline: os dados coletados serão sincronizados quando a conexão voltar." };
     }
