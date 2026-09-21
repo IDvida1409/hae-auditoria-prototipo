@@ -2,6 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const archiver = require("archiver");
 const syncService = require("./lib/sync-service");
 const fileStorage = require("./lib/file-storage");
 const operationalApi = require("./lib/operational-api");
@@ -12,10 +13,12 @@ const accessApi = require("./lib/access-api");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
+const { buildAndroidWeb } = require("./tools/build-android-web");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
 const stateFile = path.join(dataDir, "app-state.json");
+const mobileBundleFile = path.join(root, "idauditor-web.zip");
 const port = Number(process.env.PORT || 3000);
 const databaseUrl = process.env.DATABASE_URL;
 let poolPromise = null;
@@ -151,6 +154,21 @@ function sendJson(response, status, body) {
     "cache-control": "no-store"
   });
   response.end(JSON.stringify(body));
+}
+
+function buildMobileBundle() {
+  const webDir = buildAndroidWeb();
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(mobileBundleFile);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    output.on("close", resolve);
+    output.on("error", reject);
+    archive.on("warning", (error) => error.code === "ENOENT" ? console.warn(error.message) : reject(error));
+    archive.on("error", reject);
+    archive.pipe(output);
+    archive.directory(webDir, false);
+    archive.finalize();
+  });
 }
 
 function methodNotAllowed(response) {
@@ -1632,6 +1650,10 @@ function serveStatic(request, response, url) {
     return;
   }
   const requestedPath = staticPathFor(url.pathname);
+  if (url.pathname === "/idauditor-web.zip" && (!requestedPath || !fs.existsSync(requestedPath))) {
+    sendJson(response, 503, { error: "Pacote de atualização ainda está sendo preparado." });
+    return;
+  }
   const filePath = requestedPath && fs.existsSync(requestedPath) && fs.statSync(requestedPath).isFile()
     ? requestedPath
     : path.join(root, "index.html");
@@ -1639,8 +1661,13 @@ function serveStatic(request, response, url) {
   const shouldSkipCache = ext === ".html" || ext === ".js" || ext === ".css" || ext === ".webmanifest";
   response.writeHead(200, {
     "content-type": mimeTypes[ext] || "application/octet-stream",
-    "cache-control": shouldSkipCache ? "no-store" : "public, max-age=3600"
+    "cache-control": shouldSkipCache ? "no-store" : "public, max-age=3600",
+    "content-length": fs.statSync(filePath).size
   });
+  if (request.method === "HEAD") {
+    response.end();
+    return;
+  }
   fs.createReadStream(filePath).pipe(response);
 }
 
@@ -1678,6 +1705,15 @@ const reportTimer = setInterval(async () => {
 }, 3000);
 reportTimer.unref();
 
-server.listen(port, () => {
-  console.log(`HAE Auditoria rodando em http://localhost:${port}`);
-});
+async function startServer() {
+  try {
+    if (!fs.existsSync(mobileBundleFile)) await buildMobileBundle();
+  } catch (error) {
+    console.error("Pacote de atualização automática:", error.message);
+  }
+  server.listen(port, () => {
+    console.log(`HAE Auditoria rodando em http://localhost:${port}`);
+  });
+}
+
+startServer();

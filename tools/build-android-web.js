@@ -32,18 +32,24 @@ function copyDir(source, target, ignoredNames = new Set()) {
   }
 }
 
-fs.rmSync(output, { recursive: true, force: true });
-fs.mkdirSync(output, { recursive: true });
+function buildAndroidWeb() {
+  fs.rmSync(output, { recursive: true, force: true });
+  fs.mkdirSync(output, { recursive: true });
 
-for (const file of files) {
-  fs.copyFileSync(path.join(root, file), path.join(output, file));
+  for (const file of files) {
+    fs.copyFileSync(path.join(root, file), path.join(output, file));
+  }
+
+  const androidIndex = path.join(output, "index.html");
+  fs.writeFileSync(androidIndex, fs.readFileSync(androidIndex, "utf8").replace("<body>", '<body class="android-app">'));
+  const androidLogin = path.join(output, "login.html");
+  fs.writeFileSync(androidLogin, fs.readFileSync(androidLogin, "utf8").replace("<body>", '<body class="android-app">'));
+
+  copyDir(path.join(root, "assets"), path.join(output, "assets"), new Set(["reports"]));
+  console.log(`Build Android web gerado em ${output}`);
+  return output;
 }
 
-const androidIndex = path.join(output, "index.html");
-fs.writeFileSync(androidIndex, fs.readFileSync(androidIndex, "utf8").replace("<body>", '<body class="android-app">'));
-const androidLogin = path.join(output, "login.html");
-fs.writeFileSync(androidLogin, fs.readFileSync(androidLogin, "utf8").replace("<body>", '<body class="android-app">'));
+if (require.main === module) buildAndroidWeb();
 
-copyDir(path.join(root, "assets"), path.join(output, "assets"), new Set(["reports"]));
-
-console.log(`Build Android web gerado em ${output}`);
+module.exports = { buildAndroidWeb };
