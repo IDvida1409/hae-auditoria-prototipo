@@ -62,7 +62,7 @@ async function main() {
 
     api = spawn(process.execPath, ["server.js"], {
       cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, DATABASE_URL: databaseUrl, PGSSLMODE: "disable", PORT: String(apiPort), FILE_STORAGE_DIR: path.join(folder, "files"), REPORT_CHROME_PATH: "C:/Program Files/Google/Chrome/Application/chrome.exe" }
+      env: { ...process.env, DATABASE_URL: databaseUrl, PGSSLMODE: "disable", PORT: String(apiPort), FILE_STORAGE_DIR: path.join(folder, "files"), REPORT_CHROME_PATH: "C:/Program Files/Google/Chrome/Application/chrome.exe", SEED_DEMO_USERS: "true" }
     });
     api.stdout.on("data", (chunk) => { apiLog += chunk; });
     api.stderr.on("data", (chunk) => { apiLog += chunk; });
@@ -113,28 +113,28 @@ async function main() {
     assert.ok(!accessLogin.data.user.password_hash);
     assert.equal((await access("me", null, accessLogin.cookie)).data.user.id, admin.rows[0].id);
     assert.equal((await access("users", { fullName: "Denied", email: "denied@test.local", role: "admin" })).response.status, 401);
-    const newAccessUser = await access("users", { fullName: "Access Test", username: "david.souza", email: "access-user@test.local", role: "auditor" }, accessLogin.cookie);
+    const newAccessUser = await access("users", { fullName: "Access Test", username: "access.test", email: "access-user@test.local", role: "auditor" }, accessLogin.cookie);
     assert.equal(newAccessUser.response.status, 201);
     assert.equal(newAccessUser.data.user.must_change_password, true);
     assert.match(newAccessUser.data.temporaryCode, /^[A-HJ-NP-Z2-9]{10}$/);
-    assert.equal((await access("users", { fullName: "Access Test", username: "david.souza", email: "another@test.local", role: "auditor" }, accessLogin.cookie)).response.status, 409);
-    const newLogin = await access("login", { username: "david.souza", password: newAccessUser.data.temporaryCode });
+    assert.equal((await access("users", { fullName: "Access Test", username: "access.test", email: "another@test.local", role: "auditor" }, accessLogin.cookie)).response.status, 409);
+    const newLogin = await access("login", { username: "access.test", password: newAccessUser.data.temporaryCode });
     assert.equal(newLogin.response.status, 200);
     assert.equal((await access("users", { fullName: "Denied", email: "denied@test.local", role: "admin" }, newLogin.cookie)).response.status, 403);
     const finalPassword = "Definitive-" + crypto.randomUUID();
     assert.equal((await access("password", { currentPassword: newAccessUser.data.temporaryCode, password: finalPassword }, newLogin.cookie)).response.status, 200);
     assert.equal((await access("me", null, newLogin.cookie)).response.status, 401);
-    assert.equal((await access("login", { username: "david.souza", password: newAccessUser.data.temporaryCode })).response.status, 401);
-    const finalLogin = await access("login", { username: "david.souza", password: finalPassword });
+    assert.equal((await access("login", { username: "access.test", password: newAccessUser.data.temporaryCode })).response.status, 401);
+    const finalLogin = await access("login", { username: "access.test", password: finalPassword });
     assert.equal(finalLogin.data.user.must_change_password, false);
-    assert.equal((await access("forgot-password", { username: "david.souza" })).response.status, 200);
+    assert.equal((await access("forgot-password", { username: "access.test" })).response.status, 200);
     const usersAfterRequest = await access("users", null, accessLogin.cookie);
-    assert.equal(usersAfterRequest.data.users.find((item) => item.username === "david.souza").reset_pending, true);
+    assert.equal(usersAfterRequest.data.users.find((item) => item.username === "access.test").reset_pending, true);
     const reset = await access(`users/${newAccessUser.data.user.id}/reset-password`, {}, accessLogin.cookie);
     assert.equal(reset.response.status, 200);
     assert.match(reset.data.temporaryCode, /^[A-HJ-NP-Z2-9]{10}$/);
-    assert.equal((await access("login", { username: "david.souza", password: finalPassword })).response.status, 401);
-    assert.equal((await access("login", { username: "david.souza", password: reset.data.temporaryCode })).data.user.must_change_password, true);
+    assert.equal((await access("login", { username: "access.test", password: finalPassword })).response.status, 401);
+    assert.equal((await access("login", { username: "access.test", password: reset.data.temporaryCode })).data.user.must_change_password, true);
     const csrf = await fetch(base + "/api/access/users", { method: "POST", headers: { cookie: accessLogin.cookie, origin: "https://untrusted.test", "content-type": "application/json" }, body: "{}" });
     assert.equal(csrf.status, 403);
     assert.equal((await access("logout", {}, accessLogin.cookie)).response.status, 200);

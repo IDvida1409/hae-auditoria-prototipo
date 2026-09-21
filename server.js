@@ -90,7 +90,7 @@ async function getPool() {
       try {
         await runMigrations(pool);
         await accessApi.ensureBootstrapAdmin(pool);
-        await accessApi.ensureDemoResponsible(pool);
+        if (process.env.SEED_DEMO_USERS === "true") await accessApi.ensureDemoResponsible(pool);
         const checklistImport = await importChecklistData(pool);
         if (checklistImport.imported) {
           console.log(`Checklists sincronizados: ${checklistImport.areas} areas, ${checklistImport.questions} perguntas.`);
