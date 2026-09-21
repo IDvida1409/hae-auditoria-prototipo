@@ -16,6 +16,9 @@
     logo.classList.add("is-unit-logo");
   }
   const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form") };
+  window.addEventListener("pageshow", () => {
+    if (!forms.login.hidden) forms.login.reset();
+  });
   const icons = () => window.lucide?.createIcons();
   function message(text, success = false) { status.textContent = text; status.classList.toggle("success", success); }
   function setMode(next) {

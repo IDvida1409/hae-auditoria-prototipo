@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v32-real-empty-state";
+const CACHE_NAME = "idauditor-v33-user-suggestions";
 const APP_SHELL = [
   "/",
   "/index.html",

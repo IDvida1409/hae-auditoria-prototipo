@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#173557">
     <title>IDAuditor | Acesso</title>
     <link rel="icon" href="assets/idvida-login-logo.png">
-    <link rel="stylesheet" href="login.css?v=20260921-mobile-approved-2">
+    <link rel="stylesheet" href="login.css?v=20260921-user-suggestions-1">
   </head>
   <body>
     <main class="access-main">
@@ -15,14 +15,14 @@
         <div class="access-content">
           <div class="product-logo-frame"><img class="product-logo" src="assets/idvida-login-logo.png" alt="IDvida"></div>
           <h1 id="access-title" class="sr-only">LOGIN</h1>
-          <form id="login-form">
+          <form id="login-form" autocomplete="off">
             <label class="field">
               <span class="sr-only">Usuário</span>
-              <div class="input-wrap"><input name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Usuário" required minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"><i data-lucide="user-round" aria-hidden="true"></i></div>
+              <div class="input-wrap"><input name="username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Usuário" required minlength="3" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}"><i data-lucide="user-round" aria-hidden="true"></i></div>
             </label>
             <label class="field">
               <span class="sr-only">Senha</span>
-              <div class="input-wrap"><i data-lucide="lock-keyhole" aria-hidden="true"></i><input name="password" type="password" autocomplete="current-password" placeholder="Senha" required maxlength="128"><button class="icon-button" type="button" data-password-toggle title="Mostrar senha" aria-label="Mostrar senha"><i data-lucide="eye" aria-hidden="true"></i></button></div>
+              <div class="input-wrap"><i data-lucide="lock-keyhole" aria-hidden="true"></i><input name="password" type="password" autocomplete="off" placeholder="Senha" required maxlength="128"><button class="icon-button" type="button" data-password-toggle title="Mostrar senha" aria-label="Mostrar senha"><i data-lucide="eye" aria-hidden="true"></i></button></div>
             </label>
             <div class="login-options"><button type="button" class="text-button" id="help-button">Esqueceu a senha?</button></div>
             <button class="primary-button" type="submit"><span>Login</span></button>
@@ -38,6 +38,6 @@
       </section>
     </main>
     <script src="assets/vendor/lucide.min.js"></script>
-    <script src="login.js?v=20260921-mobile-approved-2"></script>
+    <script src="login.js?v=20260921-user-suggestions-1"></script>
   </body>
 </html>

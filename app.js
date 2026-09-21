@@ -384,6 +384,35 @@ function normalizeAccessUser(user) {
   };
 }
 
+function usernameSuggestions(fullName) {
+  const parts = String(fullName || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((part) => part.replace(/[^a-z0-9]/g, ""))
+    .filter((part) => part.length >= 2 && !["de", "da", "do", "das", "dos", "e"].includes(part));
+  if (parts.length < 2) return [];
+  const base = `${parts[0]}.${parts.at(-1)}`.slice(0, 61);
+  const used = new Set([...settingsUsers, ...settingsInactiveUsers].map((user) => String(user.username || "").toLowerCase()));
+  const suggestions = [];
+  for (let suffix = 0; suggestions.length < 3 && suffix < 100; suffix += 1) {
+    const candidate = suffix ? `${base}${String(suffix).padStart(2, "0")}` : base;
+    if (!used.has(candidate)) suggestions.push(candidate);
+  }
+  return suggestions;
+}
+
+function refreshUsernameSuggestions(form) {
+  const container = form.querySelector("[data-username-suggestions]");
+  if (!container) return;
+  const suggestions = usernameSuggestions(form.elements.fullName.value);
+  container.hidden = !suggestions.length;
+  container.innerHTML = suggestions.length
+    ? `<span>Sugestões de login</span><div>${suggestions.map((name) => `<button type="button" data-username-suggestion="${escapeHtml(name)}" aria-label="Usar login ${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")}</div>`
+    : "";
+}
+
 async function accessRequest(path, options = {}) {
   const response = await fetch(apiUrl(`/api/access/${path}`), {
     credentials: apiCredentials,
@@ -5396,8 +5425,8 @@ function ficharioUsersContent() {
           <div class="fichario-sub-head"><div><h2>Cadastrar usuário</h2><p>O administrador informa os dados e o sistema gera um código de primeiro acesso. A senha definitiva será criada pelo próprio usuário.</p></div><button class="fichario-sub-action is-primary" type="submit">Salvar usuário</button></div>
           ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
           <div class="fichario-form-grid">
-            <label><span>Nome completo</span><input name="fullName" autocomplete="name" placeholder="David Souza" required maxlength="250" /></label>
-            <label><span>Login de acesso</span><input name="username" autocomplete="off" placeholder="david.souza" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /></label>
+            <label><span>Nome completo</span><input name="fullName" autocomplete="off" placeholder="Nome e sobrenome" required maxlength="250" /></label>
+            <label><span>Login de acesso</span><input name="username" autocomplete="off" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /><div class="username-suggestions" data-username-suggestions hidden></div></label>
             <label><span>E-mail de contato (opcional)</span><input name="email" type="email" autocomplete="email" placeholder="usuario@hospital.com.br" maxlength="250" /></label>
             <label><span>Perfil</span><select name="role" required><option value="auditor">Auditor</option><option value="area_responsible">Responsável da área</option><option value="viewer">Visualizador</option><option value="quality">Qualidade</option><option value="admin">Administrador</option></select></label>
             <label><span>Área vinculada</span><select name="areaId"><option value="">Todas / definir depois</option>${settingsAccessAreas.map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}</option>`).join("")}</select></label>
@@ -6191,6 +6220,14 @@ function exitChartPresentationMode() {
 }
 
 document.addEventListener("click", async (event) => {
+  const usernameChoice = event.target.closest("[data-username-suggestion]");
+  if (usernameChoice) {
+    const form = usernameChoice.closest("[data-access-user-form]");
+    form.elements.username.value = usernameChoice.dataset.usernameSuggestion;
+    form.elements.username.focus();
+    return;
+  }
+
   if (event.target.closest("[data-locked-module], [data-locked-area]")) {
     accessNotice = { type: "error", text: "Este acesso pertence somente ao administrador ou ao responsável da área indicada." };
     render();
@@ -7227,6 +7264,10 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches('[data-access-user-form] [name="fullName"]')) {
+    refreshUsernameSuggestions(event.target.form);
+    return;
+  }
   const response = event.target.closest("[data-responsible-response]");
   if (!response) return;
   const planId = state.planningPlanId;
