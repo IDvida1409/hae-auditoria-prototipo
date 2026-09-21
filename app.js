@@ -47,6 +47,17 @@ const areaData = [
   { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png", score: 7.6, last: 7.3, ncs: 4, critical: 1, pending: 3, status: "medio" }
 ];
 
+// Os nomes e ícones são estrutura; resultados só podem vir do banco ou de uma auditoria local ainda não sincronizada.
+areaData.forEach((area) => Object.assign(area, {
+  score: null,
+  last: null,
+  audits: 0,
+  ncs: 0,
+  critical: 0,
+  pending: 0,
+  status: "naoAvaliado"
+}));
+
 const statusMap = {
   satisfatorio: { label: "Acima da meta", legend: "Nota acima da meta", color: "#31aa42" },
   moderado: { label: "Na meta", legend: "Nota na meta", color: "#e9b300" },
@@ -294,6 +305,8 @@ let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 
 let offlineNoticeTimer = null;
 let operationalActionPlans = null;
 let operationalDashboard = null;
+let operationalReports = null;
+let operationalAudits = null;
 const pendingActionPlanEvidence = new Map();
 
 const accessRoleLabels = {
@@ -613,24 +626,13 @@ const months = [
   ["dez/26", "#f47b20"]
 ];
 
-const currentMonthId = "ago/26";
-const futureMonthIds = new Set(["set/26", "out/26", "nov/26", "dez/26"]);
+const monthIds = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const today = new Date();
+const currentMonthId = `${monthIds[today.getMonth()]}/${String(today.getFullYear()).slice(-2)}`;
+const futureMonthIds = new Set(months.map(([id]) => id).filter((id) => months.findIndex(([month]) => month === id) > months.findIndex(([month]) => month === currentMonthId)));
 const stateStorageKey = "hae-auditoria-state-v3";
 
-const monthLines = {
-  "jan/26": [5.0, 6.1, 5.2, 6.0, 8.0, 6.1, 5.3, 5.0, 4.6, 5.2, 4.8, 4.5],
-  "fev/26": [6.2, 6.5, 6.1, 6.8, 7.0, 6.4, 6.0, 5.8, 5.6, 5.5, 5.2, 5.1],
-  "mar/26": [6.8, 6.9, 6.4, 7.1, 7.4, 6.9, 6.4, 6.2, 5.9, 5.8, 5.5, 5.2],
-  "abr/26": [7.4, 7.2, 7.0, 7.6, 7.7, 7.2, 6.8, 6.6, 6.3, 6.1, 5.8, 5.6],
-  "mai/26": [7.8, 7.7, 7.5, 8.0, 8.1, 7.5, 7.2, 6.8, 6.5, 6.3, 6.0, 5.8],
-  "jun/26": [8.2, 8.0, 7.9, 8.1, 8.3, 7.6, 7.3, 7.1, 6.7, 6.4, 6.2, 6.0],
-  "jul/26": [8.9, 8.4, 8.2, 8.0, 8.1, 7.9, 7.7, 7.8, 7.5, 7.2, 7.1, 7.3],
-  "ago/26": [9.3, 8.8, 8.7, 8.6, 8.5, 8.4, 8.1, 8.0, 7.9, 7.8, 6.2, 7.6],
-  "set/26": null,
-  "out/26": null,
-  "nov/26": null,
-  "dez/26": null
-};
+const monthLines = Object.fromEntries(months.map(([id]) => [id, null]));
 
 const checklistData = window.HAE_CHECKLIST_DATA || {};
 
@@ -971,15 +973,29 @@ function reportFileRequest() {
 }
 
 function renderReportFileRequest(request) {
-  state.selectedArea = request.area.id;
-  state.reportKind = request.kind;
   document.body.classList.add("report-document-body");
   app.className = "app-shell is-report-document";
-  app.innerHTML = `<main class="stored-report-view">${request.kind === "comparison" ? comparativeReportPage() : monthlyReportPage()}</main>`;
+  app.innerHTML = `<main class="stored-report-view">${emptyDataState("Relatório de demonstração indisponível. Consulte os documentos gerados na aba Relatórios do painel.")}</main>`;
 }
 
 function formatScore(value) {
-  return value.toFixed(1).replace(".", ",");
+  return value != null && Number.isFinite(Number(value)) ? Number(value).toFixed(1).replace(".", ",") : "—";
+}
+
+function hasAreaResult(area) {
+  return Boolean(area && area.audits > 0 && area.score != null && Number.isFinite(Number(area.score)));
+}
+
+function areasWithResults() {
+  return areaData.filter(hasAreaResult);
+}
+
+function hasAnyAuditResult() {
+  return areasWithResults().length > 0;
+}
+
+function emptyDataState(message) {
+  return `<div class="data-empty-state">${escapeHtml(message)}</div>`;
 }
 
 function buildBackendQuestionMap(payload) {
@@ -1052,23 +1068,35 @@ function shortDate(value) {
 
 async function loadOperationalData() {
   if (location.protocol === "file:") return;
-  const [dashboard, plans] = await Promise.all([
+  const [dashboard, plans, reports, audits] = await Promise.all([
     operationalRequest("dashboard"),
-    operationalRequest("action-plans")
+    operationalRequest("action-plans"),
+    operationalRequest("reports"),
+    operationalRequest("audits")
   ]);
   operationalDashboard = dashboard;
-  const scores = new Map((dashboard.scores || []).map((row) => [String(row.area_id), Number(row.score || 0)]));
+  operationalReports = reports.reports || [];
+  operationalAudits = audits.audits || [];
+  const scores = new Map((dashboard.scores || []).map((row) => [String(row.area_id), {
+    score: Number(row.score),
+    audits: Number(row.audits || 0)
+  }]));
   const backendAreas = offlineBootstrap?.areas || [];
   for (const area of areaData) {
     const backend = backendAreas.find((item) => item.slug === area.id);
-    const score = backend ? scores.get(String(backend.id)) : undefined;
-    area.score = score ?? 0;
-    area.last = score ?? 0;
+    const result = backend ? scores.get(String(backend.id)) : undefined;
+    area.backendId = backend?.id || null;
+    area.score = result?.score ?? null;
+    area.last = null;
+    area.audits = result?.audits || 0;
     area.ncs = 0;
     area.critical = 0;
     area.pending = 0;
-    area.status = score == null ? "naoAvaliado" : scoreStatus(score);
+    area.status = result == null ? "naoAvaliado" : scoreStatus(result.score);
   }
+  monthLines[currentMonthId] = areaData.some((area) => area.score != null)
+    ? areaData.map((area) => area.score)
+    : null;
   operationalActionPlans = (plans.actionPlans || []).map((plan) => {
     const area = uiAreaFromBackendId(plan.area_id) || areaData.find((item) => item.id === plan.area_slug);
     if (area) {
@@ -1200,6 +1228,7 @@ function scoreStatus(score) {
 }
 
 function simulatedBlockScore(area, block, index) {
+  if (!hasAreaResult(area)) return null;
   const riskTotal = (block.questions || []).reduce((sum, question) => sum + (question.risk || 0), 0);
   const riskPenalty = Math.min(1.1, riskTotal / Math.max(160, (block.questions || []).length * 42));
   const rhythm = ((index % 5) - 2) * 0.16;
@@ -1209,14 +1238,15 @@ function simulatedBlockScore(area, block, index) {
 function blockSummaries(area) {
   return blocksForArea(area).map((block, index) => {
     const questions = block.questions || [];
-    const score = simulatedBlockScore(area, block, index);
     const sourceCounts = countsFromRows(questionRowsForArea(area).filter((row) => row.blockId === block.id));
+    const evaluated = sourceCounts.C + sourceCounts.NC;
+    const score = evaluated ? (sourceCounts.C / evaluated) * 10 : null;
     return {
       id: block.id,
       label: block.title,
       title: block.title,
       score,
-      status: scoreStatus(score),
+      status: score == null ? "naoAvaliado" : scoreStatus(score),
       questions,
       sourceCounts
     };
@@ -1224,7 +1254,7 @@ function blockSummaries(area) {
 }
 
 function questionRowsForArea(area) {
-  const areaAnswers = answersForArea(area.id);
+  const areaAnswers = hasAreaResult(area) ? answersForArea(area.id) : {};
   const rows = blocksForArea(area).flatMap((block) =>
     (block.questions || []).map((question) => ({
       ...question,
@@ -1232,14 +1262,9 @@ function questionRowsForArea(area) {
       blockTitle: block.title
     }))
   );
-  const candidates = rows
-    .filter((question) => question.sourceAnswer !== "X")
-    .sort((a, b) => (b.risk || 0) - (a.risk || 0) || a.number - b.number);
-  const ncIds = new Set(candidates.slice(0, Math.min(area.ncs, candidates.length)).map((question) => question.id));
-
   return rows.map((question) => ({
     ...question,
-    answer: areaAnswers[question.id] || (question.sourceAnswer === "X" ? "X" : ncIds.has(question.id) ? "NC" : "C")
+    answer: areaAnswers[question.id] || "X"
   }));
 }
 
@@ -1285,21 +1310,8 @@ function riskSummary(area) {
 }
 
 function actionPlansForArea(area) {
-  const configured = actionPlanData[area.id];
-  if (configured?.length) return configured.map((plan) => ({ ...plan, owner: area.id === "area-residuos" ? "Carlos Lima" : plan.owner }));
-  const blocks = blockSummaries(area);
-  const lowestBlock = [...blocks].sort((a, b) => a.score - b.score)[0];
-  return [
-    {
-      title: `Corrigir não conformidades de ${lowestBlock?.title || area.name}`,
-      block: lowestBlock?.title || area.name,
-      owner: "Responsável da área",
-      status: area.pending > 2 ? "pendente" : "andamento",
-      recurrent: area.ncs > 3,
-      improved: area.score >= area.last,
-      critical: area.critical > 0
-    }
-  ];
+  if (operationalActionPlans === null) return [];
+  return operationalActionPlans.filter((plan) => plan.area?.id === area.id);
 }
 
 function reportResponsibleName(area) {
@@ -1326,15 +1338,16 @@ function actionPlanStats(area) {
 }
 
 function sortedBest() {
-  return [...areaData].sort((a, b) => b.score - a.score).slice(0, 3);
+  return areasWithResults().sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
 function sortedAttention() {
-  return [...areaData].sort((a, b) => a.score - b.score).slice(0, 3);
+  return areasWithResults().sort((a, b) => a.score - b.score).slice(0, 3);
 }
 
 function generalScore() {
-  return areaData.reduce((sum, area) => sum + area.score, 0) / areaData.length;
+  const rows = areasWithResults();
+  return rows.length ? rows.reduce((sum, area) => sum + area.score, 0) / rows.length : null;
 }
 
 function monthAverage(monthId) {
@@ -1469,10 +1482,10 @@ function sidebar() {
 
 function topbarMeta() {
   const titles = {
-    home: ["Dashboard de auditoria", "Agosto 2026", "dashboard"],
+    home: ["Dashboard de auditoria", reportMonthLabel(currentMonthId), "dashboard"],
     start: ["Iniciar auditoria", "Selecione a área que deseja auditar", "audit"],
     audits: ["Auditorias", "Histórico mensal das auditorias", "list"],
-    charts: ["Gráficos", "Agosto 2026", "chart"],
+    charts: ["Gráficos", reportMonthLabel(currentMonthId), "chart"],
     actions: ["Planos de Ação", "Não conformidades e responsáveis", "action"],
     docs: ["Documentos", "Controle de validade documental", "document"],
     reports: ["Relatórios", "Consolidados por área auditada", "report"],
@@ -1556,12 +1569,13 @@ function ficharioTabs() {
 function areaTile(area, compact = false) {
   const locked = !canAccessArea(area.id);
   const status = statusMap[area.status];
+  const hasResult = hasAreaResult(area);
   return `
-    <button class="area-tile ${area.id === state.selectedArea ? "is-selected" : ""} ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-area="${area.id}"`} style="--status-color:${locked ? "#9ca8b7" : status.color}" aria-label="${locked ? `${area.name}, área sem permissão` : `${area.name}, nota ${formatScore(area.score)}`}">
-      <span class="tile-check">${locked ? icons.lock : "✓"}</span>
+    <button class="area-tile ${area.id === state.selectedArea ? "is-selected" : ""} ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-area="${area.id}"`} style="--status-color:${locked ? "#9ca8b7" : status.color}" aria-label="${locked ? `${area.name}, área sem permissão` : hasResult ? `${area.name}, nota ${formatScore(area.score)}` : `${area.name}, sem auditoria concluída`}">
+      <span class="tile-check">${locked ? icons.lock : hasResult ? "✓" : ""}</span>
       <span class="area-icon-wrap"><img class="area-icon" src="assets/icons/${area.icon}" alt="" /></span>
       <span class="area-name">${area.name}</span>
-      <span class="area-score">${locked ? "" : formatScore(area.score)}</span>
+      <span class="area-score">${locked ? "" : hasResult ? formatScore(area.score) : "—"}</span>
     </button>
   `;
 }
@@ -1614,7 +1628,7 @@ function quickMetrics(area) {
     <div class="quick-metrics quick-metrics-risk">
       <div class="quick-metric metric-weighted-score" style="--metric-color:${status.color}">
         <small>Nota da área</small>
-        <b>${formatScore(area.score)}</b>
+        <b>${hasAreaResult(area) ? formatScore(area.score) : "—"}</b>
       </div>
       <div class="quick-metric metric-risk-distribution">
         <small>NCs por nível de risco</small>
@@ -1622,7 +1636,7 @@ function quickMetrics(area) {
       </div>
       <div class="quick-metric metric-highest-risk" style="--metric-color:${highestMeta.color}">
         <small>Maior risco encontrado</small>
-        <b>${highestMeta.label}</b>
+        <b>${area.ncs ? highestMeta.label : "Nenhum"}</b>
         <span>${area.ncs} NCs registradas</span>
       </div>
       <div class="quick-metric metric-high-risk-nc" style="--metric-color:${riskMeta.critico.color}">
@@ -1642,7 +1656,9 @@ function selectedPanel(extraClass = "") {
   const status = statusMap[area.status];
   const ncRows = ncRowsForArea(area);
   const highRiskCount = ncRiskCounts(area).critico;
-  const attentionText = highRiskCount
+  const attentionText = !hasAreaResult(area)
+    ? "Esta área ainda não possui auditoria concluída."
+    : highRiskCount
     ? `${highRiskCount} ${highRiskCount === 1 ? "item de alto risco está não conforme" : "itens de alto risco estão não conformes"}; priorizar ação corretiva.`
     : "Acompanhar as não conformidades registradas e manter a evolução da nota.";
   return `
@@ -1654,7 +1670,7 @@ function selectedPanel(extraClass = "") {
         <div class="selected-area-copy">
           <h2>${area.name}</h2>
           <div class="selected-status-line">
-            <div class="selected-score">${formatScore(area.score)}<small>/10</small></div>
+            <div class="selected-score">${formatScore(area.score)}${hasAreaResult(area) ? "<small>/10</small>" : ""}</div>
             <span class="status-pill color-only" title="${status.legend || status.label}" aria-label="${status.legend || status.label}"></span>
           </div>
         </div>
@@ -1664,7 +1680,7 @@ function selectedPanel(extraClass = "") {
       <div>
         <div class="side-title">Principais NCs por risco</div>
         <div class="ncs-list">
-          ${ncRows
+          ${ncRows.length ? ncRows
             .slice(0, 3)
             .map((row) => {
               const meta = riskMeta[row.riskLevel] || riskMeta.none;
@@ -1677,7 +1693,7 @@ function selectedPanel(extraClass = "") {
                 </div>
               `;
             })
-            .join("")}
+            .join("") : emptyDataState("Nenhuma não conformidade registrada.")}
         </div>
       </div>
       <div class="detail-links">
@@ -1708,18 +1724,20 @@ function lineChart(points, color = "#0a6cff", height = 112) {
 }
 
 function areaEvolutionChart(area) {
+  if (!hasAreaResult(area)) return emptyDataState("A evolução será exibida após a primeira auditoria concluída.");
   const areaIndex = areaData.findIndex((item) => item.id === area.id);
-  const chartMonths = months.slice(0, 8).map(([id]) => id);
-  const labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago"];
-  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex] ?? area.score);
-  const color = area.score < area.last ? "#ee2f36" : "#31aa42";
+  const chartMonths = availableMonthIds();
+  const labels = chartMonths.map((monthId) => reportShortMonthLabel(monthId).split("/")[0]);
+  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex]).filter(Number.isFinite);
+  if (!points.length) return emptyDataState("A evolução será exibida após a primeira auditoria concluída.");
+  const color = Number.isFinite(area.last) && area.score < area.last ? "#ee2f36" : "#31aa42";
   const w = 540;
   const h = 166;
   const pad = { left: 22, right: 22, top: 24, bottom: 30 };
   const minValue = Math.min(...points, 8) - 0.25;
   const maxValue = Math.max(...points, 8) + 0.25;
   const range = Math.max(1, maxValue - minValue);
-  const xStep = (w - pad.left - pad.right) / (points.length - 1);
+  const xStep = (w - pad.left - pad.right) / Math.max(1, points.length - 1);
   const yFor = (value) => pad.top + (maxValue - value) * ((h - pad.top - pad.bottom) / range);
   const d = points
     .map((value, index) => `${index === 0 ? "M" : "L"}${pad.left + index * xStep},${yFor(value)}`)
@@ -1747,45 +1765,17 @@ function areaEvolutionChart(area) {
 }
 
 function dashboardEvolution(area = null) {
-  if (!area) {
-    return `
-      <div class="dash-evolution" aria-label="Prévia da evolução da nota">
-        <svg viewBox="0 0 360 104" role="img" aria-label="Evolução das notas nos últimos seis meses">
-          <line x1="14" y1="79" x2="346" y2="79" stroke="#e4e9f0" stroke-width="1" />
-          <line x1="14" y1="50" x2="346" y2="50" stroke="#dfeee2" stroke-width="1.1" />
-          <path d="M14,65 L80,58 L146,60 L213,51 L279,39 L346,30" fill="none" stroke="#2f8f46" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
-          <g fill="#2f8f46" stroke="#fff" stroke-width="2">
-            <circle cx="14" cy="65" r="4.4"></circle>
-            <circle cx="80" cy="58" r="4.4"></circle>
-            <circle cx="146" cy="60" r="4.4"></circle>
-            <circle cx="213" cy="51" r="4.4"></circle>
-            <circle cx="279" cy="39" r="4.4"></circle>
-            <circle cx="346" cy="30" r="4.4"></circle>
-          </g>
-          <g fill="#2f8f46" font-size="11.2" font-weight="650" text-anchor="middle">
-            <text x="14" y="52">7,3</text>
-            <text x="80" y="45">7,4</text>
-            <text x="146" y="47">7,3</text>
-            <text x="213" y="38">7,5</text>
-            <text x="279" y="26">7,8</text>
-            <text x="346" y="17">8,2</text>
-          </g>
-          <g fill="#425474" font-size="11.2" font-weight="560" text-anchor="middle">
-            <text x="14" y="100">Mar</text>
-            <text x="80" y="100">Abr</text>
-            <text x="146" y="100">Mai</text>
-            <text x="213" y="100">Jun</text>
-            <text x="279" y="100">Jul</text>
-            <text x="346" y="100">Ago</text>
-          </g>
-        </svg>
-      </div>
-    `;
+  if ((area && !hasAreaResult(area)) || (!area && !hasAnyAuditResult())) {
+    return `<div class="dash-evolution">${emptyDataState("A evolução será exibida após a primeira auditoria concluída.")}</div>`;
   }
-  const chartMonths = months.slice(2, 8).map(([id]) => id);
-  const monthsLabel = ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago"];
+  if (!area) {
+    return `<div class="dash-evolution">${generalAssessmentMiniChart()}</div>`;
+  }
+  const chartMonths = availableMonthIds().slice(-6);
+  const monthsLabel = chartMonths.map((monthId) => reportShortMonthLabel(monthId).split("/")[0]);
   const areaIndex = areaData.findIndex((item) => item.id === area.id);
-  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex] ?? area.score);
+  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex]).filter(Number.isFinite);
+  if (!points.length) return `<div class="dash-evolution">${emptyDataState("A evolução será exibida após a primeira auditoria concluída.")}</div>`;
   const latest = points[points.length - 1];
   const previous = points[points.length - 2] ?? latest;
   const color = latest < previous ? "#ee2f36" : "#2f8f46";
@@ -1795,7 +1785,7 @@ function dashboardEvolution(area = null) {
   const minValue = Math.min(...points, 8) - 0.25;
   const maxValue = Math.max(...points, 8) + 0.25;
   const range = Math.max(1, maxValue - minValue);
-  const xStep = (w - pad.left - pad.right) / (points.length - 1);
+  const xStep = (w - pad.left - pad.right) / Math.max(1, points.length - 1);
   const yFor = (value) => pad.top + (maxValue - value) * ((h - pad.top - pad.bottom) / range);
   const d = points
     .map((value, index) => `${index === 0 ? "M" : "L"}${pad.left + index * xStep},${yFor(value)}`)
@@ -1881,16 +1871,21 @@ function generalAssessmentMiniChart() {
 }
 
 function graphGeneralAssessment() {
+  if (!hasAnyAuditResult()) {
+    return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada no período.")}</div>`;
+  }
   if (isAreaResponsible()) {
     const area = primaryUserArea();
-    const delta = area.score - area.last;
-    return `<div class="graph-card-body graph-assessment is-panel-style"><div class="general-score-row"><div class="general-score-value">${formatScore(area.score)}</div><div><strong>${escapeHtml(area.name)}</strong><span>Agosto/2026</span></div></div>${dashboardEvolution(area)}<div class="general-delta ${delta >= 0 ? "positive" : "danger"}">${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto vs. jul/26</div></div>`;
+    if (!hasAreaResult(area)) return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada para esta área.")}</div>`;
+    const hasPrevious = Number.isFinite(area.last);
+    const delta = hasPrevious ? area.score - area.last : null;
+    return `<div class="graph-card-body graph-assessment is-panel-style"><div class="general-score-row"><div class="general-score-value">${formatScore(area.score)}</div><div><strong>${escapeHtml(area.name)}</strong><span>${reportMonthLabel(currentMonthId)}</span></div></div>${dashboardEvolution(area)}${hasPrevious ? `<div class="general-delta ${delta >= 0 ? "positive" : "danger"}">${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto</div>` : ""}</div>`;
   }
   const currentScore = monthAverage(currentMonthId) ?? generalScore();
   const available = availableMonthIds();
   const previousId = [...available].reverse().find((monthId) => monthId !== currentMonthId);
   const previousScore = previousId ? monthAverage(previousId) : null;
-  const delta = previousScore == null ? 0 : currentScore - previousScore;
+  const delta = previousScore == null ? null : currentScore - previousScore;
   const trendClass = delta >= 0 ? "positive" : "danger";
 
   return `
@@ -1899,24 +1894,25 @@ function graphGeneralAssessment() {
         <div class="general-score-value">${formatScore(currentScore)}</div>
         <div>
           <strong>Média das 12 áreas</strong>
-          <span>Agosto/2026</span>
+          <span>${reportMonthLabel(currentMonthId)}</span>
         </div>
       </div>
       ${generalAssessmentMiniChart()}
-      <div class="general-delta ${trendClass}">
-        ${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto vs. ${previousId || currentMonthId}
-      </div>
+      ${delta == null ? "" : `<div class="general-delta ${trendClass}">
+        ${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto vs. ${previousId}
+      </div>`}
     </div>
   `;
 }
 
 function graphSummaryRows(rows, total) {
+  const safeTotal = Math.max(1, total);
   return `
     <div class="graph-summary-list">
       ${rows
         .map(
           (row) => `
-            <div class="graph-summary-row" style="--row-color:${row.color};--row-width:${Math.round((row.value / total) * 100)}%">
+            <div class="graph-summary-row" style="--row-color:${row.color};--row-width:${Math.round((row.value / safeTotal) * 100)}%">
               <div class="graph-summary-top">
                 <span><i></i>${row.label}</span>
                 <b>${row.value}</b>
@@ -1935,14 +1931,14 @@ function graphStatusSummary() {
   const rows = order.map((status) => ({
     label: statusMap[status].label,
     color: statusMap[status].color,
-    value: areaData.filter((area) => area.status === status).length
+    value: areasWithResults().filter((area) => area.status === status).length
   }));
-  return graphSummaryRows(rows, areaData.length);
+  return graphSummaryRows(rows, areasWithResults().length);
 }
 
 function graphRiskSummary() {
   const counts = ncRiskCounts(isAreaResponsible() ? primaryUserArea() : null);
-  const total = Math.max(1, Object.values(counts).reduce((sum, value) => sum + value, 0));
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const rows = riskDisplayOrder.map((level) => ({
     label: riskMeta[level].label,
     color: riskMeta[level].color,
@@ -1957,23 +1953,38 @@ function graphRiskSummary() {
 }
 
 function graphAuditSummary() {
+  const audits = operationalAudits || [];
+  const finished = audits.filter((audit) => audit.status === "finished").length;
+  const inProgress = audits.filter((audit) => ["draft", "in_progress", "sync_pending"].includes(audit.status)).length;
+  const failed = audits.filter((audit) => ["failed", "cancelled"].includes(audit.status)).length;
   const rows = [
-    { label: "Realizadas", color: "var(--green)", value: 8 },
-    { label: "Atrasada", color: "var(--orange)", value: 1 },
-    { label: "Não realizadas", color: "#c8d0dc", value: 3 }
+    { label: "Realizadas", color: "var(--green)", value: finished },
+    { label: "Em andamento", color: "var(--orange)", value: inProgress },
+    { label: "Não concluídas", color: "#c8d0dc", value: failed }
   ];
   return `
     <div class="graph-card-body graph-audits">
-      <div class="audit-total-line"><strong>12</strong><span>meses acompanhados</span></div>
-      ${graphSummaryRows(rows, 12)}
+      <div class="audit-total-line"><strong>${audits.length}</strong><span>auditorias registradas</span></div>
+      ${graphSummaryRows(rows, audits.length)}
     </div>
   `;
+}
+
+function recentFeedbackNotifications() {
+  return accessNotifications
+    .filter((item) => /feedback|devolutiva|prazo|deadline/i.test(`${item.notification_type} ${item.title}`))
+    .slice(0, 4);
 }
 
 function dashboardHome() {
   const hasSelection = Boolean(state.selectedArea);
   const selectedArea = hasSelection ? areaById(state.selectedArea) : null;
   const scopeArea = isAreaResponsible() ? primaryUserArea() : selectedArea;
+  const scopedAreas = scopeArea ? [scopeArea] : areasWithResults();
+  const pendingPlans = scopedAreas.reduce((sum, area) => sum + area.pending, 0);
+  const criticalNcs = scopedAreas.reduce((sum, area) => sum + area.critical, 0);
+  const latePlans = planningActionRows().filter((plan) => plan.status === "overdue" && (!scopeArea || plan.area?.id === scopeArea.id)).length;
+  const feedback = recentFeedbackNotifications();
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
       <div class="fichario-panel-head">
@@ -1991,10 +2002,10 @@ function dashboardHome() {
             <section class="fichario-summary-card">
               <h2>${isAreaResponsible() ? "Pendências da área" : "Pendências gerais"}</h2>
               <div class="pending-compact-grid">
-                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>${isAreaResponsible() ? scopeArea.pending : 12}</b><small>planos pendentes</small></span>
-                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>${isAreaResponsible() ? scopeArea.critical : 8}</b><small>NCs de alto risco</small></span>
-                <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>${isAreaResponsible() ? 0 : 1}</b><small>documento vencido</small></span>
-                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>${isAreaResponsible() ? Number(scopeArea.pending > 3) : 2}</b><small>áreas atrasadas</small></span>
+                <span><img src="assets/ui-icons-approved/blue/action-plan.png" alt="" /><b>${pendingPlans}</b><small>planos pendentes</small></span>
+                <span><img src="assets/ui-icons-approved/blue/critical.png" alt="" /><b>${criticalNcs}</b><small>NCs de alto risco</small></span>
+                <span><img src="assets/ui-icons-approved/blue/ncs.png" alt="" /><b>0</b><small>documentos vencidos</small></span>
+                <span><img src="assets/ui-icons-approved/blue/late.png" alt="" /><b>${latePlans}</b><small>planos atrasados</small></span>
               </div>
             </section>
             <section class="fichario-summary-card">
@@ -2006,12 +2017,11 @@ function dashboardHome() {
               <h2>Últimas devolutivas</h2>
               <p>Retornos recentes dos responsáveis.</p>
               <div class="feedback-compact-row">
-                <div class="feedback-count"><strong>${isAreaResponsible() ? 1 : 4}</strong><span>retornos recentes</span></div>
+                <div class="feedback-count"><strong>${feedback.length}</strong><span>retornos recentes</span></div>
                 <button class="feedback-toggle" type="button" data-toggle-feedback>${state.feedbackExpanded ? "Ocultar devolutivas" : "Ver devolutivas"}</button>
               </div>
               <div class="feedback-list ${state.feedbackExpanded ? "" : "hidden"}">
-                <div class="feedback-item"><strong>Área de Resíduos</strong><span class="feedback-status" style="--status-color: var(--yellow)">Em análise</span></div>
-                ${isAreaResponsible() ? "" : `<div class="feedback-item"><strong>Cozinha Catering</strong><span class="feedback-status" style="--status-color: var(--green)">Aprovado</span></div><div class="feedback-item"><strong>Higienização de Louça</strong><span class="feedback-status" style="--status-color: var(--orange)">Pendente</span></div><div class="feedback-item"><strong>DML - Produto Químico</strong><span class="feedback-status" style="--status-color: var(--red)">Reprovado</span></div>`}
+                ${feedback.length ? feedback.map((item) => `<div class="feedback-item"><strong>${escapeHtml(item.title || "Devolutiva recebida")}</strong><span class="feedback-status" style="--status-color: var(--yellow)">${escapeHtml(relativeNotificationTime(item.created_at))}</span></div>`).join("") : emptyDataState("Nenhuma devolutiva recebida.")}
               </div>
             </section>
           </div>
@@ -2029,11 +2039,11 @@ function dashboardHome() {
 function chartSvg() {
   const expanded = state.chartExpanded;
   const selected = state.selectedMonth;
-  const chartAreas = isAreaResponsible() ? areaData.filter((area) => canAccessArea(area.id)) : areaData;
+  const chartAreas = areasWithResults().filter((area) => canAccessArea(area.id));
   const chartIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
   const hasComparison = selected !== currentMonthId && Array.isArray(monthLines[selected]);
   const lineValues = hasComparison ? chartIndexes.map((index) => monthLines[selected][index]) : null;
-  const barValues = chartIndexes.map((index) => monthLines[currentMonthId][index]);
+  const barValues = chartIndexes.map((index) => monthLines[currentMonthId]?.[index] ?? 0);
   const width = expanded ? 1320 : 1120;
   const height = expanded ? 520 : 400;
   const pad = expanded
@@ -2223,8 +2233,8 @@ function chartAreaLabels() {
 }
 
 function subareasFor(area) {
-  const rows = blockSummaries(area);
-  return rows.length ? rows : subareaData[area.id] || [];
+  const rows = blockSummaries(area).filter((row) => Number.isFinite(row.score));
+  return rows;
 }
 
 function areaQuickComparison(area) {
@@ -2241,7 +2251,7 @@ function areaQuickComparison(area) {
     </div>
     <button class="compare-back-btn" data-clear-chart-focus>Voltar ao comparativo rápido</button>
     <div class="subarea-list">
-      ${rows
+      ${hasAreaResult(area) ? rows
         .map((row) => {
           const rowStatus = statusMap[row.status];
           return `
@@ -2254,7 +2264,7 @@ function areaQuickComparison(area) {
             </div>
           `;
         })
-        .join("")}
+        .join("") : emptyDataState("Nenhum resultado registrado para esta área.")}
     </div>
     <div class="attention-note graph-note">${svgIcon("idea")} <span>Use este resumo para localizar os blocos com menor nota antes de abrir a análise completa.</span></div>
     ${linkedActionSummary(area)}
@@ -2300,7 +2310,7 @@ function rankBox(title, color, rows, direction = "up", showActionHints = false) 
     <div class="rank-box" style="--rank-color:${color}">
       <div class="rank-title"><span>${title}</span><b>${arrow}</b></div>
       <div class="rank-list">
-        ${rows
+        ${rows.length ? rows
           .map(
             (area, index) => `
             <div class="rank-row">
@@ -2313,7 +2323,7 @@ function rankBox(title, color, rows, direction = "up", showActionHints = false) 
               </div>
             `
           )
-          .join("")}
+          .join("") : emptyDataState("O ranking será exibido após as primeiras auditorias.")}
       </div>
     </div>
   `;
@@ -2415,7 +2425,7 @@ function chartsPage() {
           <div class="chart-head">
             <div>
               <h2>${isImpactMode ? "Áreas com maior prioridade de ação" : "Evolução da nota"}</h2>
-              <p class="chart-note">${isImpactMode ? "Ranking combinado por nota baixa, NCs de alto risco, recorrência e andamento dos planos." : "Clique em um mês abaixo para comparar com o mês atual (Agosto/2026)."}</p>
+              <p class="chart-note">${isImpactMode ? "Ranking combinado por nota baixa, NCs de alto risco, recorrência e andamento dos planos." : `Clique em um mês abaixo para comparar com o mês atual (${reportMonthLabel(currentMonthId)}).`}</p>
             </div>
             <div class="chart-tools">
               ${isAreaResponsible() ? "" : `<button class="chart-mode-btn" data-toggle-chart-mode title="Ver ${nextModeLabel}">
@@ -2426,9 +2436,9 @@ function chartsPage() {
             </div>
           </div>
           <div class="mobile-chart-scroll">
-            ${isImpactMode ? actionImpactChart() : chartSvg()}
+            ${hasAnyAuditResult() ? (isImpactMode ? actionImpactChart() : chartSvg()) : emptyDataState("Nenhuma auditoria concluída no período. O gráfico será preenchido automaticamente após a sincronização.")}
           </div>
-          ${isImpactMode ? "" : `<div class="month-strip">
+          ${isImpactMode || !hasAnyAuditResult() ? "" : `<div class="month-strip">
             ${monthOptions
               .map(
                 ([month, color]) => {
@@ -2442,7 +2452,7 @@ function chartsPage() {
               )
               .join("")}
           </div>
-          <p class="chart-note">${state.selectedMonth === currentMonthId ? "As colunas representam Agosto/2026, sem linha comparativa ativa." : "As colunas representam Agosto/2026. A linha representa o mês selecionado para comparação."}</p>`}
+          <p class="chart-note">${state.selectedMonth === currentMonthId ? `As colunas representam ${reportMonthLabel(currentMonthId)}, sem linha comparativa ativa.` : `As colunas representam ${reportMonthLabel(currentMonthId)}. A linha representa o mês selecionado para comparação.`}</p>`}
         </section>
         ${state.chartExpanded ? "" : `<div class="graph-bottom">
           <section class="mini-panel surface">
@@ -3271,7 +3281,9 @@ function reportStoredPdfUrl(area, reportKind) {
 
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
   const icon = mode === "download" ? svgIcon("document") : svgIcon("externalLink");
-  return `<button class="report-file-action" data-report-action="${mode}" data-report-area="${escapeHtml(area.id)}" data-report-kind="${escapeHtml(reportKind)}" type="button">${icon} ${escapeHtml(label)}</button>`;
+  const report = reportsForArea(area).find((item) => item.report_type === reportKind);
+  const url = report?.file_url || "";
+  return `<button class="report-file-action" data-report-action="${mode}" data-report-area="${escapeHtml(area.id)}" data-report-kind="${escapeHtml(reportKind)}" data-report-url="${escapeHtml(url)}" type="button">${icon} ${escapeHtml(label)}</button>`;
 }
 
 function prepareReportPdfWindow() {
@@ -4437,20 +4449,22 @@ function comparativeReportPage() {
 }
 
 function reportLibraryItems(area) {
+  const stored = reportsForArea(area);
+  const findReport = (type) => stored.find((report) => report.report_type === type);
   return [
     {
       id: "monthly",
       title: "Relatório da auditoria mensal",
-      status: "Disponível",
-      note: reportMonthLabel(currentMonthId),
-      available: true
+      status: findReport("monthly") ? "Disponível" : "Ainda não gerado",
+      note: findReport("monthly")?.period_label || reportMonthLabel(currentMonthId),
+      available: Boolean(findReport("monthly"))
     },
     {
       id: "comparison",
       title: "Relatório comparativo",
-      status: "Disponível",
-      note: `${reportMonthLabel(currentMonthId)} / ${reportMonthLabel(reportPreviousMonthId())}`,
-      available: true
+      status: findReport("comparison") ? "Disponível" : "Ainda não gerado",
+      note: findReport("comparison")?.period_label || "Exige pelo menos dois ciclos concluídos",
+      available: Boolean(findReport("comparison"))
     },
     {
       id: "quarterly",
@@ -4476,19 +4490,23 @@ function reportLibraryItems(area) {
   ];
 }
 
+function reportsForArea(area) {
+  if (!area || !Array.isArray(operationalReports)) return [];
+  return operationalReports.filter((report) => String(report.area_id) === String(area.backendId));
+}
+
 function reportHistoryRows(area) {
-  return [
-    { period: reportMonthLabel(currentMonthId), type: "Auditoria mensal", status: "PDF disponível", kind: "monthly" },
-    { period: `${reportMonthLabel(currentMonthId)} / ${reportMonthLabel(reportPreviousMonthId())}`, type: "Comparativo analítico", status: "PDF disponível", kind: "comparison" },
-    { period: reportMonthLabel(reportPreviousMonthId()), type: "Auditoria mensal", status: "Histórico registrado", kind: "" }
-  ].map((row) => `
+  const rows = reportsForArea(area);
+  if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
+  const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
+  return rows.map((row) => `
     <tr>
-      <td>${escapeHtml(row.period)}</td>
-      <td>${escapeHtml(row.type)}</td>
-      <td>${escapeHtml(row.status)}</td>
+      <td>${escapeHtml(row.period_label || "Período não informado")}</td>
+      <td>${escapeHtml(labels[row.report_type] || row.report_type)}</td>
+      <td>${escapeHtml(row.status === "generated" ? "PDF disponível" : row.status)}</td>
       <td>
-        ${row.kind
-          ? reportStoredPdfLink(area, row.kind, "open", "Abrir")
+        ${row.file_url
+          ? reportStoredPdfLink(area, row.report_type, "open", "Abrir")
           : `<span>Arquivado</span>`}
       </td>
     </tr>
@@ -4607,7 +4625,7 @@ function questionRiskChip(question) {
 }
 
 function questionActionPlanNotice(area, question) {
-  return questionActionPlanData[area.id]?.[question.id] || null;
+  return null;
 }
 
 function questionActionPlanButton(question) {
@@ -4659,6 +4677,20 @@ function observationFor(row) {
 function areaDetailPage() {
   const area = areaById(state.selectedArea);
   const status = statusMap[area.status];
+  if (!hasAreaResult(area)) {
+    return `
+      <div class="detail-page">
+        <section class="surface area-empty-detail">
+          <img src="assets/icons/${area.icon}" alt="" aria-hidden="true" />
+          <div>
+            <span class="eyebrow">${escapeHtml(area.name)}</span>
+            <h2>Nenhuma auditoria concluída</h2>
+            <p>Notas, evolução, não conformidades, evidências e relatório aparecerão aqui depois que a primeira auditoria desta área for finalizada e sincronizada.</p>
+          </div>
+        </section>
+      </div>
+    `;
+  }
   const summaries = blockSummaries(area);
   const allRows = questionRowsForArea(area);
   const counts = countsFromRows(allRows);
@@ -5448,82 +5480,9 @@ function usersPage() {
 }
 
 function planningActionRows() {
-  if (operationalActionPlans !== null) {
-    return operationalActionPlans
-      .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }))
-      .filter((row) => row.area && canAccessArea(row.area.id));
-  }
-  const fallbackPlans = areaData
-    .filter((area) => area.pending > 0)
-    .map((area, index) => ({
-      id: `${area.id}-auto`,
-      area,
-      title: area.critical ? "Corrigir NCs de alto risco" : "Regularizar pendências da área",
-      block: subareaData[area.id]?.[0]?.label || "Checklist mensal",
-      owner: area.name,
-      status: area.id === "higienizacao-cubas" || area.score < 7 ? "pending_review" : area.pending > 2 ? "in_progress" : "awaiting_send",
-      due: `${18 + index}/09/2026`,
-      ncs: area.ncs,
-      attempts: area.score < 7 ? 2 : 1,
-      source: "Auditoria atual",
-      deadlineRequested: area.id === "higienizacao-cubas",
-      requestedDue: area.id === "higienizacao-cubas" ? "15/12/2026" : "",
-      deadlineReason: area.id === "higienizacao-cubas" ? "Solicito alteração do prazo porque a substituição depende da compra do componente e do agendamento da manutenção especializada." : "",
-      deadlineItemIndex: area.id === "higienizacao-cubas" ? 1 : null,
-      itemDecisions: {}
-    }));
-
-  const configuredPlans = Object.entries(actionPlanData).flatMap(([areaId, plans]) => {
-    const area = areaData.find((item) => item.id === areaId);
-    if (!area) return [];
-    return plans.map((plan, index) => ({
-      id: `${areaId}-${index}`,
-      area,
-      title: plan.title,
-      block: plan.block,
-      owner: plan.owner,
-      status: plan.status === "concluido" ? "approved" : plan.status === "atrasado" ? "overdue" : plan.status === "pendente" ? "awaiting_send" : "in_progress",
-      due: `${21 + index}/09/2026`,
-      ncs: plan.critical ? 2 : 1,
-      attempts: plan.status === "concluido" ? 1 : 0,
-      source: plan.status === "concluido" ? "Histórico Agosto/2026" : "Auditoria atual"
-    }));
-  });
-
-  const historicalPlans = [
-    ["hist-residuos-ago", "area-residuos", "Adequar segregação de resíduos", "Agosto/2026", "Carlos Lima", "approved", "28/08/2026", 3, 1],
-    ["hist-residuos-jul", "area-residuos", "Revisar identificação de contentores", "Julho/2026", "Carlos Lima", "rejected", "30/07/2026", 2, 2],
-    ["hist-documentacao-ago", "documentacao", "Atualizar POP de higienização", "Agosto/2026", "Marina Costa", "approved", "26/08/2026", 1, 1],
-    ["hist-dml-jul", "dml-produto-quimico", "Regularizar armazenamento químico", "Julho/2026", "Paulo Nunes", "approved", "24/07/2026", 2, 1]
-  ].map(([id, areaId, title, block, owner, status, due, ncs, attempts]) => {
-    const area = areaData.find((item) => item.id === areaId);
-    if (!area) return null;
-    return {
-      id,
-      area,
-      title,
-      block,
-      owner,
-      status,
-      due,
-      ncs,
-      attempts,
-      source: "Histórico",
-      decisionReason: status === "rejected" ? "A evidência da NC 02 não comprovou a correção completa. Refaça o registro após identificar todos os contentores." : "",
-      itemDecisions: status === "rejected" ? {
-        0: { status: "approved" },
-        1: { status: "rejected", reason: "A evidência não comprovou a correção completa do item." }
-      } : {}
-    };
-  }).filter(Boolean);
-
-  return [...configuredPlans, ...fallbackPlans, ...historicalPlans]
-    .filter((row) => row.area)
+  return (operationalActionPlans || [])
     .map((row) => ({ ...row, ...(state.planningPlanOverrides?.[row.id] || {}) }))
-    .filter((row) => canAccessArea(row.area.id))
-    .map((row) => isAreaResponsible() && row.id === "area-residuos-auto" && row.status === "pending_review" && !row.responsibleSubmitted
-      ? { ...row, owner: "Carlos Lima", status: "in_progress", deadlineRequested: false, itemDecisions: {} }
-      : row);
+    .filter((row) => row.area && canAccessArea(row.area.id));
 }
 
 function planningActiveRows(rows = planningActionRows()) {
@@ -6460,6 +6419,18 @@ document.addEventListener("click", async (event) => {
   if (reportAction) {
     const reportKindValue = reportAction.dataset.reportKind === "comparison" ? "comparison" : "monthly";
     const actionMode = reportAction.dataset.reportAction === "download" ? "download" : "open";
+    const storedUrl = reportAction.dataset.reportUrl;
+    if (storedUrl) {
+      const resolvedUrl = storedUrl.startsWith("/") ? `${nativeApiOrigin}${storedUrl}` : storedUrl;
+      if (actionMode === "open") window.open(resolvedUrl, "_blank");
+      else {
+        const link = document.createElement("a");
+        link.href = resolvedUrl;
+        link.download = "";
+        link.click();
+      }
+      return;
+    }
     const pdfWindow = actionMode === "open" ? window.open("", "_blank") : null;
     state.selectedArea = reportAction.dataset.reportArea;
     state.reportKind = reportKindValue;
