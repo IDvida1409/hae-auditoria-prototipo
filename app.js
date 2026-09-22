@@ -372,11 +372,30 @@ function moduleAllowed(view) {
 function applyCurrentUserScope() {
   if (!isAreaResponsible()) return;
   const primary = primaryUserArea();
-  state.selectedArea = primary.id;
   if (!canAccessArea(state.chartFocusArea)) state.chartFocusArea = primary.id;
   if (!moduleAllowed(state.view)) state.view = "home";
   if (state.planningView === "rules") state.planningView = "overview";
   if (state.planningAreaId && !canAccessArea(state.planningAreaId)) state.planningAreaId = primary.id;
+}
+
+function resetViewForFreshLogin() {
+  state.view = "home";
+  state.selectedArea = "";
+  state.chartFocusArea = null;
+  state.chartExpanded = false;
+  state.detailBlock = null;
+  state.detailEvidenceOpen = false;
+  state.detailActionsOpen = false;
+  state.checklistBlocksOpen = false;
+  state.auditInstructionsOpen = false;
+  state.planningView = "overview";
+  state.planningAreaId = "";
+  state.planningStatusFilter = "";
+  state.planningPlanId = "";
+  state.actionPlanPreview = false;
+  state.reportFolderArea = null;
+  state.settingsMenuExpanded = false;
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
 }
 
 function normalizeAccessUser(user) {
@@ -6793,6 +6812,8 @@ document.addEventListener("click", async (event) => {
 
   const logout = event.target.closest("[data-access-logout]");
   if (logout) {
+    resetViewForFreshLogin();
+    saveState();
     accessRequest("logout", { method: "POST", body: "{}" }).catch(() => {}).finally(() => {
       sessionStorage.removeItem("idauditor-user");
       localStorage.removeItem("idauditor-offline-user");
@@ -7932,6 +7953,11 @@ if (reportRequest) {
         return;
       }
       localStorage.setItem("idauditor-offline-user", JSON.stringify(currentAccessUser));
+      const freshLogin = sessionStorage.getItem("idauditor-fresh-login");
+      if (freshLogin) {
+        resetViewForFreshLogin();
+        sessionStorage.removeItem("idauditor-fresh-login");
+      }
       if (window.HAE_OFFLINE) {
         await window.HAE_OFFLINE.configure({
           userScope: currentAccessUser.id,

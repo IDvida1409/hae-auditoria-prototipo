@@ -4,6 +4,7 @@
   const title = document.getElementById("access-title");
   const status = document.getElementById("access-status");
   const logo = document.querySelector(".product-logo");
+  const transition = document.querySelector("[data-login-transition]");
   const defaultLogo = "assets/idvida-login-logo.png";
   function applyBranding(branding) {
     logo.classList.remove("is-loading-brand");
@@ -39,6 +40,16 @@
     return data;
   }
   function busy(form, value) { form.querySelectorAll("button,input,select").forEach((element) => { element.disabled = value; }); }
+  function transitionProgress(percent, label) {
+    transition?.classList.add("is-active");
+    transition?.setAttribute("aria-hidden", "false");
+    transition?.querySelector("[data-login-transition-progress]")?.style.setProperty("width", `${percent}%`);
+    const percentNode = transition?.querySelector("[data-login-transition-percent]");
+    const labelNode = transition?.querySelector("[data-login-transition-label]");
+    if (percentNode) percentNode.textContent = `${percent}%`;
+    if (labelNode && label) labelNode.textContent = label;
+  }
+  const transitionDelay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   async function submit(form, callback) {
     const values = Object.fromEntries(new FormData(form));
     message(""); busy(form, true);
@@ -54,8 +65,16 @@
       applyBranding(data.branding);
       if (data.user.must_change_password) { forms.login.reset(); setMode("change"); return; }
       sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
+      sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username || values.username));
       forms.login.querySelector('.primary-button span').textContent = "Entrando...";
-      message("Autenticação concluída. Abrindo o painel.", true);
+      transitionProgress(18, "Validando o acesso...");
+      await transitionDelay(260);
+      transitionProgress(52, "Carregando seu perfil...");
+      await transitionDelay(330);
+      transitionProgress(82, "Sincronizando suas informações...");
+      await transitionDelay(360);
+      transitionProgress(100, "Abrindo o painel...");
+      await transitionDelay(420);
       location.replace("/");
       return "navigating";
     });
