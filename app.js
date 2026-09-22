@@ -3382,7 +3382,7 @@ function reportComparisonDocHeader(area, showMeta = false) {
 function reportDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
-      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011</span>
       <span>Página ${page} de ${total}</span>
     </footer>
   `;
@@ -3391,7 +3391,7 @@ function reportDocFooter(page, total) {
 function reportMonthlyDocFooter(page, total) {
   return `
     <footer class="report-doc-footer">
-      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011 · Dados fictícios para validação do modelo</span>
+      <span>Fonte: Sistema HAE Auditoria · Base: Portaria SMS nº 2.619/2011</span>
       <span>Página ${page} de ${total}</span>
     </footer>
   `;
@@ -3819,20 +3819,20 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-aligned-chart\.pdf$/i.test(report.file_name || ""))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-layout-v2\.pdf$/i.test(report.file_name || ""))) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
     if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
     const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-aligned-chart.pdf");
+    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-approved-layout-v2.pdf");
     const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
       method: "POST",
       credentials: apiCredentials,
       headers: {
         "content-type": "application/pdf",
         "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly-aligned-chart`,
+        "x-local-file-id": `report-${audit.id}-monthly-approved-layout-v2`,
         "x-file-name": encodeURIComponent(filename),
         "x-file-type": "report_pdf"
       },

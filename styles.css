@@ -16267,3 +16267,75 @@ button.planning-kpi:hover {
 .android-app .app-startup-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: #08a64b; transition: width .3s ease; }
 .android-app .app-startup b { font-size: 13px; font-variant-numeric: tabular-nums; }
 @keyframes startup-logo-in { from { opacity: 0; transform: scale(.78); } 68% { opacity: 1; transform: scale(1.045); } to { opacity: 1; transform: scale(1); } }
+
+/* PDF rendering must be identical on desktop, tablet and mobile browsers. */
+.report-pdf-render-root,
+.report-pdf-render-root * {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+.report-pdf-render-root.is-portrait {
+  width: 794px !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+.report-pdf-render-root.is-portrait .technical-report {
+  width: 794px !important;
+  max-width: none !important;
+  gap: 0 !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-page {
+  width: 794px !important;
+  min-width: 794px !important;
+  max-width: 794px !important;
+  min-height: 1123px !important;
+  padding: 30px 38px 28px !important;
+  grid-template-rows: auto 1fr auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-header {
+  display: grid !important;
+  grid-template-columns: 245px minmax(0, 1fr) !important;
+  column-gap: 22px !important;
+  align-items: center !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-heading {
+  justify-items: end !important;
+  text-align: right !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-meta-strip {
+  display: flex !important;
+  grid-column: 1 / -1 !important;
+}
+
+.report-pdf-render-root.is-portrait .report-mini-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-legend {
+  display: flex !important;
+}
+
+.report-pdf-render-root.is-portrait .report-evidence-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.report-pdf-render-root.is-portrait .report-signatures {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.report-pdf-render-root.is-portrait .report-doc-footer {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+}
