@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v56-dashboard-pdf-content";
+const CACHE_NAME = "idauditor-v57-stored-report-open";
 const APP_SHELL = [
   "/",
   "/index.html",

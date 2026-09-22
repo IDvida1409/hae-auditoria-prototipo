@@ -3454,6 +3454,13 @@ function reportDocTable(headers, rows, extraClass = "") {
 }
 
 function reportToolbar(isComparison, area) {
+  const monthlyReport = reportsForArea(area).find((report) => report.report_type === "monthly");
+  const monthlyReady = isCurrentMonthlyReport(monthlyReport);
+  const pdfButton = isComparison
+    ? `<button class="report-pdf-btn" data-open-report-pdf>${svgIcon("externalLink")} Abrir PDF</button>`
+    : monthlyReady
+      ? `<button class="report-pdf-btn" data-report-action="open" data-report-area="${escapeHtml(area.id)}" data-report-kind="monthly" data-report-url="${escapeHtml(monthlyReport.file_url)}" type="button">${svgIcon("externalLink")} Abrir PDF</button>`
+      : `<button class="report-pdf-btn" type="button" disabled>Preparando relatório...</button>`;
   return `
     <div class="report-toolbar surface" aria-label="Configurações do relatório">
       <div class="report-tabs">
@@ -3461,7 +3468,7 @@ function reportToolbar(isComparison, area) {
         <button class="${isComparison ? "is-active" : ""}" data-report-kind="comparison">Comparativo analítico</button>
       </div>
       <div class="report-toolbar-actions">
-        <button class="report-pdf-btn" data-open-report-pdf>${svgIcon("externalLink")} Abrir PDF</button>
+        ${pdfButton}
         <label class="report-area-picker">
           <span>Área do relatório</span>
           <select data-report-area-select>
@@ -3489,6 +3496,14 @@ function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF
   const report = reportsForArea(area).find((item) => item.report_type === reportKind);
   const url = report?.file_url || "";
   return `<button class="report-file-action" data-report-action="${mode}" data-report-area="${escapeHtml(area.id)}" data-report-kind="${escapeHtml(reportKind)}" data-report-url="${escapeHtml(url)}" type="button">${icon} ${escapeHtml(label)}</button>`;
+}
+
+function isCurrentMonthlyReport(report) {
+  return Boolean(
+    report?.report_type === "monthly" &&
+    report.file_url &&
+    String(report.file_name || "").endsWith(`-${REPORT_LAYOUT_VERSION}.pdf`)
+  );
 }
 
 function prepareReportPdfWindow() {
@@ -3820,7 +3835,7 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && String(report.file_name || "").endsWith(`-${REPORT_LAYOUT_VERSION}.pdf`))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some(isCurrentMonthlyReport)) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
@@ -3860,7 +3875,7 @@ async function archiveMissingApprovedReports() {
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && String(report.file_name || "").endsWith(`-${REPORT_LAYOUT_VERSION}.pdf`))) continue;
+    if (!area || reportsForArea(area).some(isCurrentMonthlyReport)) continue;
     await archiveApprovedMonthlyReport(area, audit);
   }
 }
@@ -4841,7 +4856,7 @@ function reportLibraryItems(area) {
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   const monthlyReport = findReport("monthly");
-  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-aligned-chart\.pdf$/i.test(monthlyReport.file_name || ""));
+  const monthlyAvailable = isCurrentMonthlyReport(monthlyReport);
   return [
     {
       id: "monthly",
@@ -4895,7 +4910,7 @@ function reportHistoryRows(area) {
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
   return rows.map((row) => {
-    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-aligned-chart\.pdf$/i.test(row.file_name || ""));
+    const ready = row.report_type !== "monthly" || isCurrentMonthlyReport(row);
     return `
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>
