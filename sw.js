@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v53-login-transition-blue";
+const CACHE_NAME = "idauditor-v54-login-mobile-center";
 const APP_SHELL = [
   "/",
   "/index.html",
