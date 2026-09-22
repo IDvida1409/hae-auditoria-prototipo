@@ -3675,6 +3675,108 @@ function openReportPdf(targetWindow = null, options = {}) {
     });
 }
 
+function actionPlanPdfFilename(plan) {
+  const code = String(plan?.publicCode || plan?.id || "plano-de-acao")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return `${code || "plano-de-acao"}.pdf`;
+}
+
+function actionPlanPrintFallback(targetWindow, plan) {
+  const documentRoot = document.querySelector(".action-plan-document");
+  if (!documentRoot) return;
+  const printWindow = targetWindow || window.open("", "_blank");
+  if (!printWindow) {
+    alert("Não consegui abrir o PDF. Verifique se o navegador bloqueou a nova aba.");
+    return;
+  }
+  const baseHref = location.href.split("#")[0];
+  printWindow.document.open();
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <base href="${baseHref}" />
+        <title>${actionPlanPdfFilename(plan)}</title>
+        <link rel="stylesheet" href="styles.css?v=20260922-action-plan-pdf-1" />
+        <style>
+          body { margin: 0; background: #ffffff; }
+          .action-plan-document { width: 190mm; margin: 0 auto; border: 0; border-radius: 0; box-shadow: none; }
+          .action-plan-submit-footer button, .action-plan-image-viewer-backdrop { display: none !important; }
+          @media print { @page { size: A4 portrait; margin: 10mm; } }
+        </style>
+      </head>
+      <body>
+        ${documentRoot.outerHTML}
+        <script>window.addEventListener("load", function () { setTimeout(function () { window.print(); }, 350); });<\/script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+async function openActionPlanPdf(plan, targetWindow = null) {
+  const documentRoot = document.querySelector(".action-plan-document");
+  if (!documentRoot) throw new Error("Plano de ação não encontrado para gerar o PDF.");
+
+  try {
+    await ensureReportPdfLibrary();
+    const holder = document.createElement("div");
+    holder.className = "action-plan-pdf-render-root";
+    const clone = documentRoot.cloneNode(true);
+    clone.querySelectorAll("button").forEach((button) => button.remove());
+    holder.appendChild(clone);
+    document.body.appendChild(holder);
+
+    try {
+      await waitForReportImages(clone);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const canvas = await window.html2canvas(clone, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: holder.scrollWidth,
+        windowHeight: holder.scrollHeight
+      });
+      const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const margin = 8;
+      const availableWidth = pdf.internal.pageSize.getWidth() - margin * 2;
+      const availableHeight = pdf.internal.pageSize.getHeight() - margin * 2;
+      const pagePixelHeight = Math.floor(canvas.width * (availableHeight / availableWidth));
+      let sourceY = 0;
+      let pageIndex = 0;
+
+      while (sourceY < canvas.height) {
+        const sliceHeight = Math.min(pagePixelHeight, canvas.height - sourceY);
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+        pageCanvas.getContext("2d").drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        if (pageIndex) pdf.addPage("a4", "portrait");
+        const imageHeight = availableWidth * (sliceHeight / canvas.width);
+        pdf.addImage(pageCanvas.toDataURL("image/jpeg", 0.96), "JPEG", margin, margin, availableWidth, imageHeight, undefined, "FAST");
+        sourceY += sliceHeight;
+        pageIndex += 1;
+      }
+
+      const pdfUrl = URL.createObjectURL(pdf.output("blob"));
+      if (targetWindow) targetWindow.location.href = pdfUrl;
+      else window.open(pdfUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
+    } finally {
+      holder.remove();
+    }
+  } catch (error) {
+    actionPlanPrintFallback(targetWindow, plan);
+  }
+}
+
 function approvedReportMarkup(area, reportKind = "monthly") {
   const previousArea = state.selectedArea;
   const previousKind = state.reportKind;
@@ -6286,7 +6388,7 @@ function planningPlanPreview() {
       <div class="action-plan-preview-toolbar">
         <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
-        <button class="fichario-sub-action" data-print-action-plan type="button">${svgIcon("document")} Visualizar impressão</button>
+        ${plan.status === "approved" ? `<button class="fichario-sub-action" data-print-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("document")} Abrir PDF</button>` : ""}
       </div>
       ${responsibleView ? `<div class="action-plan-editing-note"><strong>Plano disponível para resposta</strong><span>${acknowledgement ? "Ciência confirmada. Preencha as correções e evidências de cada NC." : "Confirme a ciência para liberar o preenchimento."}</span></div>` : isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
@@ -7116,7 +7218,15 @@ document.addEventListener("click", async (event) => {
   }
 
   if (event.target.closest("[data-print-action-plan]")) {
-    window.print();
+    const button = event.target.closest("[data-print-action-plan]");
+    const plan = planningActionRows().find((row) => row.id === button.dataset.printActionPlan);
+    if (!plan || plan.status !== "approved") return;
+    const pdfWindow = prepareReportPdfWindow();
+    openActionPlanPdf(plan, pdfWindow).catch((error) => {
+      if (pdfWindow) pdfWindow.close();
+      setPlanningNotice(error.message || "Não foi possível gerar o PDF do plano de ação.");
+      render();
+    });
     return;
   }
 
