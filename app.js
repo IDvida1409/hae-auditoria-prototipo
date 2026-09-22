@@ -3697,20 +3697,20 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-chart\.pdf$/i.test(report.file_name || ""))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-aligned-chart\.pdf$/i.test(report.file_name || ""))) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
     if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
     const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-approved-chart.pdf");
+    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-aligned-chart.pdf");
     const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
       method: "POST",
       credentials: apiCredentials,
       headers: {
         "content-type": "application/pdf",
         "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly-approved-chart`,
+        "x-local-file-id": `report-${audit.id}-monthly-aligned-chart`,
         "x-file-name": encodeURIComponent(filename),
         "x-file-type": "report_pdf"
       },
@@ -3737,7 +3737,7 @@ function archiveMissingApprovedReports() {
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-chart\.pdf$/i.test(report.file_name || ""))) continue;
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-aligned-chart\.pdf$/i.test(report.file_name || ""))) continue;
     archiveApprovedMonthlyReport(area, audit);
   }
 }
@@ -4011,8 +4011,8 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
   const isMonthly = options.variant === "monthly";
   const isComparison = comparison || options.variant === "comparison";
   const width = 760;
-  const height = 238;
-  const pad = { left: 42, right: 72, top: isComparison ? 34 : 30, bottom: 30 };
+  const height = 300;
+  const pad = { left: 42, right: 72, top: isComparison ? 34 : 30, bottom: 92 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const plotBottom = pad.top + innerH;
@@ -4087,10 +4087,20 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
           <rect x="${pad.left + 86}" y="5" width="14" height="6" rx="3" fill="#0a6cff"></rect>
           <text x="${pad.left + 106}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(currentMonthId)}</text>
         ` : ""}
+        ${blocks
+          .map((block, index) => {
+            const center = pad.left + index * slot + slot / 2;
+            const label = isMonthly || isComparison ? reportFullText(block.title).toUpperCase() : reportBlockLabel(block.title);
+            return `
+              <text transform="translate(${center}, ${plotBottom + 18}) rotate(-35)" text-anchor="end" fill="#111827" font-size="7.35" font-weight="800">
+                ${reportSvgLabelLines(label, 22)
+                  .map((line, lineIndex) => `<tspan x="0" dy="${lineIndex === 0 ? 0 : 9}">${escapeHtml(line)}</tspan>`)
+                  .join("")}
+              </text>
+            `;
+          })
+          .join("")}
       </svg>
-      <div class="report-chart-labels" style="--items:${blocks.length}">
-        ${blocks.map((block) => `<span title="${escapeHtml(block.title)}">${escapeHtml(isMonthly || isComparison ? reportFullText(block.title).toUpperCase() : reportBlockLabel(block.title))}</span>`).join("")}
-      </div>
       <figcaption>${isComparison ? "Figura 1 - Comparativo do desempenho por bloco." : "Figura 1 - Desempenho dos blocos no mês vigente."}</figcaption>
     </figure>
   `;
@@ -4704,7 +4714,7 @@ function reportLibraryItems(area) {
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   const monthlyReport = findReport("monthly");
-  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-approved-chart\.pdf$/i.test(monthlyReport.file_name || ""));
+  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-aligned-chart\.pdf$/i.test(monthlyReport.file_name || ""));
   return [
     {
       id: "monthly",
@@ -4758,7 +4768,7 @@ function reportHistoryRows(area) {
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
   return rows.map((row) => {
-    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-approved-chart\.pdf$/i.test(row.file_name || ""));
+    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-aligned-chart\.pdf$/i.test(row.file_name || ""));
     return `
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>

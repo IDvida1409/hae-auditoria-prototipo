@@ -10635,25 +10635,6 @@ h3 {
   height: auto;
 }
 
-.report-chart-labels {
-  display: grid;
-  grid-template-columns: repeat(var(--items), minmax(0, 1fr));
-  column-gap: 4px;
-  min-height: 54px;
-  margin: -2px 72px 0 42px;
-}
-
-.report-chart-labels span {
-  width: 90px;
-  color: #203251;
-  font-size: 8.1px;
-  font-weight: 800;
-  line-height: 1.05;
-  text-align: right;
-  transform: rotate(-34deg);
-  transform-origin: 12px 8px;
-}
-
 .report-doc-chart figcaption {
   margin: 0;
   color: #64748b;
@@ -10666,40 +10647,8 @@ h3 {
   padding-bottom: 6px;
 }
 
-.report-doc-chart.is-monthly-chart .report-chart-labels {
-  min-height: 62px;
-  margin: 0 72px 4px 42px;
-  align-items: start;
-}
-
-.report-doc-chart.is-monthly-chart .report-chart-labels span {
-  width: 148px;
-  color: #111827;
-  font-size: 7.35px;
-  line-height: 1.02;
-  text-align: left;
-  transform: translateY(19px) rotate(-34deg);
-  transform-origin: left top;
-}
-
 .report-doc-chart.is-comparison-chart {
   padding-bottom: 6px;
-}
-
-.report-doc-chart.is-comparison-chart .report-chart-labels {
-  min-height: 62px;
-  margin: 0 72px 4px 42px;
-  align-items: start;
-}
-
-.report-doc-chart.is-comparison-chart .report-chart-labels span {
-  width: 148px;
-  color: #111827;
-  font-size: 7.35px;
-  line-height: 1.02;
-  text-align: left;
-  transform: translateY(19px) rotate(-34deg);
-  transform-origin: left top;
 }
 
 .report-empty-chart {
