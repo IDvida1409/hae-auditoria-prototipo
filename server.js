@@ -15,6 +15,7 @@ const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
 const { enqueueMonthlyAuditReport, validateAuditReadyToFinalize } = require("./lib/report-service");
 const { weightedAuditScore } = require("./lib/scoring");
+const activityLog = require("./lib/activity-log");
 const { buildAndroidWeb } = require("./tools/build-android-web");
 
 const root = __dirname;
@@ -959,6 +960,8 @@ async function handleApi(request, response, url) {
         });
         createdPlans.push(...generated.actionPlans);
         reportJob = await enqueueMonthlyAuditReport(client, audit, audit.auditor_user_id);
+        await activityLog.record(client, { unitId: audit.unit_id, actorUserId: request.accessUser.id, entityType: "audit", entityId: audit.id,
+          action: "audit.finalized", metadata: { score, source: "online", reportJobId: reportJob.id, actionPlanCount: createdPlans.length } });
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");
@@ -1146,6 +1149,8 @@ async function handleApi(request, response, url) {
         document = result.rows[0];
         if (!document) throw new Error("Plano indisponível para envio ou sem responsável atribuído.");
         await client.query("update action_plans set status='available_to_responsible',auditor_reviewed_at=now(),sent_to_responsible_at=now(),updated_at=now() where action_plan_document_id=$1", [document.id]);
+        await activityLog.record(client, { unitId, actorUserId: user.id, entityType: "action_plan_document", entityId: document.id,
+          action: "action_plan.sent", metadata: { responsibleUserId: document.assigned_to_user_id } });
         if (document.assigned_to_user_id) {
           await notify(client, { unitId, recipientId: document.assigned_to_user_id, title: "Plano de ação disponível", body: document.title,
             type: "action_plan_assigned", entityType: "action_plan_document", entityId: document.id, key: `action-plan-document:${document.id}` });
@@ -1182,6 +1187,8 @@ async function handleApi(request, response, url) {
         acknowledgement = result.rows[0];
         await client.query("update action_plan_documents set status='acknowledged',acknowledged_at=now(),updated_at=now() where id=$1", [acknowledgePlanMatch.id]);
         await client.query("update action_plans set status='acknowledged',acknowledged_at=now(),updated_at=now() where action_plan_document_id=$1 and status in ('available_to_responsible','sent_to_responsible')", [acknowledgePlanMatch.id]);
+        await activityLog.record(client, { unitId, actorUserId: user.id, entityType: "action_plan_document", entityId: acknowledgePlanMatch.id,
+          action: "action_plan.acknowledged", metadata: { acknowledgementId: acknowledgement.id, signatureName: user.full_name } });
         await client.query("commit");
       } catch (error) { await client.query("rollback"); throw error; }
       finally { client.release(); }
@@ -1269,6 +1276,9 @@ async function handleApi(request, response, url) {
             key: `feedback:${result.rows[0].id}`
           });
         }
+        await activityLog.record(client, { unitId, actorUserId: user.id, entityType: "action_plan", entityId: plan.id,
+          action: body.delayJustification ? "action_plan.deadline_requested" : "action_plan.feedback_submitted",
+          metadata: { feedbackId: result.rows[0].id, requestedDueAt: body.requestedDueAt || null } });
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");
@@ -1328,6 +1338,8 @@ async function handleApi(request, response, url) {
             type: "action_plan_deadline_decided", entityType: "action_plan", entityId: plan.id,
             key: `deadline-review:${plan.feedback_id}` });
         }
+        await activityLog.record(client, { unitId, actorUserId: user.id, entityType: "action_plan", entityId: plan.id,
+          action: `action_plan.deadline_${body.decision}`, metadata: { feedbackId: plan.feedback_id, requestedDueAt: plan.requested_due_at, justification: body.justification || null } });
         await client.query("commit");
         sendJson(response, 200, { ok: true, decision: body.decision, dueAt: body.decision === "approved" ? plan.requested_due_at : plan.due_at });
       } catch (error) { await client.query("rollback"); throw error; }
@@ -1436,6 +1448,8 @@ async function handleApi(request, response, url) {
             type: body.decision === "approved" ? "action_plan_approved" : "action_plan_rejected",
             entityType: "action_plan", entityId: plan.id, key: `review:${event.rows[0].id}` });
         }
+        await activityLog.record(client, { unitId, actorUserId: user.id, entityType: "action_plan", entityId: plan.id,
+          action: `action_plan.${nextStatus}`, metadata: { feedbackId: body.feedbackId || plan.last_feedback_id || null, reviewEventId: event.rows[0].id, justification: body.justification || null } });
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");

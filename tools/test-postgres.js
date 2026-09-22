@@ -290,23 +290,38 @@ async function main() {
     assert.ok(reports.reports.length >= 2);
     const areaReport = reports.reports.find((item) => item.area_id === area.id);
     assert.ok(areaReport);
+    assert.match(areaReport.file_name, /approved-layout-v4-weighted-score\.pdf$/);
     const pdfResponse = await fetch(base + areaReport.file_url, { headers: { cookie: authenticatedCookie } });
     const pdf = Buffer.from(await pdfResponse.arrayBuffer());
     assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+    await fs.mkdir(path.join(root, "tmp", "pdfs"), { recursive: true });
+    await fs.writeFile(path.join(root, "tmp", "pdfs", "latest-approved-report.pdf"), pdf);
     const versions = await json("/api/reports/" + completed.report_id + "/versions", null, "GET", token);
     assert.ok(versions.versions.length >= 1);
     const notifications = await json("/api/notifications", null, "GET", token);
     assert.ok(notifications.notifications.some((item) => item.notification_type === "report_ready"));
+    const activity = await pool.query("select action from activity_logs order by created_at,id");
+    for (const expected of ["audit.finalized", "action_plan.generated", "action_plan.acknowledged", "action_plan.deadline_requested", "action_plan.reopened", "report.generated"]) {
+      assert.ok(activity.rows.some((item) => item.action === expected), `missing activity log: ${expected}`);
+    }
+    const internalSessions = await pool.query("select count(*)::int as count from user_sessions where user_agent='internal-report-worker'");
+    assert.equal(internalSessions.rows[0].count, 0);
+    const concurrent = await Promise.all(Array.from({ length: 40 }, (_, index) =>
+      fetch(base + (index % 2 ? "/api/dashboard" : "/api/reports"), { headers: { cookie: authenticatedCookie } })
+    ));
+    assert.ok(concurrent.every((response) => response.ok));
+    console.log("PASS: 40 concurrent authenticated reads completed without errors and the audit trail contains every critical workflow event.");
     console.log("PASS: real PostgreSQL migrations, 437 checklist questions, user/session APIs, offline audit/answer application, retransmission, actual photo upload/link/download, conflict resolution, finalization, configuration/document APIs, real PDF generation, report history and automatic notification.");
   } finally {
     if (api && api.exitCode == null) {
       const stopped = new Promise((resolve) => api.once("exit", resolve));
       api.kill();
-      await stopped;
+      await Promise.race([stopped, new Promise((resolve) => setTimeout(resolve, 5000))]);
+      if (api.exitCode == null) api.kill("SIGKILL");
     }
     if (pool) await pool.end();
-    await database.stop();
+    await Promise.race([database.stop(), new Promise((resolve) => setTimeout(resolve, 10000))]);
   }
 }
 
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+main().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });

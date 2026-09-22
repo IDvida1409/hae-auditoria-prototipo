@@ -16,6 +16,9 @@
 - Relatórios aprovados receberam uma nova versão de layout para impedir o reaproveitamento de PDFs calculados pela regra antiga.
 - Cabeçalhos de segurança adicionados ao servidor: CSP, HSTS em HTTPS, bloqueio de iframe, `nosniff`, política de referência e permissões.
 - Textos visíveis do gerador automático de PDF receberam correções de acentuação.
+- O servidor passou a renderizar diretamente o mesmo modelo visual aprovado da aplicação; a geração e a rota de arquivamento de PDF pelo navegador foram removidas.
+- Evidências passaram a aceitar JPG, PNG e WebP de até 50 MB, com verificação da assinatura e da estrutura interna do arquivo.
+- A trilha de auditoria passou a registrar eventos críticos na mesma transação da operação.
 
 ## Regra de pontuação comprovada
 
@@ -31,7 +34,7 @@ O sistema anterior calculava apenas a proporção de quantidades de C e NC e, po
 
 ## Validações executadas
 
-- 20 testes automatizados aprovados, sem falhas.
+- 22 testes automatizados aprovados, sem falhas.
 - Tela de transição pós-login verificada em larguras de 390, 430 e 1440 pixels.
 - Layout do PDF verificado em diferentes larguras de navegador.
 - PostgreSQL real isolado iniciado e todas as migrações aplicadas.
@@ -42,9 +45,11 @@ O sistema anterior calculava apenas a proporção de quantidades de C e NC e, po
 - Foto real enviada, vinculada, recuperada e protegida por permissão.
 - Finalização impedida enquanto faltam respostas ou foto obrigatória de NC.
 - Plano de ação, ciência, devolutiva individual, prazo, aprovação, reprovação, reabertura e notificações aprovados.
-- Geração, armazenamento, histórico e notificação de PDF aprovados tecnicamente.
-
-Observação: o processo de teste completou todas as asserções, mas o processo temporário do PostgreSQL não encerrou sozinho e precisou ser interrompido após a conclusão. Isso não altera os resultados funcionais, porém merece ajuste no utilitário de teste.
+- Geração única no servidor, armazenamento, histórico e notificação de PDF aprovados tecnicamente.
+- PDF final de três páginas renderizado para PNG e inspecionado: A4, sem cortes, sobreposições ou textos ilegíveis.
+- Ensaio físico de backup e restauração aprovado, preservando migrações e dados operacionais.
+- Leitura autenticada concorrente aprovada com 40 requisições simultâneas.
+- Trilha confirmada para finalização, geração de plano, ciência, devolutiva, prazo, reabertura e relatório.
 
 ## Situação por subsistema
 
@@ -55,24 +60,23 @@ Observação: o processo de teste completou todas as asserções, mas o processo
 | Checklist | Verificado | 12 áreas e 437 perguntas reais no PostgreSQL. |
 | Nota da auditoria | Corrigido e testado | Agora segue os pesos da planilha original. |
 | Operação offline no navegador | Verificado em automação | Cada resposta pode ser reenviada sem duplicação; conflito não sobrescreve silenciosamente. |
-| Fotos | Verificado com ressalva | Bytes e checksum são persistidos; falta validar a assinatura interna do tipo do arquivo. |
+| Fotos | Verificado | Câmera e galeria aceitam JPG, PNG e WebP; o servidor confere assinatura, estrutura, checksum e limite provisório de 50 MB. |
 | Plano de ação | Verificado | Fluxo completo coberto no PostgreSQL. |
 | Notificações | Verificado | Eventos recebidos são persistidos; envio externo por push não faz parte deste piloto. |
-| PDF automático | Parcial | O servidor gera automaticamente, mas o modelo visual aprovado ainda é reconstruído por uma segunda rotina no navegador. |
+| PDF automático | Verificado | O servidor gera diretamente o modelo aprovado no encerramento; o navegador apenas abre o arquivo armazenado. |
+| Trilha de eventos | Verificado | Os eventos críticos são gravados transacionalmente em `activity_logs`; acessos a arquivos ficam em `file_access_events`. |
+| Backup e restauração | Verificado em ambiente isolado | Cópia física restaurada com migrações e dados operacionais íntegros. |
+| Concorrência | Baseline aprovado | 40 leituras autenticadas simultâneas concluídas sem erro; teste de capacidade prolongado continua sendo atividade pré-produção. |
 | Português | Revisado parcialmente | Há uma frase de origem na planilha, "Guarda de amostra de alimento (Conforme médico)", que precisa de validação do responsável técnico antes de ser alterada. |
 | APK | Adiado | Fora do piloto atual. |
 
-## Bloqueadores antes de considerar produção robusta
+## Itens restantes antes da produção definitiva
 
-1. Unificar os dois geradores de PDF. O servidor precisa gerar diretamente o modelo visual aprovado, com gráficos, fotos e tipografia finais. Hoje a finalização cria um PDF automático simples e o navegador pode substituí-lo por outro arquivo de layout aprovado. Enquanto isso existir, ainda pode aparecer "Gerando relatório" e o resultado pode variar conforme quem abre o painel.
-2. Implementar trilha de auditoria. A tabela `activity_logs` existe, mas não há gravação dos eventos críticos de negócio.
-3. Validar o conteúdo real dos arquivos enviados. Atualmente o servidor limita tamanho e tipos declarados, calcula checksum e restringe acesso, mas confia no `Content-Type` informado pelo navegador.
-4. Ensaiar backup e restauração do PostgreSQL e das evidências. A estrutura existe, mas recuperação real ainda não foi demonstrada.
-5. Executar teste de carga e concorrência. O bloqueio transacional e a idempotência foram testados funcionalmente, não sob volume de vários usuários simultâneos.
-6. Trocar o limitador de tentativas de login em memória por armazenamento compartilhado caso o serviço use mais de uma instância.
-7. Fazer a matriz final em aparelhos reais: Safari no iPhone, Chrome no Android e navegadores de desktop, incluindo câmera, rotação, perda de rede e retomada.
+1. Fazer a matriz final em aparelhos reais: Safari no iPhone, Chrome no Android e navegadores de desktop, incluindo câmera, rotação, perda de rede e retomada. Essa etapa exige os aparelhos e as redes reais do piloto.
+2. Executar um teste de capacidade prolongado com o volume estimado de usuários e fotos. O teste simultâneo atual é uma verificação de concorrência, não uma medição definitiva de capacidade.
+3. Trocar o limitador de tentativas de login em memória por armazenamento compartilhado caso o serviço passe a usar mais de uma instância.
+4. Validar com a responsável técnica a frase de origem "Guarda de amostra de alimento (Conforme médico)" antes de alterar o checklist.
 
 ## Parecer de prontidão
 
-O sistema está apto para continuar um piloto web controlado depois da publicação e de uma verificação rápida no ambiente online. Ele ainda não deve ser classificado como pronto para produção definitiva enquanto o gerador de PDF não for unificado e os itens de auditoria, validação de arquivo e recuperação de backup não forem concluídos.
-
+O sistema está apto para continuar o piloto web controlado depois da publicação e de uma verificação rápida no ambiente online. PDF, pontuação, persistência, trilha, validação de evidências e restauração já têm cobertura automatizada. A aprovação definitiva depende principalmente do teste nos aparelhos e na rede reais do hospital.

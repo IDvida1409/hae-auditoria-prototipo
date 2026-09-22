@@ -110,7 +110,6 @@ let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
-const reportArchiveInFlight = new Set();
 const REPORT_LAYOUT_VERSION = "approved-layout-v4-weighted-score";
 
 const accessRoleLabels = {
@@ -830,7 +829,11 @@ function reportFileRequest() {
 function renderReportFileRequest(request) {
   document.body.classList.add("report-document-body");
   app.className = "app-shell is-report-document";
-  app.innerHTML = `<main class="stored-report-view">${emptyDataState("Relatório de demonstração indisponível. Consulte os documentos gerados na aba Relatórios do painel.")}</main>`;
+  state.selectedArea = request.area.id;
+  state.reportKind = request.kind;
+  app.innerHTML = `<main class="stored-report-view">${approvedReportMarkup(request.area, request.kind)}</main>`;
+  document.title = reportPdfFilename(request.area, request.kind);
+  window.__IDAUDITOR_REPORT_READY__ = true;
 }
 
 function formatScore(value) {
@@ -1064,7 +1067,6 @@ async function loadOperationalData() {
     });
     state.actionPlanResponses = { ...state.actionPlanResponses, [plan.id]: hydrated };
   }
-  setTimeout(() => archiveMissingApprovedReports(), 0);
 }
 
 function planFromNotificationEntity(entityId) {
@@ -3640,53 +3642,6 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
   });
 }
 
-async function archiveApprovedMonthlyReport(area, audit) {
-  const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some(isCurrentMonthlyReport)) return;
-  reportArchiveInFlight.add(key);
-  try {
-    const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
-    if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
-    const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, `-${REPORT_LAYOUT_VERSION}.pdf`);
-    const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
-      method: "POST",
-      credentials: apiCredentials,
-      headers: {
-        "content-type": "application/pdf",
-        "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly-${REPORT_LAYOUT_VERSION}`,
-        "x-file-name": encodeURIComponent(filename),
-        "x-file-type": "report_pdf"
-      },
-      body: blob
-    });
-    const uploaded = await uploadResponse.json().catch(() => ({}));
-    if (!uploadResponse.ok || !uploaded.file?.id) throw new Error(uploaded.error || "Não foi possível arquivar o PDF.");
-    await operationalRequest("reports/register-client-pdf", {
-      method: "POST",
-      body: JSON.stringify({ auditId: audit.id, fileId: uploaded.file.id, reportType: "monthly" })
-    });
-    const reports = await operationalRequest("reports");
-    operationalReports = reports.reports || [];
-    render();
-  } catch (error) {
-    console.error("Falha ao preparar o relatório mensal aprovado", error);
-  } finally {
-    reportArchiveInFlight.delete(key);
-  }
-}
-
-async function archiveMissingApprovedReports() {
-  if (location.protocol === "file:" || isAreaResponsible() || !window.HAE_OFFLINE) return;
-  for (const audit of operationalAudits || []) {
-    if (audit.status !== "finished") continue;
-    const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some(isCurrentMonthlyReport)) continue;
-    await archiveApprovedMonthlyReport(area, audit);
-  }
-}
-
 function openReportPdfAfterRender(targetWindow, options = {}) {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => openReportPdf(targetWindow, options));
@@ -5237,8 +5192,8 @@ function checklistPage() {
                       </div>
                       <div class="evidence-grid">
                         <div class="evidence-photo-actions">
-                          <label class="camera-drop">${svgIcon("camera")} Tirar foto <small>Abrir câmera traseira</small><input type="file" accept="image/*" capture="environment" data-evidence-file="${question.id}" data-capture-method="camera" hidden /></label>
-                          <label class="camera-drop is-gallery">${svgIcon("document")} Escolher da galeria <small>JPG ou PNG até 10 MB</small><input type="file" accept="image/*" data-evidence-file="${question.id}" data-capture-method="gallery" hidden /></label>
+                          <label class="camera-drop">${svgIcon("camera")} Tirar foto <small>Abrir câmera traseira</small><input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-evidence-file="${question.id}" data-capture-method="camera" hidden /></label>
+                          <label class="camera-drop is-gallery">${svgIcon("document")} Escolher da galeria <small>JPG, PNG ou WebP até 50 MB</small><input type="file" accept="image/jpeg,image/png,image/webp" data-evidence-file="${question.id}" data-capture-method="gallery" hidden /></label>
                         </div>
                         <div class="note-field">
                           <label>Observação</label>
@@ -6244,7 +6199,7 @@ function planningPlanPreview() {
         <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : escapeHtml(plan.due || "Não definido")}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/jpeg,image/png,image/webp" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
         <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido por</span><div class="action-plan-auditor-signature"><strong>${escapeHtml(plan.auditorName)}</strong><span>Auditor responsável</span><small>Registro autenticado no sistema</small></div></div>${acknowledgement ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(acknowledgement.name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement.signedAtLabel)}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito quando o responsável confirmar o recebimento.</small></div>`}</section>
@@ -7757,10 +7712,7 @@ document.addEventListener("submit", (event) => {
 });
 
 const reportRequest = reportFileRequest();
-if (reportRequest) {
-  renderReportFileRequest(reportRequest);
-} else {
-  (async function bootstrapAuthenticatedApp() {
+(async function bootstrapAuthenticatedApp() {
     updateStartupProgress(15, "Validando o acesso...");
     if (location.protocol === "file:") {
       currentAccessUser = { full_name: "Administrador local", role: "admin" };
@@ -7810,9 +7762,12 @@ if (reportRequest) {
       accessNotice = { type: "success", text: "Modo offline: os dados coletados serão sincronizados quando a conexão voltar." };
     }
     applyCurrentUserScope();
+    if (reportRequest) {
+      renderReportFileRequest(reportRequest);
+      return;
+    }
     if (state.view === "users" && currentAccessUser.role !== "admin") state.view = "home";
     render();
     updateStartupProgress(100, "Dados sincronizados");
     registerServiceWorker();
-  })();
-}
+})();

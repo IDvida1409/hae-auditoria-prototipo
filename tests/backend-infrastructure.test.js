@@ -147,7 +147,7 @@ test("failed migration rolls back and releases the cross-process lock", async ()
 });
 
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {
-  const bytes = Buffer.from("test evidence content");
+  const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("test evidence content"), Buffer.from([0xff, 0xd9])]);
   let saved = null;
   let savedContent = null;
   const calls = [];
@@ -176,6 +176,7 @@ test("photo upload stores actual bytes, validates retransmission and cleans temp
     const second = await storage.upload(pool, request(bytes), { id: "user-1" }, { id: "device-1" }, "unit-1");
     assert.equal(second.id, first.id);
     assert.equal(calls.filter((sql) => sql.startsWith("insert into stored_files")).length, 1);
-    await assert.rejects(storage.upload(pool, request(Buffer.from("changed")), { id: "user-1" }, { id: "device-1" }, "unit-1"), /conteudo diferente/);
+    await assert.rejects(storage.upload(pool, request(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("changed"), Buffer.from([0xff, 0xd9])])) , { id: "user-1" }, { id: "device-1" }, "unit-1"), /conteudo diferente/);
+    await assert.rejects(storage.upload(pool, request(Buffer.from("not an image")), { id: "user-1" }, { id: "device-2" }, "unit-1"), /não corresponde/);
   } finally { assert.equal(calls.includes("rollback"), true); }
 });

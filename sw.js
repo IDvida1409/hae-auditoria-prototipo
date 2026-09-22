@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v59-weighted-score";
+const CACHE_NAME = "idauditor-v60-server-report";
 const APP_SHELL = [
   "/",
   "/index.html",
