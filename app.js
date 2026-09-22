@@ -1967,7 +1967,7 @@ function dashboardEvolution(area = null) {
     const x = xFor(index);
     const y = yFor(value) - 15;
     return `
-      <text x="${x}" y="${y + 3}" text-anchor="middle" fill="${color}" font-size="${singlePoint ? 17 : 10.5}" font-weight="760">${formatScore(value)}</text>
+      <text x="${x}" y="${y + 3}" text-anchor="middle" fill="${color}" font-size="${singlePoint ? 21 : 10.5}" font-weight="780">${formatScore(value)}</text>
     `;
   };
 
@@ -1976,13 +1976,13 @@ function dashboardEvolution(area = null) {
       <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolução das notas">
         <line x1="${pad.left}" y1="${h - pad.bottom}" x2="${w - pad.right}" y2="${h - pad.bottom}" stroke="#e4e9f0" stroke-width="1" />
         <line x1="${pad.left}" y1="${yFor(8)}" x2="${w - pad.right}" y2="${yFor(8)}" stroke="#dfeee2" stroke-width="1.2" />
-        ${singlePoint ? `<line x1="${w / 2 - 52}" y1="${yFor(points[0])}" x2="${w / 2 + 52}" y2="${yFor(points[0])}" stroke="${color}" stroke-width="4" stroke-linecap="round"></line>` : ""}
+        ${singlePoint ? `<line x1="${w / 2 - 82}" y1="${yFor(points[0])}" x2="${w / 2 + 82}" y2="${yFor(points[0])}" stroke="${color}" stroke-width="5" stroke-linecap="round"></line>` : ""}
         <path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
         ${points
           .map(
             (value, index) => {
               return `
-                <circle cx="${xFor(index)}" cy="${yFor(value)}" r="${singlePoint ? 7 : 4}" fill="${color}" stroke="#fff" stroke-width="2.5"></circle>
+                <circle cx="${xFor(index)}" cy="${yFor(value)}" r="${singlePoint ? 8 : 4}" fill="${color}" stroke="#fff" stroke-width="2.5"></circle>
                 ${labelPill(value, index)}
               `;
             }
@@ -2023,15 +2023,15 @@ function generalAssessmentMiniChart() {
   return `
     <svg class="general-sparkline" viewBox="0 0 ${w} ${h}" role="img" aria-label="Tendência da avaliação geral">
       <line x1="${pad.left}" y1="${h - pad.bottom}" x2="${w - pad.right}" y2="${h - pad.bottom}" stroke="#e3eaf2" stroke-width="1" />
-      ${singlePoint ? `<line x1="${w / 2 - 58}" y1="${yFor(availablePoints[0].value)}" x2="${w / 2 + 58}" y2="${yFor(availablePoints[0].value)}" stroke="#2f8f46" stroke-width="4" stroke-linecap="round" opacity=".9"></line>` : ""}
+      ${singlePoint ? `<line x1="${w / 2 - 92}" y1="${yFor(availablePoints[0].value)}" x2="${w / 2 + 92}" y2="${yFor(availablePoints[0].value)}" stroke="#2f8f46" stroke-width="5" stroke-linecap="round" opacity=".9"></line>` : ""}
       <path d="${lineD}" fill="none" stroke="#2f8f46" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>
       ${availablePoints
         .map((point) => {
           const x = pointX(point);
           const y = yFor(point.value);
           return `
-            <text x="${x}" y="${y - 16}" text-anchor="middle" fill="#207333" font-size="${singlePoint ? 18 : 14}" font-weight="780">${formatScore(point.value)}</text>
-            <circle cx="${x}" cy="${y}" r="${singlePoint ? 7 : 5}" fill="#2f8f46" stroke="#ffffff" stroke-width="2.8"></circle>
+            <text x="${x}" y="${y - 18}" text-anchor="middle" fill="#207333" font-size="${singlePoint ? 23 : 14}" font-weight="800">${formatScore(point.value)}</text>
+            <circle cx="${x}" cy="${y}" r="${singlePoint ? 8 : 5}" fill="#2f8f46" stroke="#ffffff" stroke-width="2.8"></circle>
             ${singlePoint ? `<text x="${x}" y="${h - 7}" text-anchor="middle" fill="#425474" font-size="12" font-weight="700">${point.monthId.slice(0, 3).replace(/^./, (letter) => letter.toUpperCase())}</text>` : ""}
           `;
         })
