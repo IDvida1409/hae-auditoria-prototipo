@@ -3697,20 +3697,20 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /^hae-consolidado-mes-/i.test(report.file_name || ""))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-labels-v2\.pdf$/i.test(report.file_name || ""))) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
     if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
     const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly");
+    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-labels-v2.pdf");
     const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
       method: "POST",
       credentials: apiCredentials,
       headers: {
         "content-type": "application/pdf",
         "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly`,
+        "x-local-file-id": `report-${audit.id}-monthly-labels-v2`,
         "x-file-name": encodeURIComponent(filename),
         "x-file-type": "report_pdf"
       },
@@ -3737,7 +3737,7 @@ function archiveMissingApprovedReports() {
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /^hae-consolidado-mes-/i.test(report.file_name || ""))) continue;
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-labels-v2\.pdf$/i.test(report.file_name || ""))) continue;
     archiveApprovedMonthlyReport(area, audit);
   }
 }
@@ -4704,7 +4704,7 @@ function reportLibraryItems(area) {
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   const monthlyReport = findReport("monthly");
-  const monthlyAvailable = Boolean(monthlyReport?.file_url && /^hae-consolidado-mes-/i.test(monthlyReport.file_name || ""));
+  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-labels-v2\.pdf$/i.test(monthlyReport.file_name || ""));
   return [
     {
       id: "monthly",
@@ -4758,7 +4758,7 @@ function reportHistoryRows(area) {
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
   return rows.map((row) => {
-    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /^hae-consolidado-mes-/i.test(row.file_name || ""));
+    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-labels-v2\.pdf$/i.test(row.file_name || ""));
     return `
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>
