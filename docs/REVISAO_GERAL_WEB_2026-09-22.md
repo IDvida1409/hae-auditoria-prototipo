@@ -67,7 +67,7 @@ O sistema anterior calculava apenas a proporção de quantidades de C e NC e, po
 | Trilha de eventos | Verificado | Os eventos críticos são gravados transacionalmente em `activity_logs`; acessos a arquivos ficam em `file_access_events`. |
 | Backup e restauração | Verificado em ambiente isolado | Cópia física restaurada com migrações e dados operacionais íntegros. |
 | Concorrência | Baseline aprovado | 40 leituras autenticadas simultâneas concluídas sem erro; teste de capacidade prolongado continua sendo atividade pré-produção. |
-| Português | Revisado parcialmente | Há uma frase de origem na planilha, "Guarda de amostra de alimento (Conforme médico)", que precisa de validação do responsável técnico antes de ser alterada. |
+| Conteúdo dos checklists | Fidelidade verificada | As 12 áreas e as 437 perguntas correspondem à planilha-fonte. Termos técnicos e redações institucionais, incluindo "Guarda de amostra de alimento (Conforme médico)", são preservados como fornecidos. O importador apenas normaliza espaços e quebras de linha; nos títulos dos blocos, aplica capitalização visual e corrige `ACONDIONAMENTO` para `ACONDICIONAMENTO`. |
 | APK | Adiado | Fora do piloto atual. |
 
 ## Itens restantes antes da produção definitiva
@@ -75,7 +75,6 @@ O sistema anterior calculava apenas a proporção de quantidades de C e NC e, po
 1. Fazer a matriz final em aparelhos reais: Safari no iPhone, Chrome no Android e navegadores de desktop, incluindo câmera, rotação, perda de rede e retomada. Essa etapa exige os aparelhos e as redes reais do piloto.
 2. Executar um teste de capacidade prolongado com o volume estimado de usuários e fotos. O teste simultâneo atual é uma verificação de concorrência, não uma medição definitiva de capacidade.
 3. Trocar o limitador de tentativas de login em memória por armazenamento compartilhado caso o serviço passe a usar mais de uma instância.
-4. Validar com a responsável técnica a frase de origem "Guarda de amostra de alimento (Conforme médico)" antes de alterar o checklist.
 
 ## Parecer de prontidão
 
