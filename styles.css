@@ -3019,8 +3019,8 @@ h3 {
 
 .action-plan-image-viewer {
   position: relative;
-  width: min(78vw, 460px);
-  height: min(72vh, 640px);
+  width: min(72vw, 300px);
+  height: min(42vh, 360px);
   display: grid;
   place-items: center;
 }
