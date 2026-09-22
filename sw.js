@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v46-aligned-chart";
+const CACHE_NAME = "idauditor-v47-action-photo";
 const APP_SHELL = [
   "/",
   "/index.html",

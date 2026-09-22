@@ -2968,26 +2968,36 @@ h3 {
 }
 
 .action-plan-response-evidence {
+  position: relative;
   grid-column: 1 / -1;
-  width: min(100%, 320px);
+  width: 190px;
+  height: 128px;
   margin: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #dfe7ef;
 }
 
 .action-plan-response-evidence img {
   display: block;
   width: 100%;
-  height: 190px;
+  height: 100%;
   object-fit: contain;
-  border: 1px solid #d6e0ea;
-  border-radius: 6px;
-  background: #fff;
+  image-orientation: from-image;
+  background: #dfe7ef;
 }
 
 .action-plan-response-evidence figcaption {
-  margin-top: 5px;
-  color: #526174;
-  font-size: 11px;
-  font-weight: 700;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 6px 8px;
+  color: #fff;
+  background: rgba(5, 28, 52, .82);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .action-plan-signature-section {
@@ -3154,6 +3164,7 @@ h3 {
   .action-plan-nc-heading .report-risk-tag { grid-column: 2; justify-self: start; }
   .action-plan-nc-body { grid-template-columns: 1fr; }
   .action-plan-source-photo { width: 100%; height: 180px; }
+  .action-plan-response-evidence { width: 100%; height: 180px; }
   .action-plan-auditor-copy { grid-template-columns: 1fr; }
   .action-plan-response-box { grid-template-columns: 1fr; }
   .action-plan-signature-section { grid-template-columns: 1fr; gap: 20px; padding: 20px 16px; }
