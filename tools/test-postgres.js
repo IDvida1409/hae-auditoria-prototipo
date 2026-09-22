@@ -84,6 +84,10 @@ async function main() {
     }
     const health = await json("/api/health");
     assert.equal(health.storage, "postgres");
+    const securityResponse = await fetch(base + "/login.html");
+    assert.equal(securityResponse.headers.get("x-frame-options"), "DENY");
+    assert.equal(securityResponse.headers.get("x-content-type-options"), "nosniff");
+    assert.match(securityResponse.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
     const { hashPassword } = require("../lib/access-api");
     const accessPassword = "Test-only-" + crypto.randomUUID();
     const admin = await pool.query("select id,email from app_users where role='admin' order by created_at limit 1");
@@ -226,6 +230,9 @@ async function main() {
     const ncFinished = await json("/api/sync-queue", { deviceUid, operations: [ncFinish] }, "POST", token);
     assert.equal(ncFinished.complete, true);
     const generatedPayload = ncFinished.operations.find((item) => item.client_operation_id === ncFinish.clientOperationId).result_payload;
+    const residueWeightTotal = residueQuestions.reduce((sum, item) => sum + Number(item.weight), 0);
+    const expectedWeightedScore = Number((((residueWeightTotal - Number(residueQuestion.weight)) / residueWeightTotal) * 10).toFixed(2));
+    assert.equal(Number(generatedPayload.audit.final_score), expectedWeightedScore);
     assert.equal(generatedPayload.actionPlans.length, 1);
     assert.equal(generatedPayload.actionPlanDocument.status, "available_to_responsible");
     const generatedPlan = generatedPayload.actionPlans[0];

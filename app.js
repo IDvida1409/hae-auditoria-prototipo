@@ -33,18 +33,18 @@ const icons = {
 };
 
 const areaData = [
-  { id: "cozinha-catering", name: "Cozinha Catering", subtitle: "Preparo de refeições e distribuição", icon: "cozinha-catering.png", score: 9.3, last: 8.9, ncs: 1, critical: 0, pending: 1, status: "satisfatorio" },
-  { id: "room-service", name: "Room Service", subtitle: "Serviço de quarto e atendimento", icon: "room-service.png", score: 8.8, last: 8.4, ncs: 2, critical: 0, pending: 1, status: "moderado" },
-  { id: "cozinha-fria-sarp", name: "Cozinha Fria SARP", subtitle: "Preparo frio e conservação", icon: "cozinha-fria-sarp.png", score: 8.7, last: 8.2, ncs: 2, critical: 0, pending: 2, status: "moderado" },
-  { id: "cozinha-sarp", name: "Cozinha SARP", subtitle: "Produção quente e preparo", icon: "cozinha-sarp.png", score: 8.6, last: 8.0, ncs: 3, critical: 0, pending: 2, status: "moderado" },
-  { id: "cozinha-pedido-especial", name: "Cozinha Pedido Especial", subtitle: "Dietas especiais e enteral", icon: "cozinha-pedido-especial.png", score: 8.5, last: 8.1, ncs: 3, critical: 1, pending: 2, status: "moderado" },
-  { id: "saladas", name: "Saladas", subtitle: "Preparo de saladas e alimentos frios", icon: "saladas.png", score: 8.4, last: 7.9, ncs: 4, critical: 1, pending: 2, status: "moderado" },
-  { id: "distribuicao", name: "Distribuição", subtitle: "Fluxo de entrega quente e fria", icon: "distribuicao.png", score: 8.1, last: 7.7, ncs: 4, critical: 1, pending: 2, status: "moderado" },
-  { id: "higienizacao-cubas", name: "Higienização de Cubas", subtitle: "Higienização de cubas e utensílios", icon: "higienizacao-cubas.png", score: 8.0, last: 7.8, ncs: 4, critical: 1, pending: 3, status: "moderado" },
-  { id: "higienizacao-louca", name: "Higienização de Louça", subtitle: "Higienização de louças e talheres", icon: "higienizacao-louca.png", score: 7.9, last: 7.5, ncs: 5, critical: 1, pending: 3, status: "medio" },
-  { id: "dml-produto-quimico", name: "DML - Produto Químico", subtitle: "Depósito de material de limpeza", icon: "dml-produto-quimico.png", score: 7.8, last: 7.2, ncs: 5, critical: 1, pending: 4, status: "medio" },
-  { id: "area-residuos", name: "Área de Resíduos", subtitle: "Armazenamento e segregação de resíduos", icon: "area-residuos.png", score: 6.2, last: 7.1, ncs: 8, critical: 3, pending: 5, status: "critico" },
-  { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png", score: 7.6, last: 7.3, ncs: 4, critical: 1, pending: 3, status: "medio" }
+  { id: "cozinha-catering", name: "Cozinha Catering", subtitle: "Preparo de refeições e distribuição", icon: "cozinha-catering.png" },
+  { id: "room-service", name: "Room Service", subtitle: "Serviço de quarto e atendimento", icon: "room-service.png" },
+  { id: "cozinha-fria-sarp", name: "Cozinha Fria SARP", subtitle: "Preparo frio e conservação", icon: "cozinha-fria-sarp.png" },
+  { id: "cozinha-sarp", name: "Cozinha SARP", subtitle: "Produção quente e preparo", icon: "cozinha-sarp.png" },
+  { id: "cozinha-pedido-especial", name: "Cozinha Pedido Especial", subtitle: "Dietas especiais e enteral", icon: "cozinha-pedido-especial.png" },
+  { id: "saladas", name: "Saladas", subtitle: "Preparo de saladas e alimentos frios", icon: "saladas.png" },
+  { id: "distribuicao", name: "Distribuição", subtitle: "Fluxo de entrega quente e fria", icon: "distribuicao.png" },
+  { id: "higienizacao-cubas", name: "Higienização de Cubas", subtitle: "Higienização de cubas e utensílios", icon: "higienizacao-cubas.png" },
+  { id: "higienizacao-louca", name: "Higienização de Louça", subtitle: "Higienização de louças e talheres", icon: "higienizacao-louca.png" },
+  { id: "dml-produto-quimico", name: "DML - Produto Químico", subtitle: "Depósito de material de limpeza", icon: "dml-produto-quimico.png" },
+  { id: "area-residuos", name: "Área de Resíduos", subtitle: "Armazenamento e segregação de resíduos", icon: "area-residuos.png" },
+  { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png" }
 ];
 
 // Os nomes e ícones são estrutura; resultados só podem vir do banco ou de uma auditoria local ainda não sincronizada.
@@ -66,213 +66,11 @@ const statusMap = {
   naoAvaliado: { label: "Não avaliado", legend: "Sem avaliação", color: "#8a96a8" }
 };
 
-const subareaData = {
-  "cozinha-catering": [
-    { label: "Edificação e instalação", score: 9.4, status: "satisfatorio" },
-    { label: "Pessoal: higiene, saúde e capacitação", score: 9.0, status: "satisfatorio" },
-    { label: "Equipamentos, móveis e utensílios", score: 8.9, status: "moderado" },
-    { label: "Acondicionamento", score: 9.2, status: "satisfatorio" },
-    { label: "Preparo", score: 9.1, status: "satisfatorio" },
-    { label: "Controle integrado de pragas", score: 8.8, status: "moderado" },
-    { label: "Resíduos", score: 9.5, status: "satisfatorio" },
-    { label: "Risco à saúde do consumidor", score: 9.3, status: "satisfatorio" }
-  ],
-  "room-service": [
-    { label: "Entrega e conferência de refeições", score: 8.9, status: "moderado" },
-    { label: "Controle de tempo e temperatura", score: 8.4, status: "moderado" },
-    { label: "Higienização dos carros de transporte", score: 8.7, status: "moderado" },
-    { label: "Identificação das dietas", score: 9.0, status: "satisfatorio" },
-    { label: "Registros obrigatórios", score: 8.8, status: "moderado" }
-  ],
-  "cozinha-fria-sarp": [
-    { label: "Recebimento e armazenamento frio", score: 8.9, status: "moderado" },
-    { label: "Pré-preparo frio", score: 8.7, status: "moderado" },
-    { label: "Higienização de hortifruti", score: 8.6, status: "moderado" },
-    { label: "Controle de validade", score: 8.8, status: "moderado" },
-    { label: "Utensílios e superfícies", score: 8.5, status: "moderado" }
-  ],
-  "cozinha-sarp": [
-    { label: "Edificação e instalação", score: 8.8, status: "moderado" },
-    { label: "Preparo e pré-preparo", score: 8.5, status: "moderado" },
-    { label: "Cocção e tratamento térmico", score: 8.9, status: "moderado" },
-    { label: "Manutenção térmica", score: 8.6, status: "moderado" },
-    { label: "Controle integrado de pragas", score: 8.4, status: "moderado" }
-  ],
-  "cozinha-pedido-especial": [
-    { label: "Dietas especiais", score: 8.7, status: "moderado" },
-    { label: "Identificação e rastreabilidade", score: 8.6, status: "moderado" },
-    { label: "Separação de fluxos", score: 8.3, status: "moderado" },
-    { label: "Registros de preparo", score: 8.5, status: "moderado" }
-  ],
-  saladas: [
-    { label: "Seleção e higienização", score: 8.5, status: "moderado" },
-    { label: "Manipulação de alimentos frios", score: 8.2, status: "moderado" },
-    { label: "Armazenamento e validade", score: 8.6, status: "moderado" },
-    { label: "Utensílios e superfícies", score: 8.3, status: "moderado" }
-  ],
-  distribuicao: [
-    { label: "Fluxo de distribuição", score: 8.3, status: "moderado" },
-    { label: "Carros térmicos", score: 8.0, status: "moderado" },
-    { label: "Tempo até entrega", score: 7.9, status: "medio" },
-    { label: "Controle de temperatura", score: 8.1, status: "moderado" }
-  ],
-  "higienizacao-cubas": [
-    { label: "Cubas e utensílios", score: 8.2, status: "moderado" },
-    { label: "Produtos e diluição", score: 8.0, status: "moderado" },
-    { label: "Secagem e armazenamento", score: 7.9, status: "medio" },
-    { label: "Rotina de higienização", score: 8.1, status: "moderado" }
-  ],
-  "higienizacao-louca": [
-    { label: "Lavagem e sanitização", score: 8.0, status: "moderado" },
-    { label: "Controle de resíduos", score: 7.7, status: "medio" },
-    { label: "Armazenamento pós-higienização", score: 7.9, status: "medio" }
-  ],
-  "dml-produto-quimico": [
-    { label: "Armazenamento de químicos", score: 7.8, status: "medio" },
-    { label: "Identificação dos produtos", score: 8.0, status: "moderado" },
-    { label: "Validade e diluição", score: 7.6, status: "medio" },
-    { label: "Acesso e organização", score: 7.9, status: "medio" }
-  ],
-  "area-residuos": [
-    { label: "Segregação dos resíduos", score: 5.9, status: "critico" },
-    { label: "Recipientes e tampas", score: 6.1, status: "critico" },
-    { label: "Fluxo de armazenamento", score: 6.4, status: "critico" },
-    { label: "Higienização da área", score: 6.2, status: "critico" },
-    { label: "Risco à saúde do consumidor", score: 6.0, status: "critico" }
-  ],
-  documentacao: [
-    { label: "Registros obrigatórios", score: 7.7, status: "medio" },
-    { label: "Controle de validade", score: 7.4, status: "medio" },
-    { label: "Evidências arquivadas", score: 7.8, status: "medio" },
-    { label: "Planos de ação vinculados", score: 7.6, status: "medio" }
-  ]
-};
-
 const actionStatusMeta = {
   pendente: { label: "Pendente", color: "var(--orange)" },
   andamento: { label: "Em andamento", color: "var(--blue-700)" },
   concluido: { label: "Concluído", color: "var(--green)" },
   atrasado: { label: "Atrasado", color: "var(--red)" }
-};
-
-const actionPlanData = {
-  "area-residuos": [
-    {
-      title: "Reforçar segregação e tampa dos recipientes",
-      block: "Recipientes e tampas",
-      owner: "Higienização",
-      status: "andamento",
-      recurrent: true,
-      improved: false,
-      critical: true
-    },
-    {
-      title: "Reorganizar armazenamento temporário",
-      block: "Fluxo de armazenamento",
-      owner: "Facilities",
-      status: "pendente",
-      recurrent: true,
-      improved: false,
-      critical: true
-    },
-    {
-      title: "Registrar rotina diária de higienização",
-      block: "Higienização da área",
-      owner: "Supervisão",
-      status: "pendente",
-      recurrent: false,
-      improved: null,
-      critical: false
-    }
-  ],
-  documentacao: [
-    {
-      title: "Atualizar licença sanitária no dossiê",
-      block: "Documentos",
-      owner: "Qualidade",
-      status: "andamento",
-      recurrent: true,
-      improved: true,
-      critical: true
-    },
-    {
-      title: "Revisar planilhas de controle vencidas",
-      block: "Planilhas",
-      owner: "Nutrição",
-      status: "pendente",
-      recurrent: false,
-      improved: null,
-      critical: false
-    },
-    {
-      title: "Vincular evidências do mês vigente",
-      block: "Documentos",
-      owner: "Auditoria",
-      status: "concluido",
-      recurrent: false,
-      improved: true,
-      critical: false
-    }
-  ],
-  "dml-produto-quimico": [
-    {
-      title: "Padronizar identificação dos saneantes",
-      block: "Identificação dos produtos",
-      owner: "DML",
-      status: "andamento",
-      recurrent: true,
-      improved: false,
-      critical: true
-    },
-    {
-      title: "Conferir validade e diluição dos produtos",
-      block: "Validade e diluição",
-      owner: "Supervisão",
-      status: "pendente",
-      recurrent: false,
-      improved: null,
-      critical: false
-    }
-  ],
-  "higienizacao-louca": [
-    {
-      title: "Reforçar armazenamento pós-higienização",
-      block: "Armazenamento pós-higienização",
-      owner: "Operação",
-      status: "pendente",
-      recurrent: true,
-      improved: false,
-      critical: false
-    }
-  ],
-  distribuicao: [
-    {
-      title: "Monitorar tempo até entrega",
-      block: "Tempo até entrega",
-      owner: "Distribuição",
-      status: "andamento",
-      recurrent: false,
-      improved: true,
-      critical: false
-    }
-  ]
-};
-
-const questionActionPlanData = {
-  "cozinha-catering": {
-    "edificacao-e-instalacao-1": {
-      status: "concluido",
-      previousAudit: "Julho/2026",
-      auditDate: "30/07/2026",
-      closedAt: "29/08/2026",
-      auditor: "Qualidade / Segurança dos Alimentos",
-      owner: "Liderança da área auditada",
-      title: "Reorganizar fluxo da instalação",
-      action: "Adequar a organização física da área para reduzir cruzamento de processo e registrar evidência após a correção.",
-      evidence: "assets/report-evidence-utensilios.png?v=question-plan-1",
-      evidenceAlt: "Evidência do plano de ação finalizado"
-    }
-  }
 };
 
 const navItems = [
@@ -313,7 +111,7 @@ const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
 const reportArchiveInFlight = new Set();
-const REPORT_LAYOUT_VERSION = "approved-layout-v3";
+const REPORT_LAYOUT_VERSION = "approved-layout-v4-weighted-score";
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -327,6 +125,8 @@ const accessRoleLabels = {
 const nativeApiOrigin = window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : "";
 const apiUrl = (path) => `${nativeApiOrigin}${path}`;
 const apiCredentials = nativeApiOrigin ? "include" : "same-origin";
+const freshLoginStartup = Boolean(sessionStorage.getItem("idauditor-fresh-login"));
+document.body.classList.toggle("show-app-startup", freshLoginStartup);
 
 function updateStartupProgress(percent, label) {
   const startup = document.querySelector("[data-app-startup]");
@@ -336,7 +136,10 @@ function updateStartupProgress(percent, label) {
   const labelNode = startup.querySelector("[data-app-startup-label]");
   if (percentNode) percentNode.textContent = `${percent}%`;
   if (labelNode && label) labelNode.textContent = label;
-  if (percent >= 100) setTimeout(() => startup.classList.add("is-complete"), 420);
+  if (percent >= 100) setTimeout(() => {
+    startup.classList.add("is-complete");
+    document.body.classList.remove("show-app-startup");
+  }, 420);
 }
 
 const nativeStartupDelay = (milliseconds) => nativeApiOrigin
@@ -1404,20 +1207,11 @@ function scoreStatus(score) {
   return "critico";
 }
 
-function simulatedBlockScore(area, block, index) {
-  if (!hasAreaResult(area)) return null;
-  const riskTotal = (block.questions || []).reduce((sum, question) => sum + (question.risk || 0), 0);
-  const riskPenalty = Math.min(1.1, riskTotal / Math.max(160, (block.questions || []).length * 42));
-  const rhythm = ((index % 5) - 2) * 0.16;
-  return clamp(area.score + rhythm - riskPenalty + 0.28, 4.8, 9.7);
-}
-
 function blockSummaries(area) {
-  return blocksForArea(area).map((block, index) => {
+  return blocksForArea(area).map((block) => {
     const questions = block.questions || [];
     const sourceCounts = countsFromRows(questionRowsForArea(area).filter((row) => row.blockId === block.id));
-    const evaluated = sourceCounts.C + sourceCounts.NC;
-    const score = evaluated ? (sourceCounts.C / evaluated) * 10 : null;
+    const score = weightedScoreFromRows(questionRowsForArea(area).filter((row) => row.blockId === block.id));
     return {
       id: block.id,
       label: block.title,
@@ -1453,6 +1247,19 @@ function questionRowsForArea(area) {
     notes: realAnswers.get(question.id)?.notes || "",
     evidenceFileId: filesByAnswer.get(String(realAnswers.get(question.id)?.id)) || null
   }));
+}
+
+function weightedScoreFromRows(rows) {
+  let achieved = 0;
+  let possible = 0;
+  for (const row of rows) {
+    if (!["C", "NC"].includes(row.answer)) continue;
+    const weight = Number(row.risk);
+    if (!Number.isFinite(weight) || weight <= 0) continue;
+    possible += weight;
+    if (row.answer === "C") achieved += weight;
+  }
+  return possible ? Number(((achieved / possible) * 10).toFixed(2)) : null;
 }
 
 function countsFromRows(rows) {
@@ -5107,9 +4914,8 @@ function areaDetailPage() {
   const summaries = blockSummaries(area);
   const allRows = questionRowsForArea(area);
   const counts = countsFromRows(allRows);
-  const totalRows = allRows.length || 1;
-  const conformityPct = Math.round((counts.C / totalRows) * 100);
-  const ncPct = Math.round((counts.NC / totalRows) * 100);
+  const conformityPct = Math.round(Number(area.score || 0) * 10);
+  const ncPct = hasAreaResult(area) ? 100 - conformityPct : 0;
   const selectedBlock = summaries.find((block) => block.id === state.detailBlock) || null;
   const selectedRows = selectedBlock ? allRows.filter((row) => row.blockId === selectedBlock.id) : [];
   const selectedCounts = countsFromRows(selectedRows);

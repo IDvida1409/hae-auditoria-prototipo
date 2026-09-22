@@ -14,6 +14,7 @@ const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
 const { enqueueMonthlyAuditReport, validateAuditReadyToFinalize } = require("./lib/report-service");
+const { weightedAuditScore } = require("./lib/scoring");
 const { buildAndroidWeb } = require("./tools/build-android-web");
 
 const root = __dirname;
@@ -155,6 +156,17 @@ function sendJson(response, status, body) {
     "cache-control": "no-store"
   });
   response.end(JSON.stringify(body));
+}
+
+function applySecurityHeaders(request, response) {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  response.setHeader("Permissions-Policy", "camera=(self), geolocation=(), microphone=()");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://hae-auditoria-prototipo.onrender.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  if (process.env.RENDER === "true" || request.headers["x-forwarded-proto"] === "https") {
+    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
 }
 
 function buildMobileBundle() {
@@ -311,19 +323,7 @@ async function defaultChecklistForArea(pool, unitId, areaId) {
 }
 
 async function auditScore(pool, auditId) {
-  const result = await pool.query(
-    `
-      select
-        count(*) filter (where answer in ('C', 'NC'))::int as counted,
-        count(*) filter (where answer = 'C')::int as conforming
-      from audit_answers
-      where audit_id = $1
-    `,
-    [auditId]
-  );
-  const counted = Number(result.rows[0]?.counted || 0);
-  const conforming = Number(result.rows[0]?.conforming || 0);
-  return counted ? Number(((conforming / counted) * 10).toFixed(2)) : null;
+  return weightedAuditScore(pool, auditId);
 }
 
 function publicPlanCode() {
@@ -865,7 +865,7 @@ async function handleApi(request, response, url) {
             throw new Error("Cada resposta precisa ter questionId e answer C/NC/X.");
           }
           const question = await client.query(
-            "select q.risk_level from checklist_questions q join checklist_blocks b on b.id=q.block_id where q.id=$1 and b.checklist_id=$2",
+            "select q.risk_level,q.weight from checklist_questions q join checklist_blocks b on b.id=q.block_id where q.id=$1 and b.checklist_id=$2",
             [answer.questionId, audit.rows[0].checklist_id]
           );
           if (!question.rows[0]) throw new Error(`Pergunta não encontrada: ${answer.questionId}`);
@@ -900,7 +900,7 @@ async function handleApi(request, response, url) {
               auditAnswersMatch.id,
               answer.questionId,
               answer.answer,
-              answer.answer === "C" ? 10 : answer.answer === "NC" ? 0 : null,
+              answer.answer === "C" ? Number(question.rows[0].weight) : answer.answer === "NC" ? 0 : null,
               question.rows[0].risk_level,
               answer.notes || null
             ]
@@ -1804,6 +1804,7 @@ function serveStatic(request, response, url) {
 }
 
 const server = http.createServer(async (request, response) => {
+  applySecurityHeaders(request, response);
   const origin = request.headers.origin;
   const allowedOrigins = new Set(["https://localhost", "http://localhost", ...(process.env.CORS_ORIGINS || "").split(",").map((item) => item.trim()).filter(Boolean)]);
   if (origin && allowedOrigins.has(origin)) {
