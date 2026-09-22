@@ -312,6 +312,7 @@ let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
+const reportArchiveInFlight = new Set();
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -1239,6 +1240,7 @@ async function loadOperationalData() {
     });
     state.actionPlanResponses = { ...state.actionPlanResponses, [plan.id]: hydrated };
   }
+  setTimeout(() => archiveMissingApprovedReports(), 0);
 }
 
 function planFromNotificationEntity(entityId) {
@@ -1955,15 +1957,17 @@ function dashboardEvolution(area = null) {
   const maxValue = Math.max(...points, 8) + 0.25;
   const range = Math.max(1, maxValue - minValue);
   const xStep = (w - pad.left - pad.right) / Math.max(1, points.length - 1);
+  const singlePoint = points.length === 1;
+  const xFor = (index) => singlePoint ? w / 2 : pad.left + index * xStep;
   const yFor = (value) => pad.top + (maxValue - value) * ((h - pad.top - pad.bottom) / range);
   const d = points
-    .map((value, index) => `${index === 0 ? "M" : "L"}${pad.left + index * xStep},${yFor(value)}`)
+    .map((value, index) => `${index === 0 ? "M" : "L"}${xFor(index)},${yFor(value)}`)
     .join(" ");
   const labelPill = (value, index) => {
-    const x = pad.left + index * xStep;
+    const x = xFor(index);
     const y = yFor(value) - 15;
     return `
-      <text x="${x}" y="${y + 3}" text-anchor="middle" fill="${color}" font-size="10.5" font-weight="730">${formatScore(value)}</text>
+      <text x="${x}" y="${y + 3}" text-anchor="middle" fill="${color}" font-size="${singlePoint ? 17 : 10.5}" font-weight="760">${formatScore(value)}</text>
     `;
   };
 
@@ -1972,12 +1976,13 @@ function dashboardEvolution(area = null) {
       <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolução das notas">
         <line x1="${pad.left}" y1="${h - pad.bottom}" x2="${w - pad.right}" y2="${h - pad.bottom}" stroke="#e4e9f0" stroke-width="1" />
         <line x1="${pad.left}" y1="${yFor(8)}" x2="${w - pad.right}" y2="${yFor(8)}" stroke="#dfeee2" stroke-width="1.2" />
+        ${singlePoint ? `<line x1="${w / 2 - 52}" y1="${yFor(points[0])}" x2="${w / 2 + 52}" y2="${yFor(points[0])}" stroke="${color}" stroke-width="4" stroke-linecap="round"></line>` : ""}
         <path d="${d}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
         ${points
           .map(
             (value, index) => {
               return `
-                <circle cx="${pad.left + index * xStep}" cy="${yFor(value)}" r="4" fill="${color}" stroke="#fff" stroke-width="2"></circle>
+                <circle cx="${xFor(index)}" cy="${yFor(value)}" r="${singlePoint ? 7 : 4}" fill="${color}" stroke="#fff" stroke-width="2.5"></circle>
                 ${labelPill(value, index)}
               `;
             }
@@ -1986,7 +1991,7 @@ function dashboardEvolution(area = null) {
         ${monthsLabel
           .map(
             (month, index) => `
-              <text x="${pad.left + index * xStep}" y="${h - 3}" text-anchor="middle" fill="#425474" font-size="12" font-weight="700">${month}</text>
+              <text x="${singlePoint ? w / 2 : pad.left + index * xStep}" y="${h - 3}" text-anchor="middle" fill="#425474" font-size="12" font-weight="700">${month}</text>
             `
           )
           .join("")}
@@ -3690,6 +3695,53 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
   });
 }
 
+async function archiveApprovedMonthlyReport(area, audit) {
+  const key = `${audit.id}:monthly`;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /^hae-consolidado-mes-/i.test(report.file_name || ""))) return;
+  reportArchiveInFlight.add(key);
+  try {
+    const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
+    if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
+    const deviceUid = await window.HAE_OFFLINE.deviceUid();
+    const filename = reportPdfFilename(area, "monthly");
+    const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
+      method: "POST",
+      credentials: apiCredentials,
+      headers: {
+        "content-type": "application/pdf",
+        "x-device-uid": deviceUid,
+        "x-local-file-id": `report-${audit.id}-monthly`,
+        "x-file-name": encodeURIComponent(filename),
+        "x-file-type": "report_pdf"
+      },
+      body: blob
+    });
+    const uploaded = await uploadResponse.json().catch(() => ({}));
+    if (!uploadResponse.ok || !uploaded.file?.id) throw new Error(uploaded.error || "Não foi possível arquivar o PDF.");
+    await operationalRequest("reports/register-client-pdf", {
+      method: "POST",
+      body: JSON.stringify({ auditId: audit.id, fileId: uploaded.file.id, reportType: "monthly" })
+    });
+    const reports = await operationalRequest("reports");
+    operationalReports = reports.reports || [];
+    render();
+  } catch (error) {
+    console.error("Falha ao preparar o relatório mensal aprovado", error);
+  } finally {
+    reportArchiveInFlight.delete(key);
+  }
+}
+
+function archiveMissingApprovedReports() {
+  if (location.protocol === "file:" || isAreaResponsible() || !window.HAE_OFFLINE) return;
+  for (const audit of operationalAudits || []) {
+    if (audit.status !== "finished") continue;
+    const area = uiAreaFromBackendId(audit.area_id);
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /^hae-consolidado-mes-/i.test(report.file_name || ""))) continue;
+    archiveApprovedMonthlyReport(area, audit);
+  }
+}
+
 function openReportPdfAfterRender(targetWindow, options = {}) {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => openReportPdf(targetWindow, options));
@@ -4651,13 +4703,14 @@ function reportLibraryItems(area) {
   const stored = reportsForArea(area);
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
-  const monthlyAvailable = Boolean(findReport("monthly") || completedAudit);
+  const monthlyReport = findReport("monthly");
+  const monthlyAvailable = Boolean(monthlyReport?.file_url && /^hae-consolidado-mes-/i.test(monthlyReport.file_name || ""));
   return [
     {
       id: "monthly",
       title: "Relatório da auditoria mensal",
-      status: monthlyAvailable ? "Disponível" : "Ainda não gerado",
-      note: findReport("monthly")?.period_label || reportMonthLabel(currentMonthId),
+      status: monthlyAvailable ? "Disponível" : completedAudit ? "Gerando relatório" : "Ainda não gerado",
+      note: monthlyReport?.period_label || reportMonthLabel(currentMonthId),
       available: monthlyAvailable
     },
     {
@@ -4700,22 +4753,25 @@ function reportHistoryRows(area) {
   const rows = reportsForArea(area);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   if (!rows.length && completedAudit) {
-    return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>Relatório disponível</td><td>${reportStoredPdfLink(area, "monthly", "open", "Abrir")}</td></tr>`;
+    return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>Gerando relatório</td><td><span>Aguarde</span></td></tr>`;
   }
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
-  return rows.map((row) => `
+  return rows.map((row) => {
+    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /^hae-consolidado-mes-/i.test(row.file_name || ""));
+    return `
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>
       <td>${escapeHtml(labels[row.report_type] || row.report_type)}</td>
-      <td>${escapeHtml(row.status === "generated" ? "PDF disponível" : row.status)}</td>
+      <td>${escapeHtml(ready && row.status === "generated" ? "PDF disponível" : ready ? row.status : "Gerando relatório")}</td>
       <td>
-        ${row.file_url
+        ${ready && row.file_url
           ? reportStoredPdfLink(area, row.report_type, "open", "Abrir")
-          : `<span>Arquivado</span>`}
+          : `<span>Aguarde</span>`}
       </td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function reportFolderModal() {
@@ -5237,6 +5293,7 @@ function checklistPage() {
                         <div class="note-field"><label>Responsável</label><input value="${escapeHtml(areaResponsibleName)}" readonly /></div>
                         <div class="note-field"><label>Prazo</label><input type="date" /></div>
                       </div>
+                      <button class="primary-btn audit-evidence-complete" data-complete-audit-evidence="${question.id}" type="button" ${state.auditEvidence?.[area.id]?.[question.id] ? "" : "disabled"}>${svgIcon("check")} Concluir evidência e avançar</button>
                     </div>
                   </section>
                 `;
@@ -6062,15 +6119,22 @@ function actionPlanInstructionFor(row, index) {
   return instructions[index] || `Corrigir a não conformidade registrada em ${row.blockTitle}.`;
 }
 
+function actionPlanResponseEvidence(row, responsibleView, responses, index) {
+  const fileId = responsibleView ? responses[index]?.evidenceFileId : row.responseEvidenceFileId;
+  if (!fileId) return "";
+  return `<figure class="action-plan-response-evidence"><img src="${apiUrl(`/api/files/${fileId}/content`)}" alt="Evidência enviada pelo responsável para a NC ${index + 1}" loading="eager" /><figcaption>Evidência enviada pelo responsável</figcaption></figure>`;
+}
+
 function planningItemReview(plan, index, item) {
+  const submittedEvidence = actionPlanResponseEvidence(item, false, {}, index);
   const decision = plan.itemDecisions?.[index];
   if (decision) {
     const approved = decision.status === "approved";
-    return `<div class="action-plan-item-review is-${approved ? "approved" : "rejected"}"><div><span>Decisão do auditor</span><strong>${approved ? "Evidência aprovada" : "Evidência reprovada"}</strong>${decision.reason ? `<p><b>Justificativa:</b> ${escapeHtml(decision.reason)}</p>` : ""}</div><span class="planning-status is-${approved ? "good" : "danger"}">${approved ? "Aprovada" : "Reprovada"}</span></div>`;
+    return `${submittedEvidence}<div class="action-plan-item-review is-${approved ? "approved" : "rejected"}"><div><span>Decisão do auditor</span><strong>${approved ? "Evidência aprovada" : "Evidência reprovada"}</strong>${decision.reason ? `<p><b>Justificativa:</b> ${escapeHtml(decision.reason)}</p>` : ""}</div><span class="planning-status is-${approved ? "good" : "danger"}">${approved ? "Aprovada" : "Reprovada"}</span></div>`;
   }
   const hasSubmittedEvidence = Boolean(item?.responseText || item?.responseEvidenceFileId);
-  if (plan.status !== "pending_review" || !hasSubmittedEvidence) return "";
-  return `<div class="action-plan-item-review is-pending"><div><span>Análise da NC ${String(index + 1).padStart(2, "0")}</span><strong>Aguardando decisão do auditor</strong></div><div class="action-plan-item-actions"><button class="outline-btn is-danger" data-plan-item-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Reprovar evidência</button><button class="primary-btn" data-plan-item-decision="approved" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Aprovar evidência</button></div></div>`;
+  if (plan.status !== "pending_review" || !hasSubmittedEvidence) return submittedEvidence;
+  return `${submittedEvidence}<div class="action-plan-item-review is-pending"><div><span>Análise da NC ${String(index + 1).padStart(2, "0")}</span><strong>Aguardando decisão do auditor</strong></div><div class="action-plan-item-actions"><button class="outline-btn is-danger" data-plan-item-decision="rejected" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Reprovar evidência</button><button class="primary-btn" data-plan-item-decision="approved" data-plan-id="${escapeHtml(plan.id)}" data-item-index="${index}" type="button">Aprovar evidência</button></div></div>`;
 }
 
 function planningDeadlineModal() {
@@ -6489,6 +6553,36 @@ function exitChartPresentationMode() {
   }
 }
 
+function advanceAuditQuestion(questionId, stayOnCurrent = false) {
+  const area = areaById(state.selectedArea);
+  const blocks = blocksForArea(area);
+  const blockIndex = blocks.findIndex((block) => block.id === state.checklistBlock);
+  const currentBlock = blocks[blockIndex];
+  const questionIndex = currentBlock?.questions.findIndex((question) => question.id === questionId) ?? -1;
+  let targetQuestionId = questionId;
+
+  if (!stayOnCurrent && questionIndex >= 0) {
+    const nextQuestion = currentBlock.questions[questionIndex + 1];
+    if (nextQuestion) {
+      targetQuestionId = nextQuestion.id;
+      state.checklistPage = Math.floor((questionIndex + 1) / 3);
+    } else {
+      const nextBlock = blocks.slice(blockIndex + 1).find((block) => block.questions.some((question) => !state.answers?.[area.id]?.[question.id]));
+      if (nextBlock) {
+        state.checklistBlock = nextBlock.id;
+        state.checklistPage = 0;
+        targetQuestionId = nextBlock.questions.find((question) => !state.answers?.[area.id]?.[question.id])?.id || nextBlock.questions[0]?.id;
+      }
+    }
+  }
+
+  render();
+  requestAnimationFrame(() => {
+    const target = document.querySelector(`[data-question-card="${CSS.escape(targetQuestionId || questionId)}"]`) || document.querySelector(".audit-pager");
+    target?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+}
+
 document.addEventListener("click", async (event) => {
   const usernameChoice = event.target.closest("[data-username-suggestion]");
   if (usernameChoice) {
@@ -6738,9 +6832,8 @@ document.addEventListener("click", async (event) => {
       }
       return;
     }
-    const area = areaById(reportAction.dataset.reportArea);
-    const pdfWindow = actionMode === "open" ? prepareReportPdfWindow() : null;
-    if (area) openApprovedReportPdf(area, reportKindValue, pdfWindow, { mode: actionMode });
+    accessNotice = { type: "success", text: "O relatório ainda está sendo preparado. Ele será liberado assim que o PDF estiver arquivado." };
+    render();
     return;
   }
 
@@ -7413,10 +7506,16 @@ document.addEventListener("click", async (event) => {
         [questionId]: answerValue
       }
     };
-    render();
+    advanceAuditQuestion(questionId, answerValue === "NC");
     queueChecklistAnswer(areaId, questionId, answerValue, state.auditNotes?.[areaId]?.[questionId] || "").catch((error) => {
       setOfflineNotice({ phase: "error", message: error.message });
     });
+    return;
+  }
+
+  const completeEvidence = event.target.closest("[data-complete-audit-evidence]");
+  if (completeEvidence) {
+    advanceAuditQuestion(completeEvidence.dataset.completeAuditEvidence);
     return;
   }
 
@@ -7595,6 +7694,7 @@ document.addEventListener("change", (event) => {
         };
         saveState();
         render();
+        requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
       });
     pendingAuditWrites.set(areaId, write);
     write

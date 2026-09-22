@@ -2967,6 +2967,29 @@ h3 {
   text-align: center;
 }
 
+.action-plan-response-evidence {
+  grid-column: 1 / -1;
+  width: min(100%, 320px);
+  margin: 0;
+}
+
+.action-plan-response-evidence img {
+  display: block;
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  border: 1px solid #d6e0ea;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.action-plan-response-evidence figcaption {
+  margin-top: 5px;
+  color: #526174;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .action-plan-signature-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -7266,6 +7289,11 @@ h3 {
   padding-top: 8px !important;
 }
 
+.audit-evidence-complete {
+  justify-self: end;
+  margin-top: 12px;
+}
+
 .audit-pager {
   display: flex !important;
   align-items: center !important;
@@ -10611,19 +10639,19 @@ h3 {
   display: grid;
   grid-template-columns: repeat(var(--items), minmax(0, 1fr));
   column-gap: 4px;
-  min-height: 54px;
+  min-height: 62px;
   margin: -2px 72px 0 42px;
 }
 
 .report-chart-labels span {
-  width: 90px;
+  width: auto;
+  padding: 6px 3px 0;
   color: #203251;
   font-size: 8.1px;
   font-weight: 800;
-  line-height: 1.05;
-  text-align: right;
-  transform: rotate(-34deg);
-  transform-origin: 12px 8px;
+  line-height: 1.12;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .report-doc-chart figcaption {
@@ -10639,19 +10667,17 @@ h3 {
 }
 
 .report-doc-chart.is-monthly-chart .report-chart-labels {
-  min-height: 62px;
+  min-height: 72px;
   margin: 0 72px 4px 42px;
   align-items: start;
 }
 
 .report-doc-chart.is-monthly-chart .report-chart-labels span {
-  width: 148px;
+  width: auto;
   color: #111827;
   font-size: 7.35px;
-  line-height: 1.02;
-  text-align: left;
-  transform: translateY(19px) rotate(-34deg);
-  transform-origin: left top;
+  line-height: 1.12;
+  text-align: center;
 }
 
 .report-doc-chart.is-comparison-chart {
@@ -10659,19 +10685,17 @@ h3 {
 }
 
 .report-doc-chart.is-comparison-chart .report-chart-labels {
-  min-height: 62px;
+  min-height: 72px;
   margin: 0 72px 4px 42px;
   align-items: start;
 }
 
 .report-doc-chart.is-comparison-chart .report-chart-labels span {
-  width: 148px;
+  width: auto;
   color: #111827;
   font-size: 7.35px;
-  line-height: 1.02;
-  text-align: left;
-  transform: translateY(19px) rotate(-34deg);
-  transform-origin: left top;
+  line-height: 1.12;
+  text-align: center;
 }
 
 .report-empty-chart {
