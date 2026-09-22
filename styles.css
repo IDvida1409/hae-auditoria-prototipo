@@ -10639,19 +10639,22 @@ h3 {
   display: grid;
   grid-template-columns: repeat(var(--items), minmax(0, 1fr));
   column-gap: 4px;
-  min-height: 62px;
+  min-height: 72px;
   margin: -2px 72px 0 42px;
+  align-items: start;
 }
 
 .report-chart-labels span {
-  width: auto;
-  padding: 6px 3px 0;
+  position: relative;
+  left: 50%;
+  width: 90px;
   color: #203251;
   font-size: 8.1px;
   font-weight: 800;
-  line-height: 1.12;
-  text-align: center;
-  overflow-wrap: anywhere;
+  line-height: 1.05;
+  text-align: left;
+  transform: translateY(18px) rotate(-34deg);
+  transform-origin: left top;
 }
 
 .report-doc-chart figcaption {
@@ -10673,11 +10676,13 @@ h3 {
 }
 
 .report-doc-chart.is-monthly-chart .report-chart-labels span {
-  width: auto;
+  width: 148px;
   color: #111827;
   font-size: 7.35px;
-  line-height: 1.12;
-  text-align: center;
+  line-height: 1.02;
+  text-align: left;
+  transform: translateY(19px) rotate(-34deg);
+  transform-origin: left top;
 }
 
 .report-doc-chart.is-comparison-chart {
@@ -10691,11 +10696,13 @@ h3 {
 }
 
 .report-doc-chart.is-comparison-chart .report-chart-labels span {
-  width: auto;
+  width: 148px;
   color: #111827;
   font-size: 7.35px;
-  line-height: 1.12;
-  text-align: center;
+  line-height: 1.02;
+  text-align: left;
+  transform: translateY(19px) rotate(-34deg);
+  transform-origin: left top;
 }
 
 .report-empty-chart {
