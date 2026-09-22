@@ -313,6 +313,7 @@ const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
 const reportArchiveInFlight = new Set();
+const REPORT_LAYOUT_VERSION = "approved-layout-v3";
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -3819,20 +3820,20 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-layout-v2\.pdf$/i.test(report.file_name || ""))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && String(report.file_name || "").endsWith(`-${REPORT_LAYOUT_VERSION}.pdf`))) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
     if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
     const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-approved-layout-v2.pdf");
+    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, `-${REPORT_LAYOUT_VERSION}.pdf`);
     const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
       method: "POST",
       credentials: apiCredentials,
       headers: {
         "content-type": "application/pdf",
         "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly-approved-layout-v2`,
+        "x-local-file-id": `report-${audit.id}-monthly-${REPORT_LAYOUT_VERSION}`,
         "x-file-name": encodeURIComponent(filename),
         "x-file-type": "report_pdf"
       },
@@ -3859,7 +3860,7 @@ async function archiveMissingApprovedReports() {
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-layout-v2\.pdf$/i.test(report.file_name || ""))) continue;
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && String(report.file_name || "").endsWith(`-${REPORT_LAYOUT_VERSION}.pdf`))) continue;
     await archiveApprovedMonthlyReport(area, audit);
   }
 }
@@ -4063,7 +4064,8 @@ function reportMonthlyInsight(area) {
   const totals = reportAreaTotals(area);
   const stats = actionPlanStats(area);
   const worstBlocks = blockSummaries(area)
-    .sort((a, b) => a.score - b.score)
+    .filter((block) => block.sourceCounts.NC > 0)
+    .sort((a, b) => b.sourceCounts.NC - a.sourceCounts.NC || a.score - b.score)
     .slice(0, 2)
     .map((block) => block.title);
   const metaText = area.score >= 8
@@ -4072,7 +4074,7 @@ function reportMonthlyInsight(area) {
   return `
     <div class="report-note-box">
       <strong>Síntese técnica da área</strong>
-      <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}; os blocos que exigem atenção neste mês são ${escapeHtml(worstBlocks.join(" e "))}.</p>
+      <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}; ${worstBlocks.length ? `os blocos que exigem atenção neste mês são ${escapeHtml(worstBlocks.join(" e "))}` : "não há bloco com não conformidade no ciclo"}.</p>
     </div>
   `;
 }
@@ -4323,7 +4325,8 @@ function reportMonthlyAttention(area) {
       const highRiskNc = areaRows.filter((row) => row.blockId === block.id && row.answer === "NC" && row.riskLevel === "critico").length;
       return { ...block, highRiskNc };
     })
-    .sort((a, b) => a.score - b.score || b.sourceCounts.NC - a.sourceCounts.NC || b.highRiskNc - a.highRiskNc)
+    .filter((block) => block.sourceCounts.NC > 0)
+    .sort((a, b) => b.sourceCounts.NC - a.sourceCounts.NC || b.highRiskNc - a.highRiskNc || a.score - b.score)
     .slice(0, 3);
   const attentionText = attentionBlocks
     .map((block) => `${block.title} (${block.questions.length} perguntas, nota ${formatScore(block.score)}, ${block.sourceCounts.NC} NCs${block.highRiskNc ? `, ${block.highRiskNc} de risco alto` : ""})`)
@@ -4331,7 +4334,9 @@ function reportMonthlyAttention(area) {
 
   return `
     <p class="report-doc-text report-monthly-attention-text">
-      O gráfico consolida ${totalQuestions} perguntas em ${blocks.length} blocos; os principais pontos de atenção do mês são ${escapeHtml(attentionText)}, considerando menor nota, quantidade de NCs e risco atribuído às perguntas não conformes.
+      ${attentionBlocks.length
+        ? `O gráfico consolida ${totalQuestions} perguntas em ${blocks.length} blocos; os principais pontos de atenção do mês são ${escapeHtml(attentionText)}, considerando quantidade de NCs, risco e nota dos blocos não conformes.`
+        : `O gráfico consolida ${totalQuestions} perguntas em ${blocks.length} blocos e não registrou não conformidades neste ciclo. Itens marcados como Não Avaliado (X) permanecem identificados no quadro, sem serem classificados como ponto de atenção.`}
     </p>
   `;
 }
