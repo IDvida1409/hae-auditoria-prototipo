@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v52-login-session-reset";
+const CACHE_NAME = "idauditor-v53-login-transition-blue";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -15,6 +15,7 @@ const APP_SHELL = [
   "/assets/hospital-einstein-logo.png",
   "/assets/login-reference.png",
   "/assets/app-icon-reference.png",
+  "/assets/login-transition-card.png",
   "/assets/vendor/lucide.min.js"
 ];
 
