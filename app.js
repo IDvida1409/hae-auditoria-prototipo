@@ -848,6 +848,7 @@ function defaultState() {
     planningPlanOverrides: {},
     planningNotice: "",
     planningDecisionModal: false,
+    actionPlanImagePreview: "",
     actionPlanPreview: false,
     actionDeadlineModal: false,
     actionPlanAcknowledgements: {},
@@ -6132,7 +6133,13 @@ function actionPlanInstructionFor(row, index) {
 function actionPlanResponseEvidence(row, responsibleView, responses, index) {
   const fileId = responsibleView ? responses[index]?.evidenceFileId : row.responseEvidenceFileId;
   if (!fileId) return "";
-  return `<figure class="action-plan-response-evidence"><img src="${apiUrl(`/api/files/${fileId}/content`)}" alt="Evidência enviada pelo responsável para a NC ${index + 1}" loading="eager" /><figcaption>Evidência enviada pelo responsável</figcaption></figure>`;
+  const imageUrl = apiUrl(`/api/files/${fileId}/content`);
+  return `<figure class="action-plan-response-evidence" data-open-action-plan-image="${escapeHtml(imageUrl)}" role="button" tabindex="0" title="Abrir foto inteira" aria-label="Abrir evidência completa da NC ${index + 1}"><img src="${imageUrl}" alt="Evidência enviada pelo responsável para a NC ${index + 1}" loading="eager" /><figcaption>Evidência enviada pelo responsável</figcaption></figure>`;
+}
+
+function actionPlanImageViewer() {
+  if (!state.actionPlanImagePreview) return "";
+  return `<div class="action-plan-image-viewer-backdrop" data-close-action-plan-image role="presentation"><section class="action-plan-image-viewer" role="dialog" aria-modal="true" aria-label="Evidência fotográfica completa"><button class="panel-close" data-close-action-plan-image type="button" title="Fechar">${icons.close}</button><img src="${escapeHtml(state.actionPlanImagePreview)}" alt="Evidência fotográfica completa" /></section></div>`;
 }
 
 function planningItemReview(plan, index, item) {
@@ -6299,6 +6306,7 @@ function planningPlanPreview() {
       ${planningDeadlineModal()}
       ${planningDecisionModal()}
       ${responsibleAcknowledgementModal(plan)}
+      ${actionPlanImageViewer()}
     </div>`;
 }
 
@@ -6594,6 +6602,21 @@ function advanceAuditQuestion(questionId, stayOnCurrent = false) {
 }
 
 document.addEventListener("click", async (event) => {
+  const openActionPlanImage = event.target.closest("[data-open-action-plan-image]");
+  if (openActionPlanImage) {
+    state.actionPlanImagePreview = openActionPlanImage.dataset.openActionPlanImage;
+    render();
+    requestAnimationFrame(() => document.querySelector(".action-plan-image-viewer .panel-close")?.focus());
+    return;
+  }
+
+  const closeActionPlanImage = event.target.closest("[data-close-action-plan-image]");
+  if (closeActionPlanImage && (event.target === closeActionPlanImage || closeActionPlanImage.matches("button"))) {
+    state.actionPlanImagePreview = "";
+    render();
+    return;
+  }
+
   const usernameChoice = event.target.closest("[data-username-suggestion]");
   if (usernameChoice) {
     const form = usernameChoice.closest("[data-access-user-form]");
@@ -7260,6 +7283,7 @@ document.addEventListener("click", async (event) => {
     state.actionPlanPreview = false;
     state.actionDeadlineModal = false;
     state.planningDecisionModal = false;
+    state.actionPlanImagePreview = "";
     state.actionPlanConsentId = "";
     render();
     return;
@@ -7714,6 +7738,21 @@ document.addEventListener("change", (event) => {
       });
   }
 
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.actionPlanImagePreview) {
+    state.actionPlanImagePreview = "";
+    render();
+    return;
+  }
+  const imageTrigger = event.target.closest?.("[data-open-action-plan-image]");
+  if (imageTrigger && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    state.actionPlanImagePreview = imageTrigger.dataset.openActionPlanImage;
+    render();
+    requestAnimationFrame(() => document.querySelector(".action-plan-image-viewer .panel-close")?.focus());
+  }
 });
 
 document.addEventListener("input", (event) => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v47-action-photo";
+const CACHE_NAME = "idauditor-v48-action-lightbox";
 const APP_SHELL = [
   "/",
   "/index.html",

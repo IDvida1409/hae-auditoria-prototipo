@@ -2976,13 +2976,20 @@ h3 {
   overflow: hidden;
   border-radius: 6px;
   background: #dfe7ef;
+  cursor: zoom-in;
+}
+
+.action-plan-response-evidence:focus-visible {
+  outline: 3px solid #0a6cff;
+  outline-offset: 3px;
 }
 
 .action-plan-response-evidence img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
   image-orientation: from-image;
   background: #dfe7ef;
 }
@@ -2998,6 +3005,53 @@ h3 {
   background: rgba(5, 28, 52, .82);
   font-size: 10px;
   font-weight: 600;
+}
+
+.action-plan-image-viewer-backdrop {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 16, 31, .88);
+}
+
+.action-plan-image-viewer {
+  position: relative;
+  width: min(92vw, 920px);
+  height: min(88vh, 860px);
+  display: grid;
+  place-items: center;
+}
+
+.action-plan-image-viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  image-orientation: from-image;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .42);
+}
+
+.action-plan-image-viewer .panel-close {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  color: #fff;
+  border-color: rgba(255, 255, 255, .55);
+  background: rgba(5, 28, 52, .88);
+}
+
+@media print {
+  .action-plan-image-viewer-backdrop {
+    display: none !important;
+  }
 }
 
 .action-plan-signature-section {
