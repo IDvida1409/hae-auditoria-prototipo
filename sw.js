@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v50-action-image-compact";
+const CACHE_NAME = "idauditor-v51-action-image-contained";
 const APP_SHELL = [
   "/",
   "/index.html",
