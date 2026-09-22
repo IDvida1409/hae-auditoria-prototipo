@@ -1110,6 +1110,18 @@ async function loadOperationalData() {
   operationalDashboard = dashboard;
   operationalReports = reports.reports || [];
   operationalAudits = audits.audits || [];
+  for (const area of areaData) {
+    const localAudit = state.offlineAudits?.[area.id];
+    const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
+    const remoteExists = operationalAudits.some((audit) => String(audit.area_id) === String(backendArea?.id || ""));
+    if (localAudit?.status === "finished" && !remoteExists) {
+      delete state.offlineAudits[area.id];
+      delete state.answers[area.id];
+      delete state.auditNotes[area.id];
+      delete state.auditEvidence[area.id];
+      delete state.auditProgress[area.id];
+    }
+  }
   const latestFinished = new Map();
   for (const audit of operationalAudits) {
     if (audit.status === "finished" && !latestFinished.has(audit.area_id)) latestFinished.set(audit.area_id, audit);
@@ -1997,26 +2009,29 @@ function generalAssessmentMiniChart() {
   const range = Math.max(1, maxValue - minValue);
   const xStep = (w - pad.left - pad.right) / Math.max(1, monthIds.length - 1);
   const yFor = (value) => pad.top + (maxValue - value) * ((h - pad.top - pad.bottom) / range);
+  const singlePoint = availablePoints.length === 1;
+  const pointX = (point) => singlePoint ? w / 2 : pad.left + monthIds.indexOf(point.monthId) * xStep;
   const lineD = availablePoints
-    .map((point, index) => `${index === 0 ? "M" : "L"}${pad.left + monthIds.indexOf(point.monthId) * xStep},${yFor(point.value)}`)
+    .map((point, index) => `${index === 0 ? "M" : "L"}${pointX(point)},${yFor(point.value)}`)
     .join(" ");
 
   return `
     <svg class="general-sparkline" viewBox="0 0 ${w} ${h}" role="img" aria-label="Tendência da avaliação geral">
       <line x1="${pad.left}" y1="${h - pad.bottom}" x2="${w - pad.right}" y2="${h - pad.bottom}" stroke="#e3eaf2" stroke-width="1" />
+      ${singlePoint ? `<line x1="${w / 2 - 58}" y1="${yFor(availablePoints[0].value)}" x2="${w / 2 + 58}" y2="${yFor(availablePoints[0].value)}" stroke="#2f8f46" stroke-width="4" stroke-linecap="round" opacity=".9"></line>` : ""}
       <path d="${lineD}" fill="none" stroke="#2f8f46" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>
       ${availablePoints
         .map((point) => {
-          const index = monthIds.indexOf(point.monthId);
-          const x = pad.left + index * xStep;
+          const x = pointX(point);
           const y = yFor(point.value);
           return `
-            <text x="${x}" y="${y - 12}" text-anchor="middle" fill="#207333" font-size="14" font-weight="780">${formatScore(point.value)}</text>
-            <circle cx="${x}" cy="${y}" r="5" fill="#2f8f46" stroke="#ffffff" stroke-width="2.4"></circle>
+            <text x="${x}" y="${y - 16}" text-anchor="middle" fill="#207333" font-size="${singlePoint ? 18 : 14}" font-weight="780">${formatScore(point.value)}</text>
+            <circle cx="${x}" cy="${y}" r="${singlePoint ? 7 : 5}" fill="#2f8f46" stroke="#ffffff" stroke-width="2.8"></circle>
+            ${singlePoint ? `<text x="${x}" y="${h - 7}" text-anchor="middle" fill="#425474" font-size="12" font-weight="700">${point.monthId.slice(0, 3).replace(/^./, (letter) => letter.toUpperCase())}</text>` : ""}
           `;
         })
         .join("")}
-      ${labels
+      ${singlePoint ? "" : labels
         .map(
           (label, index) => `
             <text x="${pad.left + index * xStep}" y="${h - 7}" text-anchor="middle" fill="${monthPoints[index].value == null ? "#a8b3c2" : "#425474"}" font-size="10.6" font-weight="700">${label}</text>
@@ -2209,12 +2224,12 @@ function chartSvg() {
     : { left: 48, right: 138, top: 38, bottom: 108 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
-  const slotCount = Math.max(1, visibleAreas.length);
-  const barGap = expanded ? 32 : 28;
-  const slotW = innerW / slotCount;
-  const barW = Math.max(20, slotW - barGap);
-  const slotIndexes = chartAreas.map((area) => Math.max(0, visibleAreas.findIndex((item) => item.id === area.id)));
-  const xFor = (index) => pad.left + slotIndexes[index] * slotW + barGap / 2;
+  const plottedCount = Math.max(1, chartAreas.length);
+  const barW = expanded ? 76 : 68;
+  const groupGap = expanded ? 30 : 24;
+  const groupWidth = plottedCount * barW + Math.max(0, plottedCount - 1) * groupGap;
+  const groupStart = pad.left + Math.max(0, (innerW - groupWidth) / 2);
+  const xFor = (index) => groupStart + index * (barW + groupGap);
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const lineD = lineValues
     ? lineValues.map((value, i) => `${i === 0 ? "M" : "L"}${xFor(i) + barW / 2},${yFor(value)}`).join(" ")

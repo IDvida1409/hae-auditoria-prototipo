@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v39-plano-relatorio";
+const CACHE_NAME = "idauditor-v40-reset-graficos";
 const APP_SHELL = [
   "/",
   "/index.html",
