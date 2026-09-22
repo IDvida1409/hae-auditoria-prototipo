@@ -5,9 +5,13 @@ const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 
 const stylesheet = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
+const installedChrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 test("PDF report layout is invariant across browser widths", async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(fs.existsSync(installedChrome) ? { executablePath: installedChrome } : {})
+  });
   try {
     const snapshots = [];
     for (const width of [390, 1440]) {

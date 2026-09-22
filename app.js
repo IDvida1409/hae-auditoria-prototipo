@@ -1542,8 +1542,8 @@ function generalScore() {
 }
 
 function monthAverage(monthId) {
-  const values = monthLines[monthId];
-  if (!Array.isArray(values) || !values.length) return null;
+  const values = (monthLines[monthId] || []).filter(Number.isFinite);
+  if (!values.length) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
@@ -3854,13 +3854,13 @@ async function archiveApprovedMonthlyReport(area, audit) {
   }
 }
 
-function archiveMissingApprovedReports() {
+async function archiveMissingApprovedReports() {
   if (location.protocol === "file:" || isAreaResponsible() || !window.HAE_OFFLINE) return;
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-aligned-chart\.pdf$/i.test(report.file_name || ""))) continue;
-    archiveApprovedMonthlyReport(area, audit);
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-layout-v2\.pdf$/i.test(report.file_name || ""))) continue;
+    await archiveApprovedMonthlyReport(area, audit);
   }
 }
 
