@@ -2218,10 +2218,11 @@ function chartSvg() {
   const selected = state.selectedMonth;
   const visibleAreas = areaData.filter((area) => canAccessArea(area.id));
   const chartAreas = areasWithResults().filter((area) => canAccessArea(area.id));
-  const chartIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
+  const chartIndexes = chartAreas.map((area) => visibleAreas.findIndex((item) => item.id === area.id));
+  const sourceIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
   const hasComparison = selected !== currentMonthId && Array.isArray(monthLines[selected]);
-  const lineValues = hasComparison ? chartIndexes.map((index) => monthLines[selected][index]) : null;
-  const barValues = chartIndexes.map((index) => monthLines[currentMonthId]?.[index] ?? 0);
+  const lineValues = hasComparison ? sourceIndexes.map((index) => monthLines[selected][index]) : null;
+  const barValues = sourceIndexes.map((index) => monthLines[currentMonthId]?.[index] ?? 0);
   const width = expanded ? 1320 : 1120;
   const height = expanded ? 520 : 400;
   const pad = expanded
@@ -2229,21 +2230,20 @@ function chartSvg() {
     : { left: 48, right: 138, top: 38, bottom: 108 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
-  const plottedCount = Math.max(1, chartAreas.length);
-  const barW = expanded ? 76 : 68;
-  const groupGap = expanded ? 30 : 24;
-  const groupWidth = plottedCount * barW + Math.max(0, plottedCount - 1) * groupGap;
-  const groupStart = pad.left + Math.max(0, (innerW - groupWidth) / 2);
-  const xFor = (index) => groupStart + index * (barW + groupGap);
+  const barGap = expanded ? 32 : 28;
+  const slotW = innerW / Math.max(1, visibleAreas.length);
+  const barW = Math.max(20, slotW - barGap);
+  const xFor = (index) => pad.left + index * slotW + barGap / 2;
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const lineD = lineValues
-    ? lineValues.map((value, i) => `${i === 0 ? "M" : "L"}${xFor(i) + barW / 2},${yFor(value)}`).join(" ")
+    ? lineValues.map((value, i) => `${i === 0 ? "M" : "L"}${xFor(chartIndexes[i]) + barW / 2},${yFor(value)}`).join(" ")
     : "";
   const selectedColor = months.find(([id]) => id === selected)?.[1] || "#f4a000";
   const gridRight = pad.left + innerW;
   const plotBottom = pad.top + innerH;
   const points = chartAreas.map((area, i) => {
-    const x = xFor(i);
+    const slotIndex = chartIndexes[i];
+    const x = xFor(slotIndex);
     const value = barValues[i];
     return {
       area,
@@ -2254,7 +2254,7 @@ function chartSvg() {
       h: plotBottom - yFor(value)
     };
   });
-  const lastBarRight = points[points.length - 1].x + barW;
+  const lastBarRight = xFor(Math.max(0, visibleAreas.length - 1)) + barW;
   const metaLabelX = Math.min(width - 74, lastBarRight + 34);
   const metaLineEnd = metaLabelX - 12;
   const metaY = yFor(8) - 18;
@@ -2274,7 +2274,7 @@ function chartSvg() {
   const clampLabelY = (y) => Math.max(pad.top + 14, Math.min(plotBottom - 14, y));
   const linePointBlockers = lineValues
     ? lineValues.map((value, i) => {
-        const x = xFor(i) + barW / 2;
+        const x = xFor(chartIndexes[i]) + barW / 2;
         const y = yFor(value);
         return { x: x - 8, y: y - 8, w: 16, h: 16 };
       })
@@ -2308,7 +2308,7 @@ function chartSvg() {
   }));
   const lineLayouts = lineValues
     ? lineValues.map((value, i) => {
-        const x = xFor(i) + barW / 2;
+        const x = xFor(chartIndexes[i]) + barW / 2;
         const y = yFor(value);
         return {
           x,
@@ -2379,12 +2379,12 @@ function chartSvg() {
           `
         )
         .join("")}
-      ${points
+      ${visibleAreas
         .map(
-          (point) => `
-            <g class="axis-label-hit" data-chart-area="${point.area.id}" tabindex="0" role="button" aria-label="${point.area.name}">
-              <text class="chart-axis-label" transform="translate(${point.center}, ${plotBottom + 43}) rotate(-39)" text-anchor="end">
-                ${chartLabelLines(point.area.name)
+          (area, index) => `
+            <g class="axis-label-hit" ${hasAreaResult(area) ? `data-chart-area="${area.id}" tabindex="0" role="button"` : ""} aria-label="${area.name}">
+              <text class="chart-axis-label" transform="translate(${xFor(index) + barW / 2}, ${plotBottom + 43}) rotate(-39)" text-anchor="end">
+                ${chartLabelLines(area.name)
                   .map((line, index) => `<tspan x="0" dy="${index === 0 ? 0 : 13}">${line}</tspan>`)
                   .join("")}
               </text>
@@ -3697,20 +3697,20 @@ function openApprovedReportPdf(area, reportKind, targetWindow = null, options = 
 
 async function archiveApprovedMonthlyReport(area, audit) {
   const key = `${audit.id}:monthly`;
-  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-labels-v2\.pdf$/i.test(report.file_name || ""))) return;
+  if (reportArchiveInFlight.has(key) || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-chart\.pdf$/i.test(report.file_name || ""))) return;
   reportArchiveInFlight.add(key);
   try {
     const blob = await openApprovedReportPdf(area, "monthly", null, { mode: "archive" });
     if (!blob) throw new Error("O PDF aprovado não pôde ser preparado.");
     const deviceUid = await window.HAE_OFFLINE.deviceUid();
-    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-labels-v2.pdf");
+    const filename = reportPdfFilename(area, "monthly").replace(/\.pdf$/i, "-approved-chart.pdf");
     const uploadResponse = await fetch(apiUrl("/api/offline-files"), {
       method: "POST",
       credentials: apiCredentials,
       headers: {
         "content-type": "application/pdf",
         "x-device-uid": deviceUid,
-        "x-local-file-id": `report-${audit.id}-monthly-labels-v2`,
+        "x-local-file-id": `report-${audit.id}-monthly-approved-chart`,
         "x-file-name": encodeURIComponent(filename),
         "x-file-type": "report_pdf"
       },
@@ -3737,7 +3737,7 @@ function archiveMissingApprovedReports() {
   for (const audit of operationalAudits || []) {
     if (audit.status !== "finished") continue;
     const area = uiAreaFromBackendId(audit.area_id);
-    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-labels-v2\.pdf$/i.test(report.file_name || ""))) continue;
+    if (!area || reportsForArea(area).some((report) => report.report_type === "monthly" && report.file_url && /-approved-chart\.pdf$/i.test(report.file_name || ""))) continue;
     archiveApprovedMonthlyReport(area, audit);
   }
 }
@@ -4704,7 +4704,7 @@ function reportLibraryItems(area) {
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   const monthlyReport = findReport("monthly");
-  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-labels-v2\.pdf$/i.test(monthlyReport.file_name || ""));
+  const monthlyAvailable = Boolean(monthlyReport?.file_url && /-approved-chart\.pdf$/i.test(monthlyReport.file_name || ""));
   return [
     {
       id: "monthly",
@@ -4758,7 +4758,7 @@ function reportHistoryRows(area) {
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
   return rows.map((row) => {
-    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-labels-v2\.pdf$/i.test(row.file_name || ""));
+    const ready = row.report_type !== "monthly" || Boolean(row.file_url && /-approved-chart\.pdf$/i.test(row.file_name || ""));
     return `
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>

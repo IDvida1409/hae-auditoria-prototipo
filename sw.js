@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v44-report-labels";
+const CACHE_NAME = "idauditor-v45-approved-chart";
 const APP_SHELL = [
   "/",
   "/index.html",
