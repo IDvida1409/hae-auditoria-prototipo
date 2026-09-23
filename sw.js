@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v60-server-report";
+const CACHE_NAME = "idauditor-v61-white-fast-startup";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -15,7 +15,6 @@ const APP_SHELL = [
   "/assets/hospital-einstein-logo.png",
   "/assets/login-reference.png",
   "/assets/app-icon-reference.png",
-  "/assets/login-transition-card.png",
   "/assets/vendor/lucide.min.js"
 ];
 

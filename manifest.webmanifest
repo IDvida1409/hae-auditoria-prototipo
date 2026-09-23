@@ -5,21 +5,15 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "landscape",
-  "background_color": "#373b3e",
-  "theme_color": "#06244a",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "/assets/icons/documentacao.png",
-      "sizes": "192x192",
+      "src": "/assets/app-icon-reference.png",
+      "sizes": "1254x1254",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/assets/icons/cozinha-catering.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

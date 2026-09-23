@@ -16258,24 +16258,52 @@ button.planning-kpi:hover {
 /* Startup synchronization screen shown after a fresh login. */
 .app-startup { display: none; }
 .show-app-startup .app-startup,
-.android-app .app-startup { position: fixed; inset: 0; z-index: 10000; display: grid; grid-template-columns: minmax(0, 1fr); place-content: center; justify-items: center; gap: 16px; width: 100%; min-height: 100dvh; padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); overflow: hidden; background: #18364d; color: #fff; text-align: center; transition: opacity .58s ease, visibility .58s ease; }
+.android-app .app-startup { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; width: 100%; min-height: 100dvh; padding: max(28px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); overflow: hidden; background: #fff; color: var(--ink-950); text-align: center; transition: opacity .32s ease, visibility .32s ease; }
 .show-app-startup .app-startup.is-complete,
 .android-app .app-startup.is-complete { opacity: 0; visibility: hidden; pointer-events: none; }
 .show-app-startup .app-startup img,
-.android-app .app-startup img { display: block; width: min(52vw, 210px); aspect-ratio: 1; margin: 0 auto; object-fit: contain; animation: startup-logo-in .75s cubic-bezier(.2,.8,.2,1) both; }
+.android-app .app-startup img { display: block; flex: 0 0 auto; width: min(52vw, 210px); aspect-ratio: 1; margin: 0 auto; object-fit: contain; animation: startup-logo-in .6s cubic-bezier(.2,.8,.2,1) both; }
 .show-app-startup .app-startup-copy,
 .android-app .app-startup-copy { display: grid; width: 100%; gap: 5px; text-align: center; }
 .show-app-startup .app-startup-copy strong,
 .android-app .app-startup-copy strong { font-size: 18px; }
 .show-app-startup .app-startup-copy span,
-.android-app .app-startup-copy span { color: #c8d7e2; font-size: 13px; }
+.android-app .app-startup-copy span { color: #52647a; font-size: 13px; }
 .show-app-startup .app-startup-track,
-.android-app .app-startup-track { width: min(72vw, 290px); height: 7px; margin: 0 auto; overflow: hidden; border-radius: 999px; background: #ffffff2b; }
+.android-app .app-startup-track { width: min(72vw, 290px); height: 7px; flex: 0 0 auto; margin: 0 auto; overflow: hidden; border-radius: 999px; background: #dbe4ec; }
 .show-app-startup .app-startup-track i,
 .android-app .app-startup-track i { display: block; width: 0; height: 100%; border-radius: inherit; background: #08a64b; transition: width .3s ease; }
 .show-app-startup .app-startup b,
 .android-app .app-startup b { font-size: 13px; font-variant-numeric: tabular-nums; }
 @keyframes startup-logo-in { from { opacity: 0; transform: scale(.78); } 68% { opacity: 1; transform: scale(1.045); } to { opacity: 1; transform: scale(1); } }
+
+@media (max-width: 760px) {
+  .fichario-home .area-tile {
+    height: auto;
+    min-height: 142px;
+    grid-template-rows: 48px minmax(36px, auto) 24px;
+    padding-bottom: 13px;
+  }
+
+  .fichario-home .area-score {
+    align-self: center;
+    margin-top: 0;
+    font-size: 21px;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 420px) {
+  .fichario-home .area-tile {
+    min-height: 122px;
+    grid-template-rows: 40px minmax(30px, auto) 22px;
+    padding: 8px 7px 12px;
+  }
+
+  .fichario-home .area-score {
+    font-size: 19px;
+  }
+}
 
 /* PDF rendering must be identical on desktop, tablet and mobile browsers. */
 .report-pdf-render-root,

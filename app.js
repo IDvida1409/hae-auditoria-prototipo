@@ -138,7 +138,7 @@ function updateStartupProgress(percent, label) {
   if (percent >= 100) setTimeout(() => {
     startup.classList.add("is-complete");
     document.body.classList.remove("show-app-startup");
-  }, 420);
+  }, 180);
 }
 
 const nativeStartupDelay = (milliseconds) => nativeApiOrigin
@@ -927,7 +927,7 @@ function shortDate(value) {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(new Date(value));
 }
 
-async function loadOperationalData() {
+async function loadOperationalData(options = {}) {
   if (location.protocol === "file:") return;
   const [dashboard, plans, reports, audits] = await Promise.all([
     operationalRequest("dashboard"),
@@ -954,11 +954,14 @@ async function loadOperationalData() {
   for (const audit of operationalAudits) {
     if (audit.status === "finished" && !latestFinished.has(audit.area_id)) latestFinished.set(audit.area_id, audit);
   }
-  const detailEntries = await Promise.all([...latestFinished.values()].map(async (audit) => {
-    try { return [String(audit.area_id), await operationalRequest(`audits/${audit.id}`)]; }
-    catch { return [String(audit.area_id), null]; }
-  }));
-  operationalAuditDetails = new Map(detailEntries.filter(([, detail]) => detail));
+  const loadAuditDetails = async () => {
+    const detailEntries = await Promise.all([...latestFinished.values()].map(async (audit) => {
+      try { return [String(audit.area_id), await operationalRequest(`audits/${audit.id}`)]; }
+      catch { return [String(audit.area_id), null]; }
+    }));
+    return new Map(detailEntries.filter(([, detail]) => detail));
+  };
+  if (!options.deferAuditDetails) operationalAuditDetails = await loadAuditDetails();
   const scores = new Map((dashboard.scores || []).map((row) => [String(row.area_id), {
     score: Number(row.score),
     audits: Number(row.audits || 0)
@@ -1066,6 +1069,12 @@ async function loadOperationalData() {
       };
     });
     state.actionPlanResponses = { ...state.actionPlanResponses, [plan.id]: hydrated };
+  }
+  if (options.deferAuditDetails) {
+    void loadAuditDetails().then((details) => {
+      operationalAuditDetails = details;
+      render();
+    }).catch(() => {});
   }
 }
 
@@ -7748,7 +7757,7 @@ const reportRequest = reportFileRequest();
         loadOfflineBootstrap()
       ]);
       updateStartupProgress(78, "Sincronizando checklists e notificações...");
-      await loadOperationalData();
+      await loadOperationalData({ deferAuditDetails: !reportRequest });
       updateStartupProgress(94, "Preparando o painel...");
     } catch (error) {
       const cached = JSON.parse(localStorage.getItem("idauditor-offline-user") || "null");

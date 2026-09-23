@@ -68,13 +68,11 @@
       sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username || values.username));
       forms.login.querySelector('.primary-button span').textContent = "Entrando...";
       transitionProgress(18, "Validando o acesso...");
-      await transitionDelay(260);
-      transitionProgress(52, "Carregando seu perfil...");
-      await transitionDelay(330);
-      transitionProgress(82, "Sincronizando suas informações...");
-      await transitionDelay(360);
+      await transitionDelay(70);
+      transitionProgress(68, "Carregando seu perfil...");
+      await transitionDelay(70);
       transitionProgress(100, "Abrindo o painel...");
-      await transitionDelay(420);
+      await transitionDelay(110);
       location.replace("/");
       return "navigating";
     });
