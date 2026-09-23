@@ -165,6 +165,8 @@ test("failed migration rolls back and releases the cross-process lock", async ()
 test("database pool errors are handled instead of terminating the process", () => {
   const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
   assert.match(serverSource, /pool\.on\("error"/);
+  assert.match(serverSource, /pool\.on\("connect",\s*\(client\)/);
+  assert.match(serverSource, /client\.on\("error"/);
   assert.match(serverSource, /keepAlive:\s*true/);
 });
 

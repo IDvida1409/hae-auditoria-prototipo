@@ -97,6 +97,11 @@ async function getPool() {
         connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 30000
       });
+      pool.on("connect", (client) => {
+        client.on("error", (error) => {
+          console.error("Conexão ativa do PostgreSQL foi interrompida; a operação poderá ser repetida:", error.message);
+        });
+      });
       pool.on("error", (error) => {
         console.error("Conexão ociosa do PostgreSQL foi encerrada; o pool abrirá outra conexão:", error.message);
       });
