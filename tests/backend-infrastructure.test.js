@@ -169,9 +169,9 @@ test("database pool errors are handled instead of terminating the process", () =
 });
 
 test("only one report worker runs across overlapping server instances", () => {
-  const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
-  assert.match(serverSource, /pg_try_advisory_lock\(hashtextextended\('idauditor-report-worker',0\)\)/);
-  assert.doesNotMatch(serverSource, /for \(let index = 0; index < 5/);
+  const workerSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "lib", "report-worker.js"), "utf8");
+  assert.match(workerSource, /pg_advisory_xact_lock\(hashtextextended\('idauditor-report-claim',0\)\)/);
+  assert.match(workerSource, /not exists \([\s\S]+active\.status='processing'/);
 });
 
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {

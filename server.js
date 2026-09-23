@@ -1877,8 +1877,6 @@ const reportTimer = setInterval(async () => {
   if (!databaseUrl || reportWorkerRunning || process.env.REPORT_WORKER_ENABLED === "false" ||
       (process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true")) return;
   reportWorkerRunning = true;
-  let workerLockClient;
-  let workerLockHeld = false;
   try {
     const pool = await getPool();
     if (!reportBacklogReconciled) {
@@ -1886,20 +1884,9 @@ const reportTimer = setInterval(async () => {
       reportBacklogReconciled = true;
       if (recovered.length) console.log(`Relatórios recuperados para geração: ${recovered.length}`);
     }
-    workerLockClient = await pool.connect();
-    const lock = await workerLockClient.query("select pg_try_advisory_lock(hashtextextended('idauditor-report-worker',0)) as acquired");
-    workerLockHeld = Boolean(lock.rows[0]?.acquired);
-    if (workerLockHeld) await reportWorker.processNext(pool);
+    await reportWorker.processNext(pool);
   } catch (error) { console.error("Worker de relatorios:", error.message); }
-  finally {
-    if (workerLockClient) {
-      try {
-        if (workerLockHeld) await workerLockClient.query("select pg_advisory_unlock(hashtextextended('idauditor-report-worker',0))");
-      } catch (error) { console.error("Liberação do worker de relatórios:", error.message); }
-      workerLockClient.release();
-    }
-    reportWorkerRunning = false;
-  }
+  finally { reportWorkerRunning = false; }
 }, 3000);
 reportTimer.unref();
 
