@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v61-white-fast-startup";
+const CACHE_NAME = "idauditor-v62-single-startup";
 const APP_SHELL = [
   "/",
   "/index.html",

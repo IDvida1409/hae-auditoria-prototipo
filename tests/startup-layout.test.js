@@ -5,8 +5,13 @@ const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 
 const stylesheet = fs.readFileSync(path.join(__dirname, "..", "styles.css"), "utf8");
-const loginStylesheet = fs.readFileSync(path.join(__dirname, "..", "login.css"), "utf8");
+const loginHtml = fs.readFileSync(path.join(__dirname, "..", "login.html"), "utf8");
 const installedChrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+
+test("login hands off to the single dashboard startup screen", () => {
+  assert.doesNotMatch(loginHtml, /data-login-transition/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /data-app-startup/);
+});
 
 test("post-login startup remains centered on mobile and desktop web", async () => {
   const browser = await chromium.launch({
@@ -45,38 +50,6 @@ test("post-login startup remains centered on mobile and desktop web", async () =
       assert.equal(geometry.background, "rgb(255, 255, 255)");
       await page.close();
     }
-  } finally {
-    await browser.close();
-  }
-});
-
-test("login transition uses the same centered white presentation", async () => {
-  const browser = await chromium.launch({
-    headless: true,
-    ...(fs.existsSync(installedChrome) ? { executablePath: installedChrome } : {})
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    await page.setContent(`
-      <style>${loginStylesheet}</style>
-      <div class="login-transition is-active">
-        <img alt="IDAuditor" />
-        <div><strong>Preparando o IDAuditor</strong><span>Validando o acesso...</span></div>
-        <div class="login-transition-track"><i></i></div>
-        <b>50%</b>
-      </div>
-    `);
-    const geometry = await page.evaluate(() => {
-      const transition = document.querySelector(".login-transition");
-      const logo = transition.querySelector("img").getBoundingClientRect();
-      return {
-        logoCenter: logo.left + logo.width / 2,
-        viewportCenter: innerWidth / 2,
-        background: getComputedStyle(transition).backgroundColor
-      };
-    });
-    assert.ok(Math.abs(geometry.logoCenter - geometry.viewportCenter) < 1);
-    assert.equal(geometry.background, "rgb(255, 255, 255)");
   } finally {
     await browser.close();
   }

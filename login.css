@@ -5,17 +5,6 @@ button,input,select{font:inherit;letter-spacing:0}
 button{cursor:pointer}
 button:disabled{cursor:wait;opacity:.65}
 [hidden]{display:none!important}
-.login-transition{position:fixed;z-index:1000;inset:0;width:100%;height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:28px max(28px,env(safe-area-inset-right)) 28px max(28px,env(safe-area-inset-left));overflow:hidden;background:#fff;color:#071a3d;text-align:center;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s ease}
-.login-transition.is-active{opacity:1;visibility:visible;pointer-events:auto}
-.login-transition img{display:block;width:min(38vw,230px);aspect-ratio:1;flex:0 0 auto;align-self:center;margin:0 auto;object-fit:contain;opacity:0;transform:scale(.88);transition:opacity .4s ease,transform .55s cubic-bezier(.2,.8,.2,1)}
-.login-transition.is-active img{opacity:1;transform:scale(1);animation:login-card-pulse 1.8s ease-in-out .7s infinite}
-.login-transition>div:not(.login-transition-track){display:grid;width:100%;gap:5px;text-align:center}
-.login-transition strong{font-size:18px}
-.login-transition span{color:#52647a;font-size:13px}
-.login-transition-track{width:min(72vw,290px);height:7px;flex:0 0 auto;margin:0 auto;overflow:hidden;border-radius:999px;background:#dbe4ec}
-.login-transition-track i{display:block;width:0;height:100%;border-radius:inherit;background:#08a64b;transition:width .32s ease}
-.login-transition b{font-size:13px;font-variant-numeric:tabular-nums}
-@keyframes login-card-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
 .access-main{flex:1;display:grid;place-items:center;padding:40px 5.2% 24px}
 .access-modal{width:min(760px,100%);aspect-ratio:1376/852;min-height:0;display:grid;grid-template-columns:40.33% 59.67%;background:#fff;border:1px solid #d7e0e7;border-radius:18px;overflow:hidden;box-shadow:0 20px 60px #07162266}
 .access-art{position:relative;overflow:hidden;background:#173557;min-height:100%}
@@ -56,8 +45,6 @@ input[type=checkbox]{width:14px;height:14px;margin:0;accent-color:#009345}
 .changing .product-logo{width:150px}
 .changing .product-logo.is-unit-logo{width:190px}
 @media(max-width:620px){
- .login-transition{padding-top:max(24px,env(safe-area-inset-top));padding-right:max(20px,env(safe-area-inset-right));padding-bottom:max(24px,env(safe-area-inset-bottom));padding-left:max(20px,env(safe-area-inset-left))}
- .login-transition img{width:min(52vw,195px)}
  .access-main{padding:16px 10px}
  .access-modal{width:min(94vw,420px);min-height:0;aspect-ratio:1376/852;grid-template-columns:40.33% 59.67%;border-radius:12px}
  .access-art{height:auto;min-height:100%}
