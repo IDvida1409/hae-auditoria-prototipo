@@ -6,7 +6,7 @@ if (process.env.RENDER !== "true" && process.env.INSTALL_REPORT_BROWSER !== "tru
 const root = path.resolve(__dirname, "..");
 const browserPath = path.join(root, ".playwright-browsers");
 const playwrightCli = path.join(path.dirname(require.resolve("playwright/package.json")), "cli.js");
-const result = spawnSync(process.execPath, [playwrightCli, "install", "--with-deps", "chromium"], {
+const result = spawnSync(process.execPath, [playwrightCli, "install", "chromium"], {
   cwd: root,
   env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browserPath },
   stdio: "inherit"
