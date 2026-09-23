@@ -168,6 +168,12 @@ test("database pool errors are handled instead of terminating the process", () =
   assert.match(serverSource, /keepAlive:\s*true/);
 });
 
+test("only one report worker runs across overlapping server instances", () => {
+  const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  assert.match(serverSource, /pg_try_advisory_lock\(hashtextextended\('idauditor-report-worker',0\)\)/);
+  assert.doesNotMatch(serverSource, /for \(let index = 0; index < 5/);
+});
+
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {
   const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("test evidence content"), Buffer.from([0xff, 0xd9])]);
   let saved = null;
