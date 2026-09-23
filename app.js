@@ -113,7 +113,7 @@ let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
-const REPORT_LAYOUT_VERSION = "approved-layout-v4-weighted-score";
+const REPORT_LAYOUT_VERSION = "approved-layout-v5-jspdf";
 
 const accessRoleLabels = {
   admin: "Administrador",
@@ -3144,7 +3144,7 @@ function reportAuditWindow(area = reportSelectedArea()) {
     date,
     start,
     end,
-    duration: durationMinutes ? `${durationMinutes} min` : "Relatório gerado no fechamento",
+    duration: durationMinutes ? `${durationMinutes} min` : "< 1 min",
     signedAt: `${finished.toLocaleDateString("pt-BR")} às ${end.replace("h", ":")}`
   };
 }
@@ -3399,8 +3399,8 @@ function ensureReportPdfLibrary() {
   });
 
   window.__haePdfLibraryPromise = Promise.all([
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
-    loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js")
+    loadScript("/vendor/html2canvas.min.js"),
+    loadScript("/vendor/jspdf.umd.min.js")
   ]).then(() => {
     if (!window.jspdf?.jsPDF || !window.html2canvas) {
       throw new Error("Biblioteca de PDF indisponível");

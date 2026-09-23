@@ -147,6 +147,22 @@ async function main() {
     const operationalLogin = await access("login", { username: "admin.test", password: accessPassword });
     assert.equal(operationalLogin.response.status, 200);
     authenticatedCookie = operationalLogin.cookie;
+    const legacyPdf = Buffer.from("%PDF-1.4\n%%EOF");
+    const legacyChecksum = crypto.createHash("sha256").update(legacyPdf).digest("hex");
+    const legacyFile = await pool.query(
+      "insert into stored_files (unit_id,uploaded_by_user_id,file_type,storage_provider,storage_key,original_filename,mime_type,file_size_bytes,checksum) values ((select id from units limit 1),(select id from app_users where username='admin.test'),'report_pdf','local_private',$1,'legacy-report.pdf','application/pdf',$2,$1) returning *",
+      [legacyChecksum, legacyPdf.length]
+    );
+    await pool.query("insert into stored_file_contents (file_id,contents) values ($1,$2)", [legacyFile.rows[0].id, legacyPdf]);
+    process.env.FILE_STORAGE_DIR = path.join(folder, "files");
+    const { migrateReportFiles } = require("../lib/file-storage");
+    assert.equal(await migrateReportFiles(pool), 1);
+    const migratedLegacy = await pool.query("select * from stored_files where id=$1", [legacyFile.rows[0].id]);
+    assert.equal(migratedLegacy.rows[0].storage_provider, "render_disk");
+    assert.equal((await pool.query("select count(*)::int as count from stored_file_contents where file_id=$1", [legacyFile.rows[0].id])).rows[0].count, 0);
+    assert.deepEqual(await fs.readFile(path.join(folder, "files", legacyChecksum)), legacyPdf);
+    const legacyDownload = await fetch(base + `/api/files/${legacyFile.rows[0].id}/content`, { headers: { cookie: authenticatedCookie } });
+    assert.deepEqual(Buffer.from(await legacyDownload.arrayBuffer()), legacyPdf);
     const offlineBootstrap = await json("/api/offline-bootstrap");
     assert.equal(offlineBootstrap.areas.length, 12);
     assert.ok(offlineBootstrap.areas.every((item) => offlineBootstrap.checklists.some((checklistItem) => checklistItem.area_id === item.id && checklistItem.blocks.length)));
@@ -290,7 +306,14 @@ async function main() {
     assert.ok(reports.reports.length >= 2);
     const areaReport = reports.reports.find((item) => item.area_id === area.id);
     assert.ok(areaReport);
-    assert.match(areaReport.file_name, /approved-layout-v4-weighted-score\.pdf$/);
+    assert.match(areaReport.file_name, /approved-layout-v5-jspdf\.pdf$/);
+    const reportFile = await pool.query("select * from stored_files where id=$1", [areaReport.pdf_file_id]);
+    assert.equal(reportFile.rows[0].storage_provider, "render_disk");
+    assert.equal(reportFile.rows[0].storage_key, reportFile.rows[0].checksum);
+    const reportBlob = await pool.query("select count(*)::int as count from stored_file_contents where file_id=$1", [areaReport.pdf_file_id]);
+    assert.equal(reportBlob.rows[0].count, 0);
+    const diskPdf = await fs.readFile(path.join(folder, "files", reportFile.rows[0].storage_key));
+    assert.equal(crypto.createHash("sha256").update(diskPdf).digest("hex"), reportFile.rows[0].checksum);
     const pdfResponse = await fetch(base + areaReport.file_url, { headers: { cookie: authenticatedCookie } });
     const pdf = Buffer.from(await pdfResponse.arrayBuffer());
     assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
