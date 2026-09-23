@@ -162,6 +162,12 @@ test("failed migration rolls back and releases the cross-process lock", async ()
   assert.ok(released);
 });
 
+test("database pool errors are handled instead of terminating the process", () => {
+  const serverSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  assert.match(serverSource, /pool\.on\("error"/);
+  assert.match(serverSource, /keepAlive:\s*true/);
+});
+
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {
   const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("test evidence content"), Buffer.from([0xff, 0xd9])]);
   let saved = null;

@@ -92,7 +92,13 @@ async function getPool() {
       const { Pool } = require("pg");
       const pool = new Pool({
         connectionString: databaseUrl,
-        ssl: useSslForPostgres() ? { rejectUnauthorized: false } : false
+        ssl: useSslForPostgres() ? { rejectUnauthorized: false } : false,
+        keepAlive: true,
+        connectionTimeoutMillis: 10000,
+        idleTimeoutMillis: 30000
+      });
+      pool.on("error", (error) => {
+        console.error("Conexão ociosa do PostgreSQL foi encerrada; o pool abrirá outra conexão:", error.message);
       });
       try {
         await runMigrations(pool);
