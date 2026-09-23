@@ -13,7 +13,7 @@ const accessApi = require("./lib/access-api");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
-const { enqueueMonthlyAuditReport, validateAuditReadyToFinalize } = require("./lib/report-service");
+const { enqueueMonthlyAuditReport, reconcileFinishedAuditReports, validateAuditReadyToFinalize } = require("./lib/report-service");
 const { weightedAuditScore } = require("./lib/scoring");
 const activityLog = require("./lib/activity-log");
 const { buildAndroidWeb } = require("./tools/build-android-web");
@@ -1838,12 +1838,18 @@ const server = http.createServer(async (request, response) => {
 });
 
 let reportWorkerRunning = false;
+let reportBacklogReconciled = false;
 const reportTimer = setInterval(async () => {
   if (!databaseUrl || reportWorkerRunning || process.env.REPORT_WORKER_ENABLED === "false" ||
       (process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true")) return;
   reportWorkerRunning = true;
   try {
     const pool = await getPool();
+    if (!reportBacklogReconciled) {
+      const recovered = await reconcileFinishedAuditReports(pool);
+      reportBacklogReconciled = true;
+      if (recovered.length) console.log(`Relatórios recuperados para geração: ${recovered.length}`);
+    }
     for (let index = 0; index < 5; index++) {
       if (!await reportWorker.processNext(pool)) break;
     }

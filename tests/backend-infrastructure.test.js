@@ -7,7 +7,23 @@ const { validateOperation, canonical, enqueue, processOperations, applyOperation
 const { pageLimit, userValues } = require("../lib/operational-api");
 const storage = require("../lib/file-storage");
 const { migrate } = require("../lib/database");
-const { validateAuditReadyToFinalize } = require("../lib/report-service");
+const { enqueueMonthlyAuditReport, validateAuditReadyToFinalize } = require("../lib/report-service");
+
+test("outdated completed report job is reopened instead of remaining stuck", async () => {
+  const audit = { id: "audit-1", unit_id: "unit-1", area_id: "area-1", cycle_id: "cycle-1", auditor_user_id: "user-1" };
+  const calls = [];
+  const db = { async query(sql) {
+    calls.push(sql);
+    if (sql.includes("from reports r")) return { rows: [] };
+    if (sql.includes("from report_generation_jobs")) return { rows: [{ id: "job-1", status: "completed" }] };
+    if (sql.startsWith("update report_generation_jobs")) return { rows: [{ id: "job-1", status: "queued", attempts: 0 }] };
+    throw new Error("Unexpected query");
+  } };
+  const result = await enqueueMonthlyAuditReport(db, audit, "user-1");
+  assert.equal(result.status, "queued");
+  assert.ok(calls.some((sql) => sql.startsWith("update report_generation_jobs")));
+  assert.ok(!calls.some((sql) => sql.startsWith("insert into report_generation_jobs")));
+});
 
 test("finalization waits for every answer and required NC photo", async () => {
   const audit = { id: "audit-1", checklist_id: "checklist-1" };

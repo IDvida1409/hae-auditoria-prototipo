@@ -105,7 +105,10 @@ let lastSyncProblemNoticeAt = 0;
 let operationalActionPlans = null;
 let operationalDashboard = null;
 let operationalReports = null;
+let operationalReportJobs = [];
 let operationalAudits = null;
+let reportRefreshTimer = null;
+let reportRefreshAttempts = 0;
 let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
 const pendingAuditStarts = new Map();
@@ -937,6 +940,7 @@ async function loadOperationalData(options = {}) {
   ]);
   operationalDashboard = dashboard;
   operationalReports = reports.reports || [];
+  operationalReportJobs = reports.jobs || [];
   operationalAudits = audits.audits || [];
   for (const area of areaData) {
     const localAudit = state.offlineAudits?.[area.id];
@@ -1076,6 +1080,43 @@ async function loadOperationalData(options = {}) {
       render();
     }).catch(() => {});
   }
+  schedulePendingReportRefresh();
+}
+
+function hasReportsAwaitingGeneration() {
+  return (operationalAudits || []).some((audit) => {
+    if (audit.status !== "finished") return false;
+    const ready = (operationalReports || []).some((report) =>
+      String(report.area_id) === String(audit.area_id) &&
+      String(report.cycle_id) === String(audit.cycle_id) &&
+      isCurrentMonthlyReport(report)
+    );
+    if (ready) return false;
+    const job = (operationalReportJobs || []).find((item) =>
+      String(item.area_id) === String(audit.area_id) &&
+      String(item.cycle_id) === String(audit.cycle_id) &&
+      item.report_type === "monthly"
+    );
+    return job?.status !== "failed";
+  });
+}
+
+function schedulePendingReportRefresh() {
+  if (reportRefreshTimer || reportRefreshAttempts >= 18 || !hasReportsAwaitingGeneration()) {
+    if (!hasReportsAwaitingGeneration()) reportRefreshAttempts = 0;
+    return;
+  }
+  reportRefreshTimer = setTimeout(async () => {
+    reportRefreshTimer = null;
+    reportRefreshAttempts += 1;
+    try {
+      const data = await operationalRequest("reports");
+      operationalReports = data.reports || [];
+      operationalReportJobs = data.jobs || [];
+      render();
+    } catch {}
+    schedulePendingReportRefresh();
+  }, 5000);
 }
 
 function planFromNotificationEntity(entityId) {
@@ -4632,7 +4673,7 @@ function reportLibraryItems(area) {
     {
       id: "monthly",
       title: "Relatório da auditoria mensal",
-      status: monthlyAvailable ? "Disponível" : completedAudit ? "Gerando relatório" : "Ainda não gerado",
+      status: monthlyAvailable ? "Disponível" : completedAudit ? pendingReportStatus(area, "Preparando relatório") : "Ainda não gerado",
       note: monthlyReport?.period_label || reportMonthLabel(currentMonthId),
       available: monthlyAvailable
     },
@@ -4672,11 +4713,31 @@ function reportsForArea(area) {
   return operationalReports.filter((report) => String(report.area_id) === String(area.backendId));
 }
 
+function reportJobForArea(area, type = "monthly") {
+  if (!area || !Array.isArray(operationalReportJobs)) return null;
+  const latestAudit = (operationalAudits || []).find((audit) =>
+    String(audit.area_id) === String(area.backendId) && audit.status === "finished"
+  );
+  return operationalReportJobs.find((job) =>
+    String(job.area_id) === String(area.backendId) &&
+    (!latestAudit || String(job.cycle_id) === String(latestAudit.cycle_id)) &&
+    job.report_type === type
+  ) || null;
+}
+
+function pendingReportStatus(area, fallback = "Ainda não gerado") {
+  const job = reportJobForArea(area);
+  if (job?.status === "failed") return "Falha ao gerar relatório";
+  if (["queued", "processing"].includes(job?.status)) return "Gerando relatório";
+  return fallback;
+}
+
 function reportHistoryRows(area) {
   const rows = reportsForArea(area);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   if (!rows.length && completedAudit) {
-    return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>Gerando relatório</td><td><span>Aguarde</span></td></tr>`;
+    const status = pendingReportStatus(area, "Preparando relatório");
+    return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>${escapeHtml(status)}</td><td><span>${status.startsWith("Falha") ? "Verifique novamente" : "Aguarde"}</span></td></tr>`;
   }
   if (!rows.length) return `<tr><td colspan="4">Nenhum relatório gerado para esta área.</td></tr>`;
   const labels = { monthly: "Auditoria mensal", comparison: "Comparativo analítico", quarterly: "Trimestral", semiannual: "Semestral", annual: "Anual", action_plan: "Plano de ação" };
@@ -4686,7 +4747,7 @@ function reportHistoryRows(area) {
     <tr>
       <td>${escapeHtml(row.period_label || "Período não informado")}</td>
       <td>${escapeHtml(labels[row.report_type] || row.report_type)}</td>
-      <td>${escapeHtml(ready && row.status === "generated" ? "PDF disponível" : ready ? row.status : "Gerando relatório")}</td>
+      <td>${escapeHtml(ready && row.status === "generated" ? "PDF disponível" : ready ? row.status : pendingReportStatus(area, "Preparando relatório"))}</td>
       <td>
         ${ready && row.file_url
           ? reportStoredPdfLink(area, row.report_type, "open", "Abrir")
