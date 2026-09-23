@@ -469,10 +469,38 @@ async function handleApi(request, response, url) {
     try {
       const pool = await getPool();
       const migrations = pool ? await schemaStatus(pool) : null;
+      let reportWorker = null;
+      if (pool) {
+        const jobs = await pool.query(
+          `select status,count(*)::int as count from report_generation_jobs
+            group by status order by status`
+        );
+        const failures = await pool.query(
+          `select case
+                    when error_message ilike '%executable%exist%' or error_message ilike '%browser%install%' then 'browser_unavailable'
+                    when error_message ilike '%timeout%' or error_message ilike '%timed out%' then 'render_timeout'
+                    when error_message ilike '%net::err%' or error_message ilike '%navigation%' then 'render_navigation'
+                    when error_message ilike '%sess%' or error_message ilike '%usuário%' then 'render_identity'
+                    when error_message ilike '%auditorias finalizadas%' then 'missing_finished_audit'
+                    when error_message ilike '%ciclo%' then 'invalid_cycle'
+                    else 'other'
+                  end as category,
+                  count(*)::int as count
+             from report_generation_jobs
+            where status='failed'
+            group by category order by count(*) desc,category`
+        );
+        reportWorker = {
+          enabled: process.env.REPORT_WORKER_ENABLED !== "false",
+          jobs: Object.fromEntries(jobs.rows.map((row) => [row.status, row.count])),
+          failureCategories: Object.fromEntries(failures.rows.map((row) => [row.category, row.count]))
+        };
+      }
       sendJson(response, 200, {
         ok: true,
         storage: pool ? "postgres" : "file",
-        migrations
+        migrations,
+        reportWorker
       });
     } catch (error) {
       sendJson(response, 500, {
