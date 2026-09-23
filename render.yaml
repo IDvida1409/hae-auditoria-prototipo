@@ -3,7 +3,7 @@ services:
     name: hae-auditoria-prototipo
     env: node
     plan: free
-    buildCommand: npm ci --omit=dev && npx playwright install --with-deps chromium && node tools/build-android-web.js && cd www && zip -qr ../idauditor-web.zip .
+    buildCommand: npm ci --omit=dev && node tools/build-android-web.js && cd www && zip -qr ../idauditor-web.zip .
     startCommand: npm start
     autoDeploy: true
     envVars:
@@ -11,7 +11,5 @@ services:
         sync: false
       - key: FILE_STORAGE_DIR
         value: /var/data/uploads
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "0"
       - key: STRUCTURED_APIS_ENABLED
         value: "true"
