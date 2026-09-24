@@ -183,7 +183,7 @@ async function main() {
     const original = await json("/api/audits/" + auditId, null, "GET", token);
     assert.equal(original.answers.length, 1);
     assert.equal(original.answers[0].answer, "NC");
-    const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6xT0AAAAASUVORK5CYII=", "base64");
+    const bytes = await require("sharp")({ create: { width: 2, height: 2, channels: 3, background: "#2f8f4e" } }).png().toBuffer();
     const headers = { cookie: authenticatedCookie, "content-type": "image/png", "x-device-uid": deviceUid, "x-local-file-id": "photo-1", "x-file-name": "photo.png" };
     const upload = await fetch(base + "/api/offline-files", { method: "POST", headers, body: bytes });
     assert.ok(upload.ok);
@@ -193,7 +193,12 @@ async function main() {
     const photoOp = { clientOperationId: "photo-" + localAuditId, clientSequence: 3, entityType: "stored_file", operation: "upload", dependsOn: [answer.clientOperationId], payload: { localAuditId, localFileId: "photo-1", entityType: "audit_answer", questionId: question.id } };
     await json("/api/sync-queue", { deviceUid, operations: [photoOp] }, "POST", token);
     const download = await fetch(base + "/api/files/" + file.id + "/content", { headers: { cookie: authenticatedCookie } });
-    assert.deepEqual(Buffer.from(await download.arrayBuffer()), bytes);
+    assert.equal(download.headers.get("content-type"), "image/jpeg");
+    const normalizedPhoto = Buffer.from(await download.arrayBuffer());
+    assert.equal(normalizedPhoto.subarray(0, 3).toString("hex"), "ffd8ff");
+    const normalizedMetadata = await require("sharp")(normalizedPhoto).metadata();
+    assert.equal(normalizedMetadata.width, 2);
+    assert.equal(normalizedMetadata.height, 2);
     const updated = await json("/api/audits/" + auditId, null, "GET", token);
     assert.equal(updated.files.length, 1);
     const conflict = { ...answer, clientOperationId: "conflict-" + localAuditId, clientSequence: 4, payload: { ...answer.payload, answer: "C", expectedRevision: 0 } };

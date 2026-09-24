@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { Readable } = require("node:stream");
+const sharp = require("sharp");
 const { validateOperation, canonical, enqueue, processOperations, applyOperation } = require("../lib/sync-service");
 const { pageLimit, userValues } = require("../lib/operational-api");
 const storage = require("../lib/file-storage");
@@ -177,7 +178,9 @@ test("only one report worker runs across overlapping server instances", () => {
 });
 
 test("photo upload stores actual bytes, validates retransmission and cleans temporary files", async () => {
-  const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("test evidence content"), Buffer.from([0xff, 0xd9])]);
+  const jpeg = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#2f8f4e" } }).jpeg().toBuffer();
+  const bytes = Buffer.concat([jpeg, Buffer.from("SEFT mobile metadata")]);
+  const changed = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#b42318" } }).jpeg().toBuffer();
   let saved = null;
   let savedContent = null;
   const calls = [];
@@ -186,7 +189,7 @@ test("photo upload stores actual bytes, validates retransmission and cleans temp
       calls.push(sql);
       if (sql.startsWith("select * from stored_files")) return { rows: saved ? [saved] : [] };
       if (sql.startsWith("insert into stored_files")) {
-        saved = { id: "file-1", checksum: parameters[5], storage_key: parameters[5], file_size_bytes: parameters[8] };
+        saved = { id: "file-1", checksum: parameters[5], storage_key: parameters[5], original_filename: parameters[6], mime_type: parameters[7], file_size_bytes: parameters[8] };
         return { rows: [saved] };
       }
       if (sql.startsWith("insert into stored_file_contents")) savedContent = parameters[1];
@@ -202,11 +205,14 @@ test("photo upload stores actual bytes, validates retransmission and cleans temp
   };
   try {
     const first = await storage.upload(pool, request(bytes), { id: "user-1" }, { id: "device-1" }, "unit-1");
-    assert.deepEqual(savedContent, bytes);
+    assert.equal(savedContent.subarray(0, 3).toString("hex"), "ffd8ff");
+    assert.equal(savedContent.subarray(-2).toString("hex"), "ffd9");
+    assert.notDeepEqual(savedContent, bytes);
+    assert.equal(saved.mime_type, "image/jpeg");
     const second = await storage.upload(pool, request(bytes), { id: "user-1" }, { id: "device-1" }, "unit-1");
     assert.equal(second.id, first.id);
     assert.equal(calls.filter((sql) => sql.startsWith("insert into stored_files")).length, 1);
-    await assert.rejects(storage.upload(pool, request(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("changed"), Buffer.from([0xff, 0xd9])])) , { id: "user-1" }, { id: "device-1" }, "unit-1"), /conteudo diferente/);
-    await assert.rejects(storage.upload(pool, request(Buffer.from("not an image")), { id: "user-1" }, { id: "device-2" }, "unit-1"), /não corresponde/);
+    await assert.rejects(storage.upload(pool, request(changed), { id: "user-1" }, { id: "device-1" }, "unit-1"), /conteudo diferente/);
+    await assert.rejects(storage.upload(pool, request(Buffer.from("not an image")), { id: "user-1" }, { id: "device-2" }, "unit-1"), /arquivo de foto válido/);
   } finally { assert.equal(calls.includes("rollback"), true); }
 });
