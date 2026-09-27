@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#ffffff">
     <title>IDAuditor | Acesso</title>
     <link rel="icon" href="assets/app-icon-reference.png">
-    <link rel="stylesheet" href="login.css?v=20260923-single-startup-1">
+    <link rel="stylesheet" href="login.css?v=20260927-first-access-1">
   </head>
   <body>
     <main class="access-main">
@@ -26,6 +26,15 @@
             </label>
             <div class="login-options"><button type="button" class="text-button" id="help-button">Esqueceu a senha?</button></div>
             <button class="primary-button" type="submit"><span>Login</span></button>
+            <button type="button" class="text-button first-access-link" id="first-access-button">Primeiro acesso</button>
+          </form>
+          <form id="first-access-form" hidden autocomplete="off">
+            <label class="field"><span>Código recebido</span><div class="input-wrap"><input name="code" type="text" autocomplete="one-time-code" required minlength="8" maxlength="16" placeholder="Digite o código"></div></label>
+            <div class="first-access-user" id="first-access-user" hidden></div>
+            <label class="field first-access-password" hidden><span>Nova senha</span><div class="input-wrap"><input name="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required placeholder="Crie uma senha"></div></label>
+            <label class="field first-access-password" hidden><span>Confirmar nova senha</span><div class="input-wrap"><input name="confirmation" type="password" autocomplete="new-password" maxlength="128" required placeholder="Repita a senha"></div></label>
+            <button class="primary-button" type="submit"><span>Validar código</span></button>
+            <button class="text-button first-access-back" id="first-access-back" type="button">Voltar para o login</button>
           </form>
           <form id="change-form" hidden>
             <label class="field"><span>Senha atual</span><div class="input-wrap"><input name="currentPassword" type="password" autocomplete="current-password" required maxlength="128"></div></label>
@@ -39,6 +48,6 @@
     </main>
     <script src="live-update.js?v=20260921-ota-1"></script>
     <script src="assets/vendor/lucide.min.js"></script>
-    <script src="login.js?v=20260923-single-startup-1"></script>
+    <script src="login.js?v=20260927-first-access-1"></script>
   </body>
 </html>

@@ -1687,16 +1687,20 @@ function setView(view) {
 function setSelectedArea(id) {
   if (!canAccessArea(id)) return;
   state.selectedArea = id;
+  state.selectedParentArea = organizationAreaForSubarea(id)?.id || state.selectedParentArea;
   render();
 }
 
 function goAreaDetail(id = state.selectedArea) {
+  if (organizationAreaById(id)) id = organizationAreaById(id).subareaIds[0] || id;
   if (!canAccessArea(id)) return;
   state.selectedArea = id;
+  state.selectedParentArea = organizationAreaForSubarea(id)?.id || "";
   state.detailBlock = null;
   state.detailActionsOpen = false;
   state.detailFilter = "all";
   state.view = "area";
+  syncHashWithView("area");
   render();
 }
 
@@ -8224,6 +8228,8 @@ document.addEventListener("change", (event) => {
   if (event.target.closest("[data-clear-parent-area]")) {
     state.selectedParentArea = "";
     state.selectedArea = "";
+    state.view = "home";
+    syncHashWithView("home");
     render();
     return;
   }

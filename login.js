@@ -15,7 +15,12 @@
     logo.alt = branding.name || "Hospital";
     logo.classList.add("is-unit-logo");
   }
-  const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form") };
+  const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form"), firstAccess: document.getElementById("first-access-form") };
+  const firstAccessButton = document.getElementById("first-access-button");
+  const firstAccessBack = document.getElementById("first-access-back");
+  const firstAccessUser = document.getElementById("first-access-user");
+  let firstAccessCode = "";
+  let firstAccessVerified = false;
   window.addEventListener("pageshow", () => {
     if (!forms.login.hidden) forms.login.reset();
   });
@@ -24,7 +29,7 @@
   function setMode(next) {
     Object.entries(forms).forEach(([key, form]) => { form.hidden = key !== next; });
     modal.classList.toggle("changing", next === "change");
-    title.textContent = next === "change" ? "Defina sua nova senha" : "LOGIN";
+    title.textContent = next === "change" ? "Defina sua nova senha" : next === "firstAccess" ? "Primeiro acesso" : "LOGIN";
     message("");
     forms[next].querySelector("input")?.focus();
   }
@@ -66,6 +71,41 @@
       if (values.password !== values.confirmation) throw new Error("As senhas não coincidem.");
       await api("password", { method: "POST", body: JSON.stringify(values) });
       forms.change.reset(); setMode("login"); message("Senha alterada. Entre novamente.", true);
+    });
+  });
+  firstAccessButton.addEventListener("click", () => {
+    firstAccessCode = "";
+    firstAccessVerified = false;
+    forms.firstAccess.reset();
+    firstAccessUser.hidden = true;
+    firstAccessUser.textContent = "";
+    forms.firstAccess.querySelectorAll(".first-access-password").forEach((field) => { field.hidden = true; field.querySelector("input").required = false; });
+    forms.firstAccess.querySelector(".primary-button span").textContent = "Validar código";
+    setMode("firstAccess");
+  });
+  firstAccessBack.addEventListener("click", () => setMode("login"));
+  forms.firstAccess.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit(forms.firstAccess, async (values) => {
+      const code = String(values.code || "").trim().toUpperCase();
+      if (!firstAccessVerified) {
+        const data = await api("first-access/lookup", { method: "POST", body: JSON.stringify({ code }) });
+        firstAccessCode = code;
+        firstAccessVerified = true;
+        firstAccessUser.hidden = false;
+        firstAccessUser.textContent = `Usuário encontrado: ${data.user.username}`;
+        forms.firstAccess.querySelectorAll(".first-access-password").forEach((field) => { field.hidden = false; field.querySelector("input").required = true; });
+        forms.firstAccess.querySelector(".primary-button span").textContent = "Criar senha e entrar";
+        forms.firstAccess.elements.password.focus();
+        return;
+      }
+      if (values.password !== values.confirmation) throw new Error("As senhas não coincidem.");
+      const data = await api("first-access/complete", { method: "POST", body: JSON.stringify({ code: firstAccessCode, password: values.password }) });
+      applyBranding(data.branding);
+      sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
+      sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username));
+      location.replace("/");
+      return "navigating";
     });
   });
   document.getElementById("help-button").addEventListener("click", () => {
