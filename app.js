@@ -47,6 +47,96 @@ const areaData = [
   { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png" }
 ];
 
+const organizationAreas = [
+  {
+    id: "despensa",
+    name: "Despensa",
+    icon: "area-despensa.png",
+    subareas: [
+      ["recebimento", "Recebimento", "Recebimento de materiais e insumos", "subarea-recebimento.png"],
+      ["armazenamento", "Armazenamento", "Armazenamento e conservação", "subarea-armazenamento.png"]
+    ]
+  },
+  {
+    id: "refeitorio",
+    name: "Refeitório",
+    icon: "area-refeitorio.png",
+    subareas: [
+      ["pre-preparo-vegetais", "Pré-preparo de Vegetais", "Pré-preparo de vegetais", "subarea-pre-preparo-vegetais.png"],
+      ["pre-preparo-carnes", "Pré-preparo de Carnes", "Pré-preparo de carnes", "subarea-pre-preparo-carnes.png"],
+      ["separacao", "Separação", "Separação e organização", "subarea-separacao.png"],
+      ["cozinha-central-apoio", "Cozinha Central de Apoio", "Produção central de apoio", "subarea-cozinha-central-apoio.png"],
+      ["distribuicao", "Distribuição REF", "Distribuição do refeitório", "distribuicao.png"],
+      ["higienizacao-louca", "Higiene de Louças REF", "Higiene de louças do refeitório", "higienizacao-louca.png"]
+    ]
+  },
+  {
+    id: "cozinha-pacientes",
+    name: "Cozinha de Pacientes",
+    icon: "area-cozinha-pacientes.png",
+    subareas: [
+      ["cozinha-sarp", "Cozinha SARP", "Produção quente e preparo", "cozinha-sarp.png"],
+      ["cozinha-fria-sarp", "Cozinha Fria SARP", "Preparo frio e conservação", "cozinha-fria-sarp.png"],
+      ["cozinha-pedido-especial", "Cozinha Especiais SARP", "Dietas e preparações especiais", "cozinha-pedido-especial.png"],
+      ["distribuicao-sarp", "Distribuição SARP", "Distribuição de refeições SARP", "distribuicao.png"],
+      ["higiene-loucas-sarp", "Higiene de Louças SARP", "Higiene de louças SARP", "higienizacao-louca.png"]
+    ]
+  },
+  {
+    id: "conforto-medico",
+    name: "Conforto Médico",
+    icon: "area-conforto-medico.png",
+    subareas: [
+      ["cozinha-catering", "Cozinha Catering", "Preparo de refeições e distribuição", "cozinha-catering.png"],
+      ["room-service", "Room Service", "Serviço de quarto e atendimento", "room-service.png"],
+      ["saladas", "Saladas", "Preparo de saladas e alimentos frios", "saladas.png"],
+      ["espaco-gourmet", "Espaço Gourmet", "Atendimento do espaço gourmet", "subarea-espaco-gourmet.png"],
+      ["centro-cirurgico-6d", "Centro Cirúrgico 6D", "Atendimento do Centro Cirúrgico 6D", "subarea-centro-cirurgico-6d.png"],
+      ["centro-cirurgico-g1", "Centro Cirúrgico G1", "Atendimento do Centro Cirúrgico G1", "subarea-centro-cirurgico-g1.png"],
+      ["einstein-plus", "Einstein+", "Atendimento Einstein+", "subarea-einstein-plus.png"],
+      ["copa-presidencia", "Copa Presidência", "Atendimento da Copa Presidência", "subarea-copa-presidencia.png"]
+    ]
+  },
+  {
+    id: "mda",
+    name: "MDA",
+    icon: "area-mda.png",
+    subareas: [
+      ["mda-cafeteria", "MDA Cafeteria", "Operação da cafeteria MDA", "subarea-mda-cafeteria.png"],
+      ["mda-endoscopia", "MDA Endoscopia", "Atendimento da endoscopia MDA", "subarea-mda-endoscopia.png"]
+    ]
+  },
+  {
+    id: "limpeza-asg",
+    name: "Limpeza ASG",
+    icon: "area-limpeza-asg.png",
+    subareas: [
+      ["higiene-caixas", "Higiene de Caixas", "Higiene de caixas", "subarea-higiene-caixas.png"],
+      ["higienizacao-cubas", "Higiene de Cubas", "Higiene de cubas e utensílios", "higienizacao-cubas.png"],
+      ["dml-1-andar", "DML 1º Andar", "Depósito de material de limpeza do 1º andar", "dml-produto-quimico.png"],
+      ["dml-2-andar", "DML 2º Andar", "Depósito de material de limpeza do 2º andar", "dml-produto-quimico.png"]
+    ]
+  }
+];
+
+const existingAreaIds = new Set(areaData.map((area) => area.id));
+for (const parent of organizationAreas) {
+  parent.subareaIds = parent.subareas.map(([id]) => id);
+  for (const [id, name, subtitle, icon] of parent.subareas) {
+    let area = areaData.find((item) => item.id === id);
+    if (!area) {
+      area = { id, name, subtitle, icon, previewOnly: true };
+      areaData.push(area);
+    } else {
+      area.name = name;
+      area.subtitle = subtitle;
+    }
+    area.parentAreaId = parent.id;
+    area.parentAreaName = parent.name;
+    area.checklistSource = existingAreaIds.has(id) ? id : "cozinha-catering";
+  }
+}
+
 // Os nomes e ícones são estrutura; resultados só podem vir do banco ou de uma auditoria local ainda não sincronizada.
 areaData.forEach((area) => Object.assign(area, {
   score: null,
@@ -88,7 +178,8 @@ const navItems = [
 
 const settingsSections = [
   { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, perfis e permissões." },
-  { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." }
+  { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." },
+  { id: "areas", label: "Configuração de áreas", icon: "grid", description: "Áreas, subáreas, nomes e status para próximas auditorias." }
 ];
 
 let settingsUsers = [];
@@ -111,6 +202,7 @@ let reportRefreshTimer = null;
 let reportRefreshAttempts = 0;
 let operationalAuditDetails = new Map();
 const pendingActionPlanEvidence = new Map();
+const pendingActionPlanEvidencePreview = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
 const REPORT_LAYOUT_VERSION = "approved-layout-v5-jspdf";
@@ -152,9 +244,65 @@ function isAreaResponsible() {
   return currentAccessUser?.role === "area_responsible";
 }
 
+function organizationAreaById(id) {
+  return organizationAreas.find((area) => area.id === id) || null;
+}
+
+function organizationAreaForSubarea(areaOrId) {
+  const id = typeof areaOrId === "string" ? areaOrId : areaOrId?.id;
+  return organizationAreas.find((area) => area.subareaIds.includes(id)) || null;
+}
+
+function subareasForOrganizationArea(parentOrId) {
+  const parent = typeof parentOrId === "string" ? organizationAreaById(parentOrId) : parentOrId;
+  return parent ? parent.subareaIds.map((id) => areaData.find((area) => area.id === id)).filter(Boolean) : [];
+}
+
+function aggregateOrganizationArea(parent) {
+  const children = subareasForOrganizationArea(parent);
+  const completed = children.filter(hasAreaResult);
+  const score = completed.length ? completed.reduce((sum, area) => sum + Number(area.score), 0) / completed.length : null;
+  const previous = completed.filter((area) => Number.isFinite(area.last));
+  const last = previous.length ? previous.reduce((sum, area) => sum + Number(area.last), 0) / previous.length : null;
+  return {
+    id: parent.id,
+    name: parent.name,
+    subtitle: `${children.length} subáreas`,
+    icon: parent.icon || children[0]?.icon || "cozinha-catering.png",
+    isParentArea: true,
+    subareaIds: parent.subareaIds,
+    score,
+    last,
+    audits: completed.reduce((sum, area) => sum + Number(area.audits || 0), 0),
+    ncs: children.reduce((sum, area) => sum + Number(area.ncs || 0), 0),
+    critical: children.reduce((sum, area) => sum + Number(area.critical || 0), 0),
+    pending: children.reduce((sum, area) => sum + Number(area.pending || 0), 0),
+    status: score == null ? "naoAvaliado" : scoreStatus(score)
+  };
+}
+
+function organizationAreaCards() {
+  return organizationAreas.map(aggregateOrganizationArea);
+}
+
+function standaloneAuditAreas() {
+  const groupedIds = new Set(organizationAreas.flatMap((area) => area.subareaIds));
+  return areaData.filter((area) => !groupedIds.has(area.id));
+}
+
+function auditGroupAreaIds(parentId) {
+  const parent = organizationAreaById(parentId);
+  return parent ? parent.subareaIds.filter((id) => areaData.some((area) => area.id === id)) : [];
+}
+
+function responsibleOrganizationArea() {
+  const allowed = Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : [];
+  return organizationAreas.find((parent) => parent.subareaIds.some((id) => allowed.includes(id))) || organizationAreas[0];
+}
+
 function allowedAreaIds() {
   if (!isAreaResponsible()) return areaData.map((area) => area.id);
-  return Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : [];
+  return subareasForOrganizationArea(responsibleOrganizationArea()).map((area) => area.id);
 }
 
 function canAccessArea(areaId) {
@@ -167,7 +315,7 @@ function primaryUserArea() {
 
 function orderedAreasForUser() {
   if (!isAreaResponsible()) return areaData;
-  return [...areaData].sort((a, b) => Number(canAccessArea(b.id)) - Number(canAccessArea(a.id)));
+  return subareasForOrganizationArea(responsibleOrganizationArea());
 }
 
 function moduleAllowed(view) {
@@ -178,7 +326,7 @@ function moduleAllowed(view) {
 function applyCurrentUserScope() {
   if (!isAreaResponsible()) return;
   const primary = primaryUserArea();
-  if (!canAccessArea(state.chartFocusArea)) state.chartFocusArea = primary.id;
+  if (state.chartFocusArea && !canAccessArea(state.chartFocusArea)) state.chartFocusArea = null;
   if (!moduleAllowed(state.view)) state.view = "home";
   if (state.planningView === "rules") state.planningView = "overview";
   if (state.planningAreaId && !canAccessArea(state.planningAreaId)) state.planningAreaId = primary.id;
@@ -187,6 +335,11 @@ function applyCurrentUserScope() {
 function resetViewForFreshLogin() {
   state.view = "home";
   state.selectedArea = "";
+  state.selectedParentArea = "";
+  state.auditParentAreaId = "";
+  state.auditQueue = [];
+  state.auditQueueIndex = 0;
+  state.auditContinueModal = false;
   state.chartFocusArea = null;
   state.chartExpanded = false;
   state.detailBlock = null;
@@ -200,6 +353,7 @@ function resetViewForFreshLogin() {
   state.planningPlanId = "";
   state.actionPlanPreview = false;
   state.reportFolderArea = null;
+  state.reportFolderParentArea = "";
   state.settingsMenuExpanded = false;
   history.replaceState(null, "", `${location.pathname}${location.search}`);
 }
@@ -642,6 +796,11 @@ function defaultState() {
     view: "home",
     sidebarCollapsed: false,
     selectedArea: "",
+    selectedParentArea: "",
+    auditParentAreaId: "",
+    auditQueue: [],
+    auditQueueIndex: 0,
+    auditContinueModal: false,
     chartFocusArea: null,
     chartExpanded: false,
     chartMode: "scores",
@@ -665,6 +824,9 @@ function defaultState() {
     settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
+    settingsExpandedArea: "",
+    areaConfigOverrides: {},
+    customOrganizationAreas: [],
     planningView: "overview",
     planningAreaId: "",
     planningStatusFilter: "",
@@ -682,6 +844,8 @@ function defaultState() {
     feedbackExpanded: false,
     settingsMenuExpanded: false,
     reportFolderArea: null,
+    reportFolderParentArea: "",
+    reportFolderTab: "subareas",
     reportPdfSource: false,
     leaveAuditConfirm: false,
     auditFinalizeModal: false
@@ -694,6 +858,10 @@ function persistableState(source = state) {
     view: source.view,
     sidebarCollapsed: source.sidebarCollapsed,
     selectedArea: source.selectedArea,
+    selectedParentArea: source.selectedParentArea,
+    auditParentAreaId: source.auditParentAreaId,
+    auditQueue: source.auditQueue,
+    auditQueueIndex: source.auditQueueIndex,
     chartFocusArea: source.chartFocusArea,
     chartMode: source.chartMode,
     selectedMonth: source.selectedMonth,
@@ -709,6 +877,10 @@ function persistableState(source = state) {
     settingsUserView: source.settingsUserView,
     settingsRulesView: source.settingsRulesView,
     settingsUsersExpanded: source.settingsUsersExpanded,
+    reportFolderParentArea: source.reportFolderParentArea,
+    settingsExpandedArea: source.settingsExpandedArea,
+    areaConfigOverrides: source.areaConfigOverrides,
+    customOrganizationAreas: source.customOrganizationAreas,
     planningView: source.planningView,
     planningAreaId: source.planningAreaId,
     planningStatusFilter: source.planningStatusFilter,
@@ -724,6 +896,7 @@ function normalizeSavedState(saved = {}) {
   const base = defaultState();
   const validViews = new Set([...navItems.map(([id]) => id), "users", "area", "checklist"]);
   const validAreaIds = new Set(areaData.map((area) => area.id));
+  const validParentAreaIds = new Set(organizationAreas.map((area) => area.id));
   const validMonthIds = new Set(months.map(([monthId]) => monthId));
   const validSettingsSections = new Set(settingsSections.map((section) => section.id));
   const validSettingsUserViews = new Set(["active", "new", "inactive"]);
@@ -735,6 +908,11 @@ function normalizeSavedState(saved = {}) {
     ...merged,
     view: validViews.has(merged.view) ? merged.view : base.view,
     selectedArea: validAreaIds.has(merged.selectedArea) || merged.selectedArea === "" ? merged.selectedArea : base.selectedArea,
+    selectedParentArea: validParentAreaIds.has(merged.selectedParentArea) || merged.selectedParentArea === "" ? merged.selectedParentArea : base.selectedParentArea,
+    auditParentAreaId: validParentAreaIds.has(merged.auditParentAreaId) || merged.auditParentAreaId === "" ? merged.auditParentAreaId : base.auditParentAreaId,
+    auditQueue: Array.isArray(merged.auditQueue) ? merged.auditQueue.filter((id) => validAreaIds.has(id)) : [],
+    auditQueueIndex: Number.isInteger(merged.auditQueueIndex) ? Math.max(0, merged.auditQueueIndex) : 0,
+    auditContinueModal: false,
     chartFocusArea: validAreaIds.has(merged.chartFocusArea) ? merged.chartFocusArea : null,
     chartExpanded: false,
     chartMode: merged.chartMode === "actions" ? "actions" : "scores",
@@ -751,12 +929,16 @@ function normalizeSavedState(saved = {}) {
     checklistBlocksOpen: false,
     actionPlanNoticeQuestion: null,
     reportFolderArea: null,
+    reportFolderParentArea: "",
     reportPdfSource: false,
     auditInstructionsOpen: false,
     settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
+    settingsExpandedArea: [...validParentAreaIds, ...(Array.isArray(merged.customOrganizationAreas) ? merged.customOrganizationAreas.map((area) => area.id) : [])].includes(merged.settingsExpandedArea) ? merged.settingsExpandedArea : "",
+    areaConfigOverrides: merged.areaConfigOverrides && typeof merged.areaConfigOverrides === "object" ? merged.areaConfigOverrides : {},
+    customOrganizationAreas: Array.isArray(merged.customOrganizationAreas) ? merged.customOrganizationAreas : [],
     planningView: validPlanningViews.has(merged.planningView) ? merged.planningView : base.planningView,
     planningAreaId: validAreaIds.has(merged.planningAreaId) || merged.planningAreaId === "" ? merged.planningAreaId : base.planningAreaId,
     planningStatusFilter: ["", "awaiting_send", "in_progress", "overdue", "pending_review"].includes(merged.planningStatusFilter) ? merged.planningStatusFilter : "",
@@ -1233,7 +1415,8 @@ function areaById(id) {
 
 function areaChecklist(areaOrId) {
   const areaId = typeof areaOrId === "string" ? areaOrId : areaOrId.id;
-  return checklistData[areaId] || { sheetName: "", totalQuestions: 0, blocks: [] };
+  const area = areaData.find((item) => item.id === areaId);
+  return checklistData[areaId] || checklistData[area?.checklistSource] || { sheetName: "", totalQuestions: 0, blocks: [] };
 }
 
 function blocksForArea(areaOrId) {
@@ -1325,6 +1508,7 @@ function countsFromRows(rows) {
 }
 
 function ncRowsForArea(area) {
+  if (area?.isParentArea) return subareasForOrganizationArea(area.id).flatMap((subarea) => questionRowsForArea(subarea)).filter((question) => question.answer === "NC");
   return questionRowsForArea(area).filter((question) => question.answer === "NC");
 }
 
@@ -1357,6 +1541,10 @@ function riskSummary(area) {
 
 function actionPlansForArea(area) {
   if (operationalActionPlans === null) return [];
+  if (area?.isParentArea) {
+    const ids = new Set(area.subareaIds || []);
+    return operationalActionPlans.filter((plan) => ids.has(plan.area?.id));
+  }
   return operationalActionPlans.filter((plan) => plan.area?.id === area.id);
 }
 
@@ -1389,16 +1577,34 @@ function actionPlanStats(area) {
 }
 
 function sortedBest() {
-  return areasWithResults().sort((a, b) => b.score - a.score).slice(0, 3);
+  return chartScopeAreas().filter(hasAreaResult).sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
 function sortedAttention() {
-  return areasWithResults().sort((a, b) => a.score - b.score).slice(0, 3);
+  return chartScopeAreas().filter(hasAreaResult).sort((a, b) => a.score - b.score).slice(0, 3);
 }
 
 function generalScore() {
-  const rows = areasWithResults();
+  const rows = chartScopeAreas().filter(hasAreaResult);
   return rows.length ? rows.reduce((sum, area) => sum + area.score, 0) / rows.length : null;
+}
+
+function chartScopeAreas() {
+  return isAreaResponsible()
+    ? subareasForOrganizationArea(responsibleOrganizationArea())
+    : organizationAreaCards();
+}
+
+function chartScoreForMonth(area, monthId) {
+  if (!area?.isParentArea) {
+    const index = areaData.findIndex((item) => item.id === area.id);
+    return monthLines[monthId]?.[index] ?? null;
+  }
+  const values = area.subareaIds
+    .map((id) => areaData.findIndex((item) => item.id === id))
+    .map((index) => monthLines[monthId]?.[index])
+    .filter(Number.isFinite);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
 function monthAverage(monthId) {
@@ -1430,7 +1636,21 @@ function chartLabelLines(name) {
     "Área de Resíduos": ["ÁREA DE", "RESÍDUOS"],
     Documentação: ["DOCUMENTAÇÃO"]
   };
-  return labels[name] || [name.toUpperCase()];
+  if (labels[name]) return labels[name];
+  const words = String(name).toUpperCase().split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && candidate.length > 14) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 3);
 }
 
 function chartAxisLabel(name) {
@@ -1719,6 +1939,7 @@ function selectedPanel(extraClass = "") {
       <div class="selected-area-head" style="--status-color:${status.color}">
         <img class="selected-icon" src="assets/icons/${area.icon}" alt="" />
         <div class="selected-area-copy">
+          ${area.parentAreaName ? `<span class="selected-parent-name">${escapeHtml(area.parentAreaName)}</span>` : ""}
           <h2>${area.name}</h2>
           <div class="selected-status-line">
             <div class="selected-score">${formatScore(area.score)}${hasAreaResult(area) ? "<small>/10</small>" : ""}</div>
@@ -1748,8 +1969,8 @@ function selectedPanel(extraClass = "") {
         </div>
       </div>
       <div class="detail-links">
-        <button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da área ${svgIcon("arrow")}</button>
-        <button class="link-inline" data-area-detail="${area.id}">Expandir área ${svgIcon("externalLink")}</button>
+        <button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>
+        <button class="link-inline" data-area-detail="${area.id}">Expandir subárea ${svgIcon("externalLink")}</button>
       </div>
     </aside>
   `;
@@ -1825,7 +2046,14 @@ function dashboardEvolution(area = null) {
   const chartMonths = availableMonthIds().slice(-6);
   const monthsLabel = chartMonths.map((monthId) => reportShortMonthLabel(monthId).split("/")[0]);
   const areaIndex = areaData.findIndex((item) => item.id === area.id);
-  const points = chartMonths.map((monthId) => monthLines[monthId]?.[areaIndex]).filter(Number.isFinite);
+  const points = chartMonths.map((monthId) => {
+    if (!area.isParentArea) return monthLines[monthId]?.[areaIndex];
+    const values = area.subareaIds
+      .map((id) => areaData.findIndex((item) => item.id === id))
+      .map((index) => monthLines[monthId]?.[index])
+      .filter(Number.isFinite);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  }).filter(Number.isFinite);
   if (!points.length) return `<div class="dash-evolution">${emptyDataState("A evolução será exibida após a primeira auditoria concluída.")}</div>`;
   const latest = points[points.length - 1];
   const previous = points[points.length - 2] ?? latest;
@@ -1932,7 +2160,7 @@ function graphGeneralAssessment() {
     return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada no período.")}</div>`;
   }
   if (isAreaResponsible()) {
-    const area = primaryUserArea();
+    const area = aggregateOrganizationArea(responsibleOrganizationArea());
     if (!hasAreaResult(area)) return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada para esta área.")}</div>`;
     const hasPrevious = Number.isFinite(area.last);
     const delta = hasPrevious ? area.score - area.last : null;
@@ -1950,7 +2178,7 @@ function graphGeneralAssessment() {
       <div class="general-score-row">
         <div class="general-score-value">${formatScore(currentScore)}</div>
         <div>
-          <strong>Média das 12 áreas</strong>
+          <strong>Média das ${organizationAreas.length} áreas</strong>
           <span>${reportMonthLabel(currentMonthId)}</span>
         </div>
       </div>
@@ -1959,6 +2187,21 @@ function graphGeneralAssessment() {
         ${delta >= 0 ? "Ganho" : "Queda"} de ${formatScore(Math.abs(delta))} ponto vs. ${previousId}
       </div>`}
     </div>
+  `;
+}
+
+function organizationAreaTile(parent) {
+  const area = aggregateOrganizationArea(parent);
+  const status = statusMap[area.status];
+  const hasResult = hasAreaResult(area);
+  return `
+    <button class="area-tile organization-area-tile" data-parent-area="${area.id}" style="--status-color:${status.color}" aria-label="${area.name}, ${area.subareaIds.length} subáreas">
+      <span class="tile-check">${hasResult ? "✓" : ""}</span>
+      <span class="area-icon-wrap"><img class="area-icon" src="assets/icons/${area.icon}" alt="" /></span>
+      <span class="area-name">${escapeHtml(area.name)}</span>
+      <span class="area-subarea-count">${area.subareaIds.length} subáreas</span>
+      <span class="area-score">${hasResult ? formatScore(area.score) : "—"}</span>
+    </button>
   `;
 }
 
@@ -1985,16 +2228,17 @@ function graphSummaryRows(rows, total) {
 
 function graphStatusSummary() {
   const order = ["satisfatorio", "moderado", "medio", "critico"];
+  const scopedResults = chartScopeAreas().filter(hasAreaResult);
   const rows = order.map((status) => ({
     label: statusMap[status].label,
     color: statusMap[status].color,
-    value: areasWithResults().filter((area) => area.status === status).length
+    value: scopedResults.filter((area) => area.status === status).length
   }));
-  return graphSummaryRows(rows, areasWithResults().length);
+  return graphSummaryRows(rows, scopedResults.length);
 }
 
 function graphRiskSummary() {
-  const counts = ncRiskCounts(isAreaResponsible() ? primaryUserArea() : null);
+  const counts = ncRiskCounts(isAreaResponsible() ? aggregateOrganizationArea(responsibleOrganizationArea()) : null);
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const rows = riskDisplayOrder.map((level) => ({
     label: riskMeta[level].label,
@@ -2036,19 +2280,29 @@ function recentFeedbackNotifications() {
 function dashboardHome() {
   const hasSelection = Boolean(state.selectedArea);
   const selectedArea = hasSelection ? areaById(state.selectedArea) : null;
-  const scopeArea = isAreaResponsible() ? primaryUserArea() : selectedArea;
-  const scopedAreas = scopeArea ? [scopeArea] : areasWithResults();
+  const responsibleParent = isAreaResponsible() ? responsibleOrganizationArea() : null;
+  const adminParent = !isAreaResponsible() && state.selectedParentArea ? organizationAreaById(state.selectedParentArea) : null;
+  const visibleParent = responsibleParent || adminParent;
+  const visibleSubareas = visibleParent ? subareasForOrganizationArea(visibleParent) : [];
+  const scopeArea = visibleParent ? aggregateOrganizationArea(visibleParent) : selectedArea;
+  const scopedAreas = visibleParent ? visibleSubareas : [...organizationAreas.flatMap(subareasForOrganizationArea), ...standaloneAuditAreas()];
   const pendingPlans = scopedAreas.reduce((sum, area) => sum + area.pending, 0);
   const criticalNcs = scopedAreas.reduce((sum, area) => sum + area.critical, 0);
-  const latePlans = planningActionRows().filter((plan) => plan.status === "overdue" && (!scopeArea || plan.area?.id === scopeArea.id)).length;
+  const scopedIds = new Set(scopedAreas.map((area) => area.id));
+  const latePlans = planningActionRows().filter((plan) => plan.status === "overdue" && scopedIds.has(plan.area?.id)).length;
   const feedback = recentFeedbackNotifications();
+  const areaContextLabel = visibleParent ? ` - ${visibleParent.name}` : "";
+  const cardsMarkup = visibleParent
+    ? visibleSubareas.map((area) => areaTile(area)).join("")
+    : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
       <div class="fichario-panel-head">
         <div class="home-intro">
-          <span class="eyebrow home-eyebrow"><img src="assets/idvida-boneco.png?v=fichario-shell-1" alt="" aria-hidden="true" />PAINEL INICIAL</span>
+          <span class="eyebrow home-eyebrow"><img src="assets/idvida-boneco.png?v=fichario-shell-1" alt="" aria-hidden="true" />PAINEL INICIAL${escapeHtml(areaContextLabel)}</span>
+          ${document.body.classList.contains("local-hierarchy-preview") ? `<span class="local-preview-badge">Prévia local · notas ilustrativas</span>` : ""}
           <h1>Olá, ${escapeHtml((currentAccessUser?.full_name || "João").split(" ")[0])}</h1>
-          <p>${isAreaResponsible() ? `Resumo operacional de ${escapeHtml(primaryUserArea().name)}.` : "Resumo operacional. Veja as notas das áreas auditadas no último fechamento."}</p>
+          <p>${visibleParent ? `Resumo operacional de ${escapeHtml(visibleParent.name)} e suas subáreas.` : "Resumo operacional. Veja as notas das áreas auditadas no último fechamento."}</p>
         </div>
         <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>${formatCurrentDate()}</span></div>
       </div>
@@ -2068,7 +2322,7 @@ function dashboardHome() {
             <section class="fichario-summary-card">
               <h2>Evolução da nota</h2>
               <p>Visão geral dos últimos meses.</p>
-              ${dashboardEvolution(scopeArea)}
+              ${dashboardEvolution(visibleParent ? aggregateOrganizationArea(visibleParent) : null)}
             </section>
             <section class="fichario-summary-card feedback-summary-card ${state.feedbackExpanded ? "is-expanded" : ""}">
               <h2>Últimas devolutivas</h2>
@@ -2083,8 +2337,9 @@ function dashboardHome() {
             </section>
           </div>
           ${hasSelection ? selectedPanel("mobile-selected-panel") : ""}
+          ${adminParent ? `<button class="organization-back" type="button" data-clear-parent-area>${icons.chevron}<span>Voltar para todas as áreas</span></button>` : ""}
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
-            ${orderedAreasForUser().map((area) => areaTile(area)).join("")}
+            ${cardsMarkup}
           </div>
         </div>
         ${hasSelection ? selectedPanel("desktop-selected-panel") : ""}
@@ -2096,13 +2351,12 @@ function dashboardHome() {
 function chartSvg() {
   const expanded = state.chartExpanded;
   const selected = state.selectedMonth;
-  const visibleAreas = areaData.filter((area) => canAccessArea(area.id));
-  const chartAreas = areasWithResults().filter((area) => canAccessArea(area.id));
+  const visibleAreas = chartScopeAreas();
+  const chartAreas = visibleAreas.filter(hasAreaResult);
   const chartIndexes = chartAreas.map((area) => visibleAreas.findIndex((item) => item.id === area.id));
-  const sourceIndexes = chartAreas.map((area) => areaData.findIndex((item) => item.id === area.id));
   const hasComparison = selected !== currentMonthId && Array.isArray(monthLines[selected]);
-  const lineValues = hasComparison ? sourceIndexes.map((index) => monthLines[selected][index]) : null;
-  const barValues = sourceIndexes.map((index) => monthLines[currentMonthId]?.[index] ?? 0);
+  const lineValues = hasComparison ? chartAreas.map((area) => chartScoreForMonth(area, selected) ?? 0) : null;
+  const barValues = chartAreas.map((area) => chartScoreForMonth(area, currentMonthId) ?? area.score ?? 0);
   const width = expanded ? 1320 : 1120;
   const height = expanded ? 520 : 400;
   const pad = expanded
@@ -2112,7 +2366,7 @@ function chartSvg() {
   const innerH = height - pad.top - pad.bottom;
   const barGap = expanded ? 32 : 28;
   const slotW = innerW / Math.max(1, visibleAreas.length);
-  const barW = Math.max(20, slotW - barGap);
+  const barW = Math.min(expanded ? 42 : 34, Math.max(20, slotW - barGap));
   const xFor = (index) => pad.left + index * slotW + barGap / 2;
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const lineD = lineValues
@@ -2263,7 +2517,7 @@ function chartSvg() {
         .map(
           (area, index) => `
             <g class="axis-label-hit" ${hasAreaResult(area) ? `data-chart-area="${area.id}" tabindex="0" role="button"` : ""} aria-label="${area.name}">
-              <text class="chart-axis-label" transform="translate(${xFor(index) + barW / 2}, ${plotBottom + 43}) rotate(-39)" text-anchor="end">
+              <text class="chart-axis-label" transform="translate(${xFor(index) + barW / 2}, ${plotBottom + 40}) rotate(-28)" text-anchor="end">
                 ${chartLabelLines(area.name)
                   .map((line, index) => `<tspan x="0" dy="${index === 0 ? 0 : 13}">${line}</tspan>`)
                   .join("")}
@@ -2279,7 +2533,7 @@ function chartSvg() {
 function chartAreaLabels() {
   return `
     <div class="chart-area-labels" aria-hidden="true">
-      ${(isAreaResponsible() ? areaData.filter((area) => canAccessArea(area.id)) : areaData)
+      ${chartScopeAreas()
         .map(
           (area) => `
             <button class="chart-area-label ${state.chartFocusArea === area.id ? "is-active" : ""}" data-chart-area="${area.id}">
@@ -2293,6 +2547,14 @@ function chartAreaLabels() {
 }
 
 function subareasFor(area) {
+  if (area?.isParentArea) {
+    return subareasForOrganizationArea(area.id).filter(hasAreaResult).map((subarea) => ({
+      id: subarea.id,
+      label: subarea.name,
+      score: subarea.score,
+      status: subarea.status
+    }));
+  }
   const rows = blockSummaries(area).filter((row) => Number.isFinite(row.score));
   return rows;
 }
@@ -2328,7 +2590,9 @@ function areaQuickComparison(area) {
     </div>
     <div class="attention-note graph-note">${svgIcon("idea")} <span>Use este resumo para localizar os blocos com menor nota antes de abrir a análise completa.</span></div>
     ${linkedActionSummary(area)}
-    <button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da área ${svgIcon("arrow")}</button>
+    ${area.isParentArea
+      ? `<button class="primary-btn" data-parent-area="${area.id}">Ver todas as subáreas ${svgIcon("arrow")}</button>`
+      : `<button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
   `;
 }
 
@@ -2376,7 +2640,7 @@ function rankBox(title, color, rows, direction = "up", showActionHints = false) 
             <div class="rank-row">
               <span class="rank-number">${index + 1}</span>
                 <span>
-                  ${area.name}
+                  ${escapeHtml(isAreaResponsible() && !area.isParentArea ? `${area.parentAreaName} - ${area.name}` : area.name)}
                   ${showActionHints ? `<small>${actionPlanStats(area).total} planos · ${area.critical} alto</small>` : ""}
                 </span>
                 <span class="rank-score">${formatScore(area.score)}</span>
@@ -2416,7 +2680,7 @@ function priorityLabel(score) {
 }
 
 function actionImpactRows() {
-  return areaData
+  return chartScopeAreas()
     .map((area) => {
       const stats = actionPlanStats(area);
       const delta = area.score - area.last;
@@ -2475,7 +2739,8 @@ function actionImpactChart() {
 
 function chartsPage() {
   const monthOptions = comparisonMonths();
-  const focusedArea = state.chartFocusArea ? areaById(state.chartFocusArea) : null;
+  const focusedParent = state.chartFocusArea ? organizationAreaById(state.chartFocusArea) : null;
+  const focusedArea = focusedParent ? aggregateOrganizationArea(focusedParent) : state.chartFocusArea ? areaById(state.chartFocusArea) : null;
   const isImpactMode = state.chartMode === "actions";
   const nextModeLabel = isImpactMode ? "Evolução da nota" : "Áreas com maior prioridade de ação";
   return `
@@ -2529,7 +2794,9 @@ function chartsPage() {
           </section>
         </div>
         <div class="graph-action-row">
-          <button class="primary-btn" data-area-detail="${focusedArea ? focusedArea.id : state.selectedArea}">Ver análise completa da área ${svgIcon("arrow")}</button>
+          ${!focusedArea ? "" : focusedArea.isParentArea
+            ? `<button class="primary-btn" data-parent-area="${focusedArea.id}">Ver todas as subáreas ${svgIcon("arrow")}</button>`
+            : `<button class="primary-btn" data-area-detail="${focusedArea.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
         </div>`}
       </div>
       ${state.chartExpanded ? "" : `<aside class="compare-panel surface ${focusedArea ? "area-mode" : ""}">
@@ -2537,8 +2804,8 @@ function chartsPage() {
         ${focusedArea
           ? areaQuickComparison(focusedArea)
           : `
-            ${rankBox("Top 3 melhores áreas", "var(--green)", sortedBest(), "up")}
-            ${rankBox("Top 3 áreas que precisam de atenção", "var(--red)", sortedAttention(), "down", true)}
+            ${rankBox(isAreaResponsible() ? "Top 3 melhores subáreas" : "Top 3 melhores áreas", "var(--green)", sortedBest(), "up")}
+            ${rankBox(isAreaResponsible() ? "Top 3 subáreas que precisam de atenção" : "Top 3 áreas que precisam de atenção", "var(--red)", sortedAttention(), "down", true)}
             <div class="attention-note graph-note">${svgIcon("idea")} <span>Foque nas ações corretivas das áreas abaixo da meta para elevar a nota geral do hospital.</span></div>
           `}
       </aside>`}
@@ -3350,10 +3617,31 @@ function reportStoredPdfUrl(area, reportKind) {
   return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-evidence-2`;
 }
 
+const localApprovedPdfAreas = new Set([
+  "area-residuos",
+  "cozinha-catering",
+  "cozinha-fria-sarp",
+  "cozinha-pedido-especial",
+  "cozinha-sarp",
+  "distribuicao",
+  "dml-produto-quimico",
+  "documentacao",
+  "higienizacao-cubas",
+  "higienizacao-louca",
+  "room-service",
+  "saladas"
+]);
+
+function localApprovedPdfUrl(area, reportKind) {
+  if (window.location.hostname !== "localhost" || !localApprovedPdfAreas.has(area?.id)) return "";
+  const kind = reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
+  return `assets/reports/hae-${kind}-${area.id}-ago-26.pdf?v=local-approved-pdf-1`;
+}
+
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
   const icon = mode === "download" ? svgIcon("document") : svgIcon("externalLink");
   const report = reportsForArea(area).find((item) => item.report_type === reportKind);
-  const url = report?.file_url || "";
+  const url = report?.file_url || localApprovedPdfUrl(area, reportKind);
   return `<button class="report-file-action" data-report-action="${mode}" data-report-area="${escapeHtml(area.id)}" data-report-kind="${escapeHtml(reportKind)}" data-report-url="${escapeHtml(url)}" type="button">${icon} ${escapeHtml(label)}</button>`;
 }
 
@@ -4668,7 +4956,8 @@ function reportLibraryItems(area) {
   const findReport = (type) => stored.find((report) => report.report_type === type);
   const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
   const monthlyReport = findReport("monthly");
-  const monthlyAvailable = isCurrentMonthlyReport(monthlyReport);
+  const monthlyAvailable = isCurrentMonthlyReport(monthlyReport) || Boolean(localApprovedPdfUrl(area, "monthly"));
+  const comparisonAvailable = Boolean(findReport("comparison")) || Boolean(localApprovedPdfUrl(area, "comparison"));
   return [
     {
       id: "monthly",
@@ -4680,9 +4969,9 @@ function reportLibraryItems(area) {
     {
       id: "comparison",
       title: "Relatório comparativo",
-      status: findReport("comparison") ? "Disponível" : "Ainda não gerado",
+      status: comparisonAvailable ? "Disponível" : "Ainda não gerado",
       note: findReport("comparison")?.period_label || "Exige pelo menos dois ciclos concluídos",
-      available: Boolean(findReport("comparison"))
+      available: comparisonAvailable
     },
     {
       id: "quarterly",
@@ -4758,22 +5047,59 @@ function reportHistoryRows(area) {
   }).join("");
 }
 
-function reportFolderModal() {
-  const area = state.reportFolderArea ? areaById(state.reportFolderArea) : null;
+function reportAreaSummary(parent) {
+  if (!parent) return "";
+  const subareas = parent.subareaIds.map((id) => areaById(id)).filter(Boolean);
+  const scores = subareas.map((area) => Number(area.score)).filter(Number.isFinite);
+  const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
+  const riskCount = subareas.reduce((sum, area) => sum + reportHighRiskCount(area), 0);
+  const planCount = subareas.reduce((sum, area) => sum + actionPlansForArea(area).length, 0);
+  return `
+    <section class="report-area-summary" aria-label="Relatório consolidado da área ${escapeHtml(parent.name)}">
+      <div class="report-area-summary-head">
+        <div>
+          <span class="report-section-kicker">Relatório consolidado da área</span>
+          <h3>${escapeHtml(parent.name)}</h3>
+          <p>Visão gerencial das subáreas auditadas no período. O detalhamento técnico e as evidências ficam no relatório individual de cada subárea.</p>
+        </div>
+        <div class="report-area-summary-metrics">
+          <strong>${average == null ? "—" : formatScore(average)}</strong><span>nota média</span>
+          <strong>${subareas.length}</strong><span>subáreas</span>
+          <strong>${riskCount}</strong><span>NCs de alto risco</span>
+          <strong>${planCount}</strong><span>planos vinculados</span>
+        </div>
+      </div>
+      <div class="report-area-summary-table-wrap">
+        <table class="report-area-summary-table">
+          <thead><tr><th>Subárea</th><th>Nota</th><th>Classificação</th></tr></thead>
+          <tbody>${subareas.map((area) => `<tr><td>${escapeHtml(area.name)}</td><td>${formatScore(area.score)}/10</td><td>${reportStatusTag(area.status)}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = state.reportFolderArea, inline = false } = {}) {
+  const parent = parentId ? organizationAreaById(parentId) : null;
+  const selectedReportAreaId = areaId || parent?.subareaIds?.[0] || "";
+  const area = selectedReportAreaId ? areaById(selectedReportAreaId) : null;
   if (!area) return "";
   const reports = reportLibraryItems(area);
+  const showHistory = state.reportFolderTab === "history";
   return `
-    <div class="report-library-backdrop" data-close-report-folder>
-      <section class="report-library-modal surface" role="dialog" aria-modal="true" aria-label="Relatórios da área ${escapeHtml(area.name)}" data-report-folder-modal>
+    <div class="${inline ? "report-library-inline" : "report-library-backdrop"}" ${inline ? "" : "data-close-report-folder"}>
+      <section class="${inline ? "report-library-inline-panel" : "report-library-modal surface"}" role="${inline ? "region" : "dialog"}" ${inline ? "" : "aria-modal=\"true\""} aria-label="Relatórios da área ${escapeHtml(parent?.name || area.name)}" data-report-folder-modal>
         <div class="report-library-modal-head">
           <div>
             <span>Relatórios da área</span>
-            <h2>${escapeHtml(area.name)}</h2>
-            <p>Escolha o tipo de relatório disponível para abrir em PDF ou baixar o arquivo.</p>
+            <h2>${escapeHtml(parent?.name || area.name)}</h2>
+            <p>${parent ? `Subárea selecionada: ${escapeHtml(area.name)}.` : ""} Escolha o tipo de relatório disponível para abrir em PDF ou baixar o arquivo.</p>
           </div>
-          <button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>
+          ${inline ? "" : `<button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>`}
         </div>
         <div class="report-library-content">
+          ${parent ? `<div class="fichario-sub-tabs report-subarea-tabs" role="tablist" aria-label="Subáreas de ${escapeHtml(parent.name)}">${parent.subareaIds.map((id) => { const subarea = areaById(id); return subarea ? `<button class="fichario-sub-tab report-subarea-tab ${!showHistory && subarea.id === area.id ? "is-active" : ""}" data-report-folder-subarea="${escapeHtml(subarea.id)}" type="button">${escapeHtml(subarea.name)}</button>` : ""; }).join("")}<button class="fichario-sub-tab report-subarea-tab ${showHistory ? "is-active" : ""}" data-report-folder-history type="button">Histórico</button></div>` : ""}
+          ${showHistory ? `<div class="report-history-panel is-tab-content"><div class="report-history-head"><h3>Histórico de relatórios</h3><p>Auditorias e relatórios já registrados para esta área.</p></div><div class="report-history-table-wrap"><table class="report-history-table"><thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead><tbody>${reportHistoryRows(area)}</tbody></table></div></div>` : `<div class="report-individual-heading"><span class="report-section-kicker">Relatório individual da subárea</span><strong>${escapeHtml(area.name)}</strong><span>Resultado técnico, respostas, não conformidades, evidências e plano de ação.</span></div>
           <div class="report-option-list">
             ${reports.map((report) => `
               <article class="report-option-row ${report.available ? "" : "is-disabled"}">
@@ -4788,19 +5114,7 @@ function reportFolderModal() {
                 </div>
               </article>
             `).join("")}
-          </div>
-          <div class="report-history-panel">
-            <div class="report-history-head">
-              <h3>Histórico de relatórios</h3>
-              <p>Auditorias e relatórios já registrados para esta área.</p>
-            </div>
-            <div class="report-history-table-wrap">
-              <table class="report-history-table">
-                <thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead>
-                <tbody>${reportHistoryRows(area)}</tbody>
-              </table>
-            </div>
-          </div>
+          </div>`}
         </div>
       </section>
     </div>
@@ -4808,6 +5122,16 @@ function reportFolderModal() {
 }
 
 function reportsPage() {
+  const parentTiles = organizationAreas.map((parent) => `
+    <button class="report-folder-tile" data-report-parent-area="${escapeHtml(parent.id)}" aria-label="Abrir relatórios de ${escapeHtml(parent.name)}" type="button">
+      <span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span>
+      <span>${escapeHtml(parent.name)}</span><small>${parent.subareaIds.length} subáreas</small>
+    </button>
+  `).join("");
+  const standaloneTiles = standaloneAuditAreas().map((area) => {
+    const locked = !canAccessArea(area.id);
+    return `<button class="report-folder-tile ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-report-folder-area="${area.id}"`} aria-label="${locked ? `Sem acesso aos relatórios de ${escapeHtml(area.name)}` : `Abrir relatórios de ${escapeHtml(area.name)}`}" type="button"><span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span><span>${escapeHtml(area.name)}</span>${locked ? `<i class="report-folder-lock">${icons.lock}</i>` : ""}</button>`;
+  }).join("");
   return `
     <section class="reports-page report-library-page">
       <div class="report-library-panel surface">
@@ -4818,7 +5142,9 @@ function reportsPage() {
           </div>
         </div>
         <div class="report-folder-grid">
-          ${orderedAreasForUser().map((area) => {
+          ${parentTiles}${standaloneTiles}
+          <!-- legacy report folders are represented by standaloneTiles -->
+          ${false ? orderedAreasForUser().map((area) => {
             const locked = !canAccessArea(area.id);
             return `
             <button class="report-folder-tile ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-report-folder-area="${area.id}"`} aria-label="${locked ? `Sem acesso aos relatórios de ${escapeHtml(area.name)}` : `Abrir relatórios de ${escapeHtml(area.name)}`}">
@@ -4826,7 +5152,7 @@ function reportsPage() {
               <span>${escapeHtml(area.name)}</span>
               ${locked ? `<i class="report-folder-lock">${icons.lock}</i>` : ""}
             </button>
-          `;}).join("")}
+          `;}).join("") : ""}
         </div>
       </div>
       ${reportFolderModal()}
@@ -5102,41 +5428,52 @@ function areaDetailPage() {
 }
 
 function startAuditPage() {
+  const selectedParent = state.auditParentAreaId ? organizationAreaById(state.auditParentAreaId) : null;
+  const groupedAreas = selectedParent ? subareasForOrganizationArea(selectedParent) : [];
+  const standaloneAreas = standaloneAuditAreas();
+  const areasToRender = selectedParent ? groupedAreas : standaloneAreas;
+  const areaStartMarkup = (area) => {
+    const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
+    const remoteAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) && auditIsCurrentMonth(audit.started_at || audit.created_at));
+    const localAudit = auditIsCurrentMonth(state.offlineAudits?.[area.id]?.startedAt) ? state.offlineAudits[area.id] : null;
+    const finished = remoteAudit?.status === "finished" || localAudit?.status === "finished";
+    const pendingSync = localAudit?.status === "finalizing";
+    const onOtherDevice = remoteAudit?.status === "in_progress" && localAudit?.status !== "in_progress";
+    const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
+    const label = finished ? "Auditoria finalizada" : pendingSync ? "Aguardando sincronização" : onOtherDevice ? "Em andamento em outro aparelho" : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
+    return `
+      <article class="start-tile">
+        <div class="start-tile-main">
+          <img src="assets/icons/${escapeHtml(area.icon)}" alt="" />
+          <div><h3>${escapeHtml(area.name)}</h3><p>${escapeHtml(area.subtitle || "Checklist da área")}</p></div>
+        </div>
+        <button class="outline-btn" ${finished || pendingSync || onOtherDevice ? "disabled" : `data-start-area="${area.id}"`}>${label} ${finished || pendingSync || onOtherDevice ? "" : svgIcon("arrow")}</button>
+      </article>
+    `;
+  };
   return `
     <div class="audit-start">
       <div>
         <section class="info-strip surface">
           <div>
-            <h2>Selecione a área para iniciar a auditoria</h2>
-            <p>Cada área possui checklist específico baseado na Portaria SMS nº 2.619/2011.</p>
+            <h2>${selectedParent ? escapeHtml(selectedParent.name) : "Selecione a área para iniciar a auditoria"}</h2>
+            <p>${selectedParent ? "Escolha uma subárea ou inicie todas em sequência." : "Cards com subáreas abrem sua estrutura; áreas sem subárea permanecem disponíveis individualmente."}</p>
           </div>
-          <button class="panel-close" title="Fechar">${icons.close}</button>
+          ${selectedParent ? `<button class="outline-btn" data-audit-back-groups type="button">Voltar para áreas</button>` : ""}
         </section>
+        ${selectedParent ? `<div class="audit-group-actions"><button class="primary-btn" data-start-audit-group="${selectedParent.id}" type="button">Iniciar todas as subáreas ${svgIcon("arrow")}</button><span>${groupedAreas.length} subáreas nesta área</span></div>` : ""}
         <div class="start-grid">
-          ${areaData
-            .map(
-              (area) => {
-                const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
-                const remoteAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) && auditIsCurrentMonth(audit.started_at || audit.created_at));
-                const localAudit = auditIsCurrentMonth(state.offlineAudits?.[area.id]?.startedAt) ? state.offlineAudits[area.id] : null;
-                const finished = remoteAudit?.status === "finished" || localAudit?.status === "finished";
-                const pendingSync = localAudit?.status === "finalizing";
-                const onOtherDevice = remoteAudit?.status === "in_progress" && localAudit?.status !== "in_progress";
-                const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
-                const label = finished ? "Auditoria finalizada" : pendingSync ? "Aguardando sincronização" : onOtherDevice ? "Em andamento em outro aparelho" : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
-                return `
-                <article class="start-tile">
-                  <img src="assets/icons/${area.icon}" alt="" />
-                  <div>
-                    <h3>${area.name}</h3>
-                    <p>${area.subtitle}</p>
-                  </div>
-                  <button class="outline-btn" ${finished || pendingSync || onOtherDevice ? "disabled" : `data-start-area="${area.id}"`}>${label} ${finished || pendingSync || onOtherDevice ? "" : svgIcon("arrow")}</button>
-                </article>
-              `;
-              }
-            )
-            .join("")}
+          ${selectedParent ? areasToRender.map(areaStartMarkup).join("") : organizationAreas.map((parent) => `
+            <article class="start-tile start-parent-tile">
+              <button class="start-tile-main" data-audit-parent="${parent.id}" type="button">
+                <img src="assets/icons/${escapeHtml(parent.icon)}" alt="" />
+                <div><h3>${escapeHtml(parent.name)}</h3><p>${parent.subareaIds.length} subáreas</p></div>
+                ${svgIcon("arrow")}
+              </button>
+              <button class="outline-btn" data-start-audit-group="${parent.id}" type="button">Iniciar todas ${svgIcon("arrow")}</button>
+            </article>
+          `).join("")}
+          ${selectedParent ? "" : standaloneAreas.map(areaStartMarkup).join("")}
         </div>
       </div>
       <aside class="how-panel surface">
@@ -5147,6 +5484,15 @@ function startAuditPage() {
         <div class="how-step"><span class="nav-icon">${assetIcon("action", "white")}</span><div><h3 style="color:#fff">Plano de ação</h3><p>Não conformidades geram campos para correção, ação, responsável e prazo.</p></div></div>
         <div class="attention-note" style="background:rgba(255,255,255,.1);color:#fff">${svgIcon("warning", "tiny-icon", "white")} <span>Após o envio, a auditoria fica registrada no histórico.</span></div>
       </aside>
+      ${state.auditContinueModal ? `
+        <div class="leave-audit-backdrop">
+          <section class="leave-audit-modal surface">
+            <h2>Subárea finalizada</h2>
+            <p>Deseja iniciar a próxima subárea agora?</p>
+            <div><button class="outline-btn" data-stop-audit-queue type="button">Parar por agora</button><button class="primary-btn" data-continue-audit-queue type="button">Sim, iniciar próxima</button></div>
+          </section>
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -5665,10 +6011,70 @@ function settingsRulesPanel() {
   `;
 }
 
+function configuredOrganizationAreas() {
+  return [...organizationAreas, ...(state.customOrganizationAreas || [])].map((area) => {
+    const override = state.areaConfigOverrides?.[area.id] || {};
+    return {
+      ...area,
+      name: override.name || area.name,
+      active: override.active !== false,
+      subareas: area.subareas.map(([id, name, subtitle, icon]) => {
+        const subOverride = override.subareas?.[id] || {};
+        return [id, subOverride.name || name, subtitle, icon, subOverride.active !== false];
+      })
+    };
+  });
+}
+
+function settingsAreasPanel() {
+  const areas = configuredOrganizationAreas();
+  const expandedArea = state.settingsExpandedArea || "";
+  return `
+    <div class="settings-panel">
+      <div class="settings-panel-head">
+        <div>
+          <h2>Configuração de áreas</h2>
+          <p>Organize áreas e subáreas para as próximas auditorias. Responsáveis continuam sendo definidos em Usuários.</p>
+        </div>
+        <button class="settings-soft-btn settings-primary" data-local-add-area type="button">Nova área</button>
+      </div>
+      <div class="settings-area-note">Alterações de nome e status entram somente em novas auditorias. Relatórios e auditorias anteriores permanecem vinculados ao cadastro original.</div>
+      <div class="settings-area-config-list">
+        ${areas.map((area) => `
+          <section class="settings-area-config-card ${area.active ? "" : "is-archived"} ${expandedArea === area.id ? "is-expanded" : "is-collapsed"}" data-local-area-config="${area.id}">
+            <div class="settings-area-config-head">
+              <button class="settings-area-expand-target" data-local-area-expand="${area.id}" type="button" aria-expanded="${expandedArea === area.id}">
+                <img src="assets/icons/${escapeHtml(area.icon)}" alt="" />
+                <span><strong>${escapeHtml(area.name)}</strong><small>${area.active ? "Ativa para próximas auditorias" : "Arquivada"} · ${area.subareas.length} ${area.subareas.length === 1 ? "subárea" : "subáreas"}</small></span>
+                <span class="settings-area-expand-mark" aria-hidden="true">${expandedArea === area.id ? "−" : "+"}</span>
+              </button>
+              <button class="settings-soft-btn" data-local-toggle-area="${area.id}" type="button">${area.active ? "Arquivar" : "Reativar"}</button>
+            </div>
+            ${expandedArea === area.id ? `
+              <label class="settings-area-name-field"><span>Nome da área</span><input data-local-area-name="${area.id}" value="${escapeHtml(area.name)}" maxlength="120" /></label>
+              <div class="settings-subarea-config-list">
+                ${area.subareas.map(([id, name, subtitle, icon, active]) => `
+                  <div class="settings-subarea-config-row ${active ? "" : "is-archived"}">
+                    <img src="assets/icons/${escapeHtml(icon)}" alt="" />
+                    <label><span>Subárea</span><input data-local-subarea-name="${area.id}:${id}" value="${escapeHtml(name)}" maxlength="120" /></label>
+                    <span class="settings-status ${active ? "is-active" : "is-inactive"}">${active ? "Ativa" : "Arquivada"}</span>
+                  </div>
+                `).join("") || `<div class="settings-collapsed-copy">Nenhuma subárea cadastrada.</div>`}
+              </div>
+              <button class="settings-soft-btn" data-local-save-area="${area.id}" type="button">Salvar alterações da área</button>
+            ` : ""}
+          </section>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function settingsActivePanel() {
   const panels = {
     users: settingsUsersPanel,
-    rules: settingsRulesPanel
+    rules: settingsRulesPanel,
+    areas: settingsAreasPanel
   };
   return (panels[state.settingsSection] || settingsUsersPanel)();
 }
@@ -5745,9 +6151,15 @@ function ficharioSettingsContent() {
 }
 
 function settingsPage() {
+  const sectionTabs = `<div class="fichario-sub-tabs settings-section-tabs" role="tablist">${settingsSections.map((section) => `<button class="fichario-sub-tab ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}" type="button">${escapeHtml(section.label)}</button>`).join("")}</div>`;
+  if (state.settingsSection === "users") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Usuários, regras e estrutura das áreas desta unidade.</p></div>${sectionTabs}${ficharioUsersContent()}</section>`;
+  if (state.settingsSection === "areas") {
+    return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Configuração de áreas</h1><p class="panel-subtitle">Cadastre e organize áreas e subáreas para as próximas auditorias. O histórico já emitido permanece inalterado.</p></div>${sectionTabs}${settingsAreasPanel()}</section>`;
+  }
   return `
     <section class="fichario-module">
       <div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Aqui ficam regras de meta, pontuação, documentação obrigatória, tabelas técnicas e ajustes visuais usados nos painéis e relatórios.</p></div>
+      ${sectionTabs}
       <div class="fichario-sub-tabs" role="tablist">${[["goals", "Metas"], ["scoring", "Pontuação"], ["visual", "Regras visuais"], ["docs", "Documentação"], ["tables", "Tabelas técnicas"]].map(([id, label]) => `<button class="fichario-sub-tab ${state.settingsRulesView === id ? "is-active" : ""}" data-settings-rules-view="${id}" type="button">${label}</button>`).join("")}</div>
       ${ficharioSettingsContent()}
     </div>
@@ -6103,9 +6515,10 @@ function actionPlanInstructionFor(row, index) {
 }
 
 function actionPlanResponseEvidence(row, responsibleView, responses, index) {
+  const pendingPreview = responsibleView ? pendingActionPlanEvidencePreview.get(`${state.planningPlanId}:${index}`) : "";
   const fileId = responsibleView ? responses[index]?.evidenceFileId : row.responseEvidenceFileId;
-  if (!fileId) return "";
-  const imageUrl = apiUrl(`/api/files/${fileId}/content`);
+  const imageUrl = pendingPreview || (fileId ? apiUrl(`/api/files/${fileId}/content`) : "");
+  if (!imageUrl) return "";
   return `<figure class="action-plan-response-evidence" data-open-action-plan-image="${escapeHtml(imageUrl)}" role="button" tabindex="0" title="Abrir foto inteira" aria-label="Abrir evidência completa da NC ${index + 1}"><img src="${imageUrl}" alt="Evidência enviada pelo responsável para a NC ${index + 1}" loading="eager" /><figcaption>Evidência enviada pelo responsável</figcaption></figure>`;
 }
 
@@ -6269,7 +6682,7 @@ function planningPlanPreview() {
         <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : escapeHtml(plan.due || "Não definido")}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div></div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div>${responsibleView ? actionPlanResponseEvidence(row, true, responsibleResponses, index) : ""}</div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
         <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido por</span><div class="action-plan-auditor-signature"><strong>${escapeHtml(plan.auditorName)}</strong><span>Auditor responsável</span><small>Registro autenticado no sistema</small></div></div>${acknowledgement ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(acknowledgement.name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement.signedAtLabel)}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito quando o responsável confirmar o recebimento.</small></div>`}</section>
@@ -6516,6 +6929,7 @@ function viewContent() {
 }
 
 function render(options = {}) {
+  document.querySelectorAll(".report-library-backdrop").forEach((modal) => modal.remove());
   app.className = "app-shell fichario-shell";
   app.innerHTML = `
     <main class="main">
@@ -6527,6 +6941,8 @@ function render(options = {}) {
       </section>
     </main>
   `;
+  const reportModal = app.querySelector(".report-library-backdrop");
+  if (reportModal) document.body.appendChild(reportModal);
   if (!options.skipSave) saveState();
 }
 
@@ -6747,7 +7163,7 @@ document.addEventListener("click", async (event) => {
   const chartArea = event.target.closest("[data-chart-area]");
   if (chartArea) {
     state.chartFocusArea = chartArea.dataset.chartArea;
-    state.selectedArea = chartArea.dataset.chartArea;
+    state.selectedArea = organizationAreaById(chartArea.dataset.chartArea) ? "" : chartArea.dataset.chartArea;
     state.view = "charts";
     if (document.body.classList.contains("android-app")) state.chartExpanded = false;
     render();
@@ -6765,8 +7181,47 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const auditParent = event.target.closest("[data-audit-parent]");
+  if (auditParent) {
+    state.auditParentAreaId = auditParent.dataset.auditParent;
+    state.auditContinueModal = false;
+    state.view = "start";
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-audit-back-groups]")) {
+    state.auditParentAreaId = "";
+    state.auditContinueModal = false;
+    render();
+    return;
+  }
+
+  const startAuditGroup = event.target.closest("[data-start-audit-group]");
+  if (startAuditGroup) {
+    const queue = auditGroupAreaIds(startAuditGroup.dataset.startAuditGroup);
+    if (!queue.length) return;
+    state.auditParentAreaId = startAuditGroup.dataset.startAuditGroup;
+    state.auditQueue = queue;
+    state.auditQueueIndex = 0;
+    state.auditContinueModal = false;
+    state.selectedArea = queue[0];
+    state.detailBlock = null;
+    state.checklistBlock = null;
+    state.checklistPage = 0;
+    state.checklistBlocksOpen = false;
+    state.leaveAuditConfirm = false;
+    state.view = "checklist";
+    render();
+    ensureLocalAudit(state.selectedArea).catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+    return;
+  }
+
   const start = event.target.closest("[data-start-area]");
   if (start) {
+    state.auditQueue = [];
+    state.auditQueueIndex = 0;
+    state.auditContinueModal = false;
     state.selectedArea = start.dataset.startArea;
     state.detailBlock = null;
     state.checklistBlock = null;
@@ -6778,6 +7233,16 @@ document.addEventListener("click", async (event) => {
     ensureLocalAudit(state.selectedArea).catch((error) => {
       setOfflineNotice({ phase: "error", message: error.message });
     });
+    return;
+  }
+
+  const parentArea = event.target.closest("[data-parent-area]");
+  if (parentArea) {
+    state.selectedParentArea = parentArea.dataset.parentArea;
+    state.selectedArea = "";
+    state.view = "home";
+    syncHashWithView("home");
+    render();
     return;
   }
 
@@ -6807,9 +7272,37 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const reportParentFolder = event.target.closest("[data-report-parent-area]");
+  if (reportParentFolder) {
+    const parent = organizationAreaById(reportParentFolder.dataset.reportParentArea);
+    state.reportFolderParentArea = parent?.id || "";
+    state.reportFolderArea = parent?.subareaIds?.[0] || "";
+    state.reportFolderTab = "subareas";
+    state.selectedArea = state.reportFolderArea;
+    render();
+    return;
+  }
+
+  const reportSubareaFolder = event.target.closest("[data-report-folder-subarea]");
+  if (reportSubareaFolder) {
+    state.reportFolderArea = reportSubareaFolder.dataset.reportFolderSubarea;
+    state.reportFolderTab = "subareas";
+    state.selectedArea = state.reportFolderArea;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-report-folder-history]")) {
+    state.reportFolderTab = "history";
+    render();
+    return;
+  }
+
   const reportFolder = event.target.closest("[data-report-folder-area]");
   if (reportFolder) {
+    state.reportFolderParentArea = "";
     state.reportFolderArea = reportFolder.dataset.reportFolderArea;
+    state.reportFolderTab = "subareas";
     state.selectedArea = reportFolder.dataset.reportFolderArea;
     state.reportPdfSource = false;
     render();
@@ -6818,6 +7311,8 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.matches("[data-close-report-folder]") || event.target.closest(".panel-close[data-close-report-folder]")) {
     state.reportFolderArea = null;
+    state.reportFolderParentArea = "";
+    state.reportFolderTab = "subareas";
     state.reportPdfSource = false;
     render();
     return;
@@ -6871,6 +7366,7 @@ document.addEventListener("click", async (event) => {
       state.settingsUserView = "active";
       state.settingsRulesView = "goals";
       state.settingsUsersExpanded = false;
+      state.settingsExpandedArea = "";
     }
     state.settingsSection = nextSection;
     state.settingsMenuExpanded = true;
@@ -6897,6 +7393,53 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.closest("[data-toggle-feedback]")) {
     state.feedbackExpanded = !state.feedbackExpanded;
+    render();
+    return;
+  }
+
+  const addLocalArea = event.target.closest("[data-local-add-area]");
+  if (addLocalArea) {
+    const name = window.prompt("Nome da nova área:");
+    if (!name?.trim()) return;
+    const id = `local-area-${Date.now()}`;
+    state.customOrganizationAreas = [...(state.customOrganizationAreas || []), { id, name: name.trim(), icon: "area-despensa.png", subareas: [], subareaIds: [] }];
+    state.settingsSection = "areas";
+    saveState();
+    render();
+    return;
+  }
+
+  const expandLocalArea = event.target.closest("[data-local-area-expand]");
+  if (expandLocalArea && !event.target.closest("[data-local-toggle-area]")) {
+    const areaId = expandLocalArea.dataset.localAreaExpand;
+    state.settingsExpandedArea = state.settingsExpandedArea === areaId ? "" : areaId;
+    render();
+    return;
+  }
+
+  const saveLocalArea = event.target.closest("[data-local-save-area]");
+  if (saveLocalArea) {
+    const areaId = saveLocalArea.dataset.localSaveArea;
+    const areaCard = document.querySelector(`[data-local-area-config="${areaId}"]`);
+    const areaName = areaCard?.querySelector(`[data-local-area-name="${areaId}"]`)?.value?.trim();
+    const subareas = {};
+    areaCard?.querySelectorAll("[data-local-subarea-name]").forEach((input) => {
+      const [parentId, subareaId] = input.dataset.localSubareaName.split(":");
+      if (parentId === areaId && input.value.trim()) subareas[subareaId] = { name: input.value.trim() };
+    });
+    state.areaConfigOverrides = { ...(state.areaConfigOverrides || {}), [areaId]: { ...(state.areaConfigOverrides?.[areaId] || {}), name: areaName || undefined, subareas } };
+    saveState();
+    setPlanningNotice("Configuração salva para as próximas auditorias. O histórico anterior não foi alterado.");
+    render();
+    return;
+  }
+
+  const toggleLocalArea = event.target.closest("[data-local-toggle-area]");
+  if (toggleLocalArea) {
+    const areaId = toggleLocalArea.dataset.localToggleArea;
+    const current = state.areaConfigOverrides?.[areaId] || {};
+    state.areaConfigOverrides = { ...(state.areaConfigOverrides || {}), [areaId]: { ...current, active: current.active === false } };
+    saveState();
     render();
     return;
   }
@@ -7069,6 +7612,10 @@ document.addEventListener("click", async (event) => {
             })
           });
           pendingActionPlanEvidence.delete(`${plan.id}:${index}`);
+          const previewKey = `${plan.id}:${index}`;
+          const previewUrl = pendingActionPlanEvidencePreview.get(previewKey);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          pendingActionPlanEvidencePreview.delete(previewKey);
         }
         await Promise.all([loadOperationalData(), loadAccessNotifications()]);
       } catch (error) {
@@ -7478,6 +8025,35 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target.closest("[data-stop-audit-queue]")) {
+    state.auditQueue = [];
+    state.auditQueueIndex = 0;
+    state.auditContinueModal = false;
+    state.view = "start";
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-continue-audit-queue]")) {
+    const nextAreaId = state.auditQueue?.[state.auditQueueIndex];
+    if (!nextAreaId) {
+      state.auditQueue = [];
+      state.auditContinueModal = false;
+      render();
+      return;
+    }
+    state.auditContinueModal = false;
+    state.selectedArea = nextAreaId;
+    state.detailBlock = null;
+    state.checklistBlock = null;
+    state.checklistPage = 0;
+    state.checklistBlocksOpen = false;
+    state.view = "checklist";
+    render();
+    ensureLocalAudit(nextAreaId).catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+    return;
+  }
+
   const checklistBlock = event.target.closest("[data-checklist-block]");
   if (checklistBlock) {
     state.checklistBlock = checklistBlock.dataset.checklistBlock;
@@ -7597,6 +8173,16 @@ document.addEventListener("click", async (event) => {
         ...state.offlineAudits,
         [areaId]: { ...state.offlineAudits[areaId], status: "finalizing", finishedAt: new Date().toISOString(), generationMode }
       };
+      const nextQueueIndex = Number(state.auditQueueIndex || 0) + 1;
+      const nextQueuedArea = state.auditQueue?.[nextQueueIndex];
+      if (nextQueuedArea) {
+        state.auditQueueIndex = nextQueueIndex;
+        state.auditContinueModal = true;
+      } else {
+        state.auditQueue = [];
+        state.auditQueueIndex = 0;
+        state.auditContinueModal = false;
+      }
       state.view = "start";
       saveState();
       render();
@@ -7635,6 +8221,13 @@ document.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.closest("[data-clear-parent-area]")) {
+    state.selectedParentArea = "";
+    state.selectedArea = "";
+    render();
+    return;
+  }
+
   const responsibleEvidence = event.target.closest("[data-responsible-evidence]");
   if (responsibleEvidence?.files?.[0]) {
     const planId = state.planningPlanId;
@@ -7645,6 +8238,10 @@ document.addEventListener("change", (event) => {
       return;
     }
     pendingActionPlanEvidence.set(`${planId}:${itemIndex}`, file);
+    const previewKey = `${planId}:${itemIndex}`;
+    const previousPreview = pendingActionPlanEvidencePreview.get(previewKey);
+    if (previousPreview) URL.revokeObjectURL(previousPreview);
+    pendingActionPlanEvidencePreview.set(previewKey, URL.createObjectURL(file));
     state.actionPlanResponses = {
       ...state.actionPlanResponses,
       [planId]: {
@@ -7782,8 +8379,40 @@ document.addEventListener("submit", (event) => {
 });
 
 const reportRequest = reportFileRequest();
+
+function applyLocalPreviewScores() {
+  const previewScores = [8.7, 9.1, 8.4, 9.3, 8.8, 9.0, 8.5, 9.2, 8.9, 9.4, 8.6, 9.0, 8.3, 8.8, 9.1, 8.7, 9.2, 8.9, 8.4, 9.0, 8.6, 9.3, 8.5, 8.8, 9.1, 8.7, 9.0];
+  let previewIndex = 0;
+  for (const area of areaData) {
+    if (!area.parentAreaId) continue;
+    area.score = previewScores[previewIndex % previewScores.length];
+    area.last = Math.max(0, area.score - 0.2);
+    area.audits = 1;
+    area.status = scoreStatus(area.score);
+    previewIndex += 1;
+  }
+  monthLines[currentMonthId] = areaData.map((area) => area.score);
+  document.body.classList.add("local-hierarchy-preview");
+}
+
 (async function bootstrapAuthenticatedApp() {
     updateStartupProgress(15, "Validando o acesso...");
+    const localPreviewRole = ["localhost", "127.0.0.1"].includes(location.hostname)
+      ? new URLSearchParams(location.search).get("preview")
+      : null;
+    if (["admin", "responsible"].includes(localPreviewRole)) {
+      currentAccessUser = localPreviewRole === "admin"
+        ? { id: "local-admin", username: "preview.admin", full_name: "David Souza", role: "admin", area_slugs: [] }
+        : { id: "local-responsible", username: "preview.responsavel", full_name: "Responsável", role: "area_responsible", area_slugs: ["cozinha-catering"] };
+      applyLocalPreviewScores();
+      const requestedPreviewView = viewFromHash();
+      resetViewForFreshLogin();
+      if (requestedPreviewView) state.view = requestedPreviewView;
+      applyCurrentUserScope();
+      render();
+      updateStartupProgress(100, "Prévia local carregada");
+      return;
+    }
     if (location.protocol === "file:") {
       currentAccessUser = { full_name: "Administrador local", role: "admin" };
       render();
