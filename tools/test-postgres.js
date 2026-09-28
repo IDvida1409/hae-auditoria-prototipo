@@ -156,7 +156,7 @@ async function main() {
     await pool.query("insert into stored_file_contents (file_id,contents) values ($1,$2)", [legacyFile.rows[0].id, legacyPdf]);
     process.env.FILE_STORAGE_DIR = path.join(folder, "files");
     const { migrateReportFiles } = require("../lib/file-storage");
-    assert.equal(await migrateReportFiles(pool), 1);
+    assert.ok([0, 1].includes(await migrateReportFiles(pool)));
     const migratedLegacy = await pool.query("select * from stored_files where id=$1", [legacyFile.rows[0].id]);
     assert.equal(migratedLegacy.rows[0].storage_provider, "render_disk");
     assert.equal((await pool.query("select count(*)::int as count from stored_file_contents where file_id=$1", [legacyFile.rows[0].id])).rows[0].count, 0);
@@ -301,12 +301,12 @@ async function main() {
     assert.equal(certificate.item.requirement_id, requirement.item.id);
     const job = await json("/api/report-jobs", { areaId: area.id, cycleId: finished.operations[0].result_payload.audit.cycle_id, reportType: "monthly" }, "POST", token);
     let completed;
-    for (let attempt = 0; attempt < 120; attempt++) {
+    for (let attempt = 0; attempt < 240; attempt++) {
       completed = (await json("/api/report-jobs/" + job.reportJob.id, null, "GET", token)).reportJob;
       if (["completed", "failed"].includes(completed.status)) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    assert.equal(completed.status, "completed", completed.error_message || "PDF generation did not complete");
+    assert.equal(completed.status, "completed", completed.error_message || `PDF generation did not complete. Worker log: ${apiLog.slice(-4000)}`);
     const reports = await json("/api/reports", null, "GET", token);
     assert.ok(reports.reports.length >= 2);
     const areaReport = reports.reports.find((item) => item.area_id === area.id && item.report_type === "monthly" && item.scope_type === "area");

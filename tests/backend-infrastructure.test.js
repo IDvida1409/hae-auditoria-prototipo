@@ -79,7 +79,7 @@ test("unresolved dependencies retain the operation as error, never as synced", a
     async query(sql) {
       calls.push(sql);
       if (sql.startsWith("select * from sync_queue")) return { rows: [operation] };
-      if (sql.startsWith("update sync_queue set status='error'")) return { rows: [{ ...operation, status: "error" }] };
+      if (sql.startsWith("update sync_queue set status=$3")) return { rows: [{ ...operation, status: "error" }] };
       return { rows: [] };
     },
     release() {}
@@ -95,22 +95,77 @@ test("a question from another checklist cannot be stored in an audit", async () 
   const db = {
     async query(sql) {
       calls.push(sql);
-      if (sql.startsWith("select a.* from audits")) return { rows: [{ id: "audit-1", checklist_id: "checklist-1", status: "in_progress" }] };
+      if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{ id: "audit-1", checklist_id: "checklist-1", status: "in_progress", auditor_user_id: "user-1", device_id: "device-1" }] };
       return { rows: [] };
     }
   };
-  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", user_id: "user-1", payload: { answer: "C", questionId: "question-other" } }), /nao pertence/);
+  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", user_id: "user-1", device_id: "device-1", payload: { answer: "C", questionId: "question-other" } }), /nao pertence/);
   assert.ok(!calls.some((sql) => sql.startsWith("insert")));
 });
 
 test("revision conflicts cannot silently overwrite collected answers", async () => {
   const db = { async query(sql) {
-    if (sql.startsWith("select a.*")) return { rows: [{ id: "audit-1", checklist_id: "checklist-1", status: "in_progress" }] };
+    if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{ id: "audit-1", checklist_id: "checklist-1", status: "in_progress", auditor_user_id: "user-1", device_id: "device-1" }] };
     if (sql.startsWith("select q.*")) return { rows: [{ risk_level: "high" }] };
+    if (sql.startsWith("select 1 from audit_transfer_answer_locks")) return { rows: [] };
     if (sql.startsWith("select * from audit_answers")) return { rows: [{ revision: 3 }] };
     throw new Error("Unexpected write");
   } };
-  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", payload: { answer: "C", questionId: "question-1", expectedRevision: 2 } }), /Conflito/);
+  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", user_id: "user-1", device_id: "device-1", payload: { answer: "C", questionId: "question-1", expectedRevision: 2 } }), /Conflito/);
+});
+
+test("old device cannot write after an audit transfer", async () => {
+  const calls = [];
+  const db = { async query(sql) {
+    calls.push(sql);
+    if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{
+      id: "audit-1", area_id: "area-1", checklist_id: "checklist-1", status: "in_progress",
+      auditor_user_id: "editor-2", active_device_id: "device-2", device_id: "device-1", auditor_name: "Editor 2"
+    }] };
+    throw new Error("Unexpected write");
+  } };
+  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", user_id: "editor-1", device_id: "device-1",
+    payload: { auditId: "audit-1", questionId: "question-1", answer: "C" } }), (error) => {
+    assert.equal(error.code, "AUDIT_TRANSFERRED");
+    assert.equal(error.permanent, true);
+    assert.match(error.message, /Editor 2/);
+    return true;
+  });
+  assert.equal(calls.length, 1);
+});
+
+test("completed answer cannot be changed by the new auditor", async () => {
+  const calls = [];
+  const db = { async query(sql) {
+    calls.push(sql);
+    if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{
+      id: "audit-1", checklist_id: "checklist-1", status: "in_progress",
+      auditor_user_id: "editor-2", active_device_id: "device-2"
+    }] };
+    if (sql.startsWith("select q.*")) return { rows: [{ weight: 1, risk_level: "low" }] };
+    if (sql.startsWith("select 1 from audit_transfer_answer_locks")) return { rows: [{ '?column?': 1 }] };
+    throw new Error("Unexpected write");
+  } };
+  await assert.rejects(applyOperation(db, { entity_type: "audit_answer", user_id: "editor-2", device_id: "device-2",
+    payload: { auditId: "audit-1", questionId: "question-1", answer: "NC" } }), /não pode ser alterada/);
+  assert.ok(!calls.some((sql) => sql.startsWith("insert into audit_answers")));
+});
+
+test("transfer conflict is ignored permanently instead of retried", async () => {
+  const op = { id: "op-1", user_id: "editor-1", device_id: "device-1", entity_type: "audit_answer",
+    operation: "upsert", payload: { auditId: "audit-1", localAuditId: "local-1", questionId: "question-1", answer: "C" } };
+  const client = { async query(sql, params) {
+    if (sql.startsWith("select * from sync_queue")) return { rows: [op] };
+    if (sql.startsWith("select result_payload from sync_queue")) return { rows: [] };
+    if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{
+      id: "audit-1", area_id: "area-1", auditor_user_id: "editor-2", active_device_id: "device-2", auditor_name: "Editor 2"
+    }] };
+    if (sql.startsWith("update sync_queue set status=$3")) return { rows: [{ ...op, status: params[2], result_payload: JSON.parse(params[3]) }] };
+    return { rows: [] };
+  }, release() {} };
+  const result = await processOperations({ connect: async () => client }, "editor-1", "device-1", null, 1);
+  assert.equal(result[0].status, "ignored");
+  assert.equal(result[0].result_payload.reason, "transferred");
 });
 
 test("pagination is bounded and user updates never accept password hashes", () => {
@@ -131,7 +186,7 @@ test("acknowledgement is committed in the same transaction as audit finalization
     async query(sql) {
       calls.push(sql);
       if (sql.startsWith("select * from sync_queue")) return { rows: [op] };
-      if (sql.startsWith("select a.* from audits")) return { rows: [{ id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1", cycle_id: "cycle-1", auditor_user_id: "user-1", status: "in_progress" }] };
+      if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{ id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1", cycle_id: "cycle-1", auditor_user_id: "user-1", device_id: "device-1", status: "in_progress" }] };
       if (sql.includes("as expected") && sql.includes("as answered")) return { rows: [{ expected: 1, answered: 1, nc_without_evidence: 0 }] };
       if (sql.startsWith("update audits")) return { rows: [{ id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1", cycle_id: "cycle-1", auditor_user_id: "user-1", status: "finished", final_score: 8 }] };
       if (sql.startsWith("update sync_queue set status='synced'")) return { rows: [{ ...op, status: "synced" }] };

@@ -433,6 +433,8 @@ async function operationalRequest(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || "Não foi possível carregar os dados operacionais.");
     error.status = response.status;
+    error.code = data.code;
+    error.audit = data.audit;
     throw error;
   }
   return data;
@@ -565,6 +567,23 @@ function setOfflineNotice(detail) {
 }
 
 window.addEventListener("offline:sync-status", (event) => setOfflineNotice(event.detail || {}));
+window.addEventListener("offline:audit-transferred", (event) => {
+  const { localAuditId, areaId, newAuditorName } = event.detail || {};
+  const area = uiAreaFromBackendId(areaId) || Object.values(state.offlineAudits || {}).find((audit) => audit.localAuditId === localAuditId);
+  const areaKey = area?.areaId || area?.id;
+  if (!areaKey) return;
+  delete state.offlineAudits[areaKey];
+  delete state.answers[areaKey];
+  delete state.auditNotes[areaKey];
+  delete state.auditEvidence[areaKey];
+  delete state.auditEvidenceCollapsed[areaKey];
+  delete state.auditLockedQuestions[areaKey];
+  state.auditQueue = [];
+  state.auditStartError = `A auditoria foi transferida para ${newAuditorName || "outro auditor"}. A cópia deste aparelho foi descartada e não pode ser enviada novamente neste mês.`;
+  state.view = "start";
+  saveState();
+  loadOperationalData().catch(() => {}).finally(() => render());
+});
 window.addEventListener("offline:sync-complete", async (event) => {
   const finalized = (event.detail?.results || []).find((result) => result?.entityType === "audit" && result?.audit?.status === "finished");
   if (!finalized) return;
@@ -827,6 +846,7 @@ function defaultState() {
     auditNotes: {},
     auditEvidence: {},
     auditEvidenceCollapsed: {},
+    auditLockedQuestions: {},
     offlineAudits: {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -888,6 +908,7 @@ function persistableState(source = state) {
     auditNotes: source.auditNotes,
     auditEvidence: source.auditEvidence,
     auditEvidenceCollapsed: source.auditEvidenceCollapsed,
+    auditLockedQuestions: source.auditLockedQuestions,
     offlineAudits: source.offlineAudits,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
@@ -941,6 +962,7 @@ function normalizeSavedState(saved = {}) {
     auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
     auditEvidence: merged.auditEvidence && typeof merged.auditEvidence === "object" ? merged.auditEvidence : {},
     auditEvidenceCollapsed: merged.auditEvidenceCollapsed && typeof merged.auditEvidenceCollapsed === "object" ? merged.auditEvidenceCollapsed : {},
+    auditLockedQuestions: merged.auditLockedQuestions && typeof merged.auditLockedQuestions === "object" ? merged.auditLockedQuestions : {},
     offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -1011,10 +1033,43 @@ const app = document.getElementById("app");
 function saveState() {
   const snapshot = persistableState();
   try {
+    if (currentAccessUser?.id && !String(currentAccessUser.id).startsWith("local-")) {
+      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) delete snapshot[key];
+    }
     localStorage.setItem(stateStorageKey, JSON.stringify(snapshot));
+    if (currentAccessUser?.id && !String(currentAccessUser.id).startsWith("local-")) {
+      localStorage.setItem(`${stateStorageKey}:audits:${currentAccessUser.id}`, JSON.stringify({
+        answers: state.answers, auditNotes: state.auditNotes, auditEvidence: state.auditEvidence,
+        auditEvidenceCollapsed: state.auditEvidenceCollapsed, auditLockedQuestions: state.auditLockedQuestions,
+        offlineAudits: state.offlineAudits
+      }));
+    }
   } catch {
     // O IndexedDB mantém a fila operacional mesmo se o navegador recusar preferências locais.
   }
+}
+
+async function restoreAuditStateForUser() {
+  if (!currentAccessUser?.id) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(`${stateStorageKey}:audits:${currentAccessUser.id}`) || "null"); } catch {}
+  if (!saved) {
+    saved = { answers: {}, auditNotes: {}, auditEvidence: {}, auditEvidenceCollapsed: {}, auditLockedQuestions: {}, offlineAudits: {} };
+    for (const [areaId, audit] of Object.entries(state.offlineAudits || {})) {
+      const owned = String(audit.ownerUserId) === String(currentAccessUser.id) ||
+        (!audit.ownerUserId && audit.localAuditId && Boolean((await window.HAE_OFFLINE?.getAuditSnapshot(audit.localAuditId).catch(() => null))?.audit));
+      if (!owned) continue;
+      saved.offlineAudits[areaId] = { ...audit, ownerUserId: currentAccessUser.id };
+      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions"]) {
+        if (state[key]?.[areaId]) saved[key][areaId] = state[key][areaId];
+      }
+    }
+  }
+  for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) {
+    state[key] = saved[key] && typeof saved[key] === "object" ? saved[key] : {};
+  }
+  state.auditQueue = [];
+  state.auditQueueIndex = 0;
 }
 
 function registerServiceWorker() {
@@ -1347,8 +1402,14 @@ function planFromNotificationEntity(entityId) {
 }
 
 function localAuditFor(areaId) {
+  const audit = localAuditStateFor(areaId);
+  return audit?.status === "in_progress" ? audit : null;
+}
+
+function localAuditStateFor(areaId) {
   const audit = state.offlineAudits?.[areaId];
-  return audit?.status === "in_progress" && auditIsCurrentMonth(audit.startedAt) ? audit : null;
+  return auditIsCurrentMonth(audit?.startedAt) &&
+    String(audit.ownerUserId) === String(currentAccessUser?.id) ? audit : null;
 }
 
 function auditIsCurrentMonth(value) {
@@ -1358,17 +1419,110 @@ function auditIsCurrentMonth(value) {
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
 }
 
-async function ensureLocalAudit(areaId) {
+async function ensureLocalAudit(areaId, validateSession = false) {
+  const unowned = state.offlineAudits?.[areaId];
+  if (unowned?.status === "in_progress" && !unowned.ownerUserId && auditIsCurrentMonth(unowned.startedAt)) {
+    const snapshot = await window.HAE_OFFLINE?.getAuditSnapshot(unowned.localAuditId).catch(() => null);
+    if (snapshot?.audit) {
+      unowned.ownerUserId = currentAccessUser?.id;
+      saveState();
+    }
+  }
   const existing = localAuditFor(areaId);
-  if (existing) return existing;
+  if (existing) {
+    const backendArea = (offlineBootstrap?.areas || []).find((area) => area.slug === areaId);
+    const remote = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) &&
+      audit.status === "in_progress" && auditIsCurrentMonth(audit.started_at || audit.created_at));
+    if (remote && String(remote.auditor_user_id) !== String(currentAccessUser?.id)) {
+      await window.HAE_OFFLINE.discardTransferredAudit(existing.localAuditId);
+      window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
+        localAuditId: existing.localAuditId, areaId: remote.area_id, newAuditorName: remote.auditor_name
+      } }));
+      throw new Error(`Auditoria transferida para ${remote.auditor_name || "outro auditor"}. Esta cópia foi descartada.`);
+    }
+    if (validateSession && navigator.onLine !== false && backendArea) {
+      try {
+        await operationalRequest("audit-sessions", { method: "POST", body: JSON.stringify({
+          areaId: backendArea.id, localAuditId: existing.localAuditId,
+          deviceUid: await window.HAE_OFFLINE.deviceUid()
+        }) });
+      } catch (error) {
+        if (error.code === "AUDIT_EXISTS" && error.audit?.status === "in_progress") {
+          state.pendingAuditTransfer = { areaId, audit: error.audit };
+        }
+        if (error.code === "AUDIT_TRANSFERRED") {
+          await window.HAE_OFFLINE.discardTransferredAudit(existing.localAuditId);
+          window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
+            localAuditId: existing.localAuditId, areaId: error.audit?.area_id,
+            newAuditorName: error.audit?.auditor_name
+          } }));
+        }
+        throw error;
+      }
+    }
+    return existing;
+  }
   if (pendingAuditStarts.has(areaId)) return pendingAuditStarts.get(areaId);
+  if (navigator.onLine === false) throw new Error("Conecte-se à internet para iniciar ou assumir uma auditoria.");
+  if (!offlineBootstrap) await loadOfflineBootstrap();
+  const backendArea = (offlineBootstrap?.areas || []).find((area) => area.slug === areaId);
+  if (!backendArea) throw new Error("Área não encontrada no servidor.");
   const startPromise = createLocalAudit(areaId);
   pendingAuditStarts.set(areaId, startPromise);
   try {
     return await startPromise;
+  } catch (error) {
+    if (error.code === "AUDIT_EXISTS" && error.audit?.status === "in_progress") {
+      state.pendingAuditTransfer = { areaId, audit: error.audit };
+    }
+    throw error;
   } finally {
     pendingAuditStarts.delete(areaId);
   }
+}
+
+async function resumeRemoteAudit(areaId, remoteAudit) {
+  const detail = await operationalRequest(`audits/${remoteAudit.id}`);
+  if (detail.audit?.status !== "in_progress") throw new Error("Esta auditoria já foi encerrada. Atualize a página.");
+  const reverseIds = new Map([...backendQuestionIds.entries()]
+    .filter(([key]) => key.startsWith(`${areaId}:`))
+    .map(([key, backendId]) => [String(backendId), key.slice(areaId.length + 1)]));
+  const answers = {};
+  const notes = {};
+  const evidence = {};
+  const collapsed = {};
+  const locked = {};
+  for (const backendId of detail.lockedQuestionIds || []) {
+    const questionId = reverseIds.get(String(backendId));
+    if (questionId) locked[questionId] = true;
+  }
+  const filesByAnswer = new Set((detail.files || [])
+    .filter((file) => file.entity_type === "audit_answer")
+    .map((file) => String(file.entity_id)));
+  for (const answer of detail.answers || []) {
+    const questionId = reverseIds.get(String(answer.question_id));
+    if (!questionId) continue;
+    answers[questionId] = answer.answer;
+    notes[questionId] = answer.notes || "";
+    if (filesByAnswer.has(String(answer.id))) {
+      evidence[questionId] = true;
+      collapsed[questionId] = true;
+    }
+  }
+  const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const audit = {
+    localAuditId, remoteAuditId: detail.audit.id, areaId,
+    checklistId: detail.audit.checklist_id, status: "in_progress", startedAt: detail.audit.started_at,
+    ownerUserId: currentAccessUser?.id
+  };
+  state.answers = { ...state.answers, [areaId]: answers };
+  state.auditNotes = { ...state.auditNotes, [areaId]: notes };
+  state.auditEvidence = { ...state.auditEvidence, [areaId]: evidence };
+  state.auditEvidenceCollapsed = { ...state.auditEvidenceCollapsed, [areaId]: collapsed };
+  state.auditLockedQuestions = { ...state.auditLockedQuestions, [areaId]: locked };
+  state.offlineAudits = { ...state.offlineAudits, [areaId]: audit };
+  saveState();
+  return audit;
 }
 
 async function createLocalAudit(areaId) {
@@ -1384,17 +1538,11 @@ async function createLocalAudit(areaId) {
   }
   const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString() };
-  await window.HAE_OFFLINE.queueAuditStart({
-    localAuditId,
-    areaSlug: areaId,
-    checklistId: backendChecklist.id,
-    startedAt: audit.startedAt,
-    source: document.body.classList.contains("android-app") ? "tablet_android" : "web",
-    offlineCreated: navigator.onLine === false
-  });
-  state.offlineAudits = { ...state.offlineAudits, [areaId]: audit };
-  saveState();
-  return audit;
+  const result = await operationalRequest("audit-sessions", { method: "POST", body: JSON.stringify({
+    areaId: backendArea.id, localAuditId, deviceUid: await window.HAE_OFFLINE.deviceUid(),
+    source: document.body.classList.contains("android-app") ? "tablet_android" : "web"
+  }) });
+  return resumeRemoteAudit(areaId, result.audit);
 }
 
 async function queueChecklistAnswer(areaId, questionId, answer, notes = "") {
@@ -1405,6 +1553,7 @@ async function queueChecklistAnswer(areaId, questionId, answer, notes = "") {
     if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
     return window.HAE_OFFLINE.queueAuditAnswer({
       localAuditId: audit.localAuditId,
+      auditId: audit.remoteAuditId || null,
       questionId: backendQuestionId,
       answer,
       notes: notes.trim() || null,
@@ -5855,19 +6004,21 @@ function startAuditPage() {
   const areaStartMarkup = (area) => {
     const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
     const remoteAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) && auditIsCurrentMonth(audit.started_at || audit.created_at));
-    const localAudit = auditIsCurrentMonth(state.offlineAudits?.[area.id]?.startedAt) ? state.offlineAudits[area.id] : null;
+    const localAudit = localAuditStateFor(area.id);
     const finished = remoteAudit?.status === "finished" || localAudit?.status === "finished";
     const pendingSync = localAudit?.status === "finalizing";
+    const transferredHere = remoteAudit?.status === "in_progress" && localAudit?.status === "in_progress" &&
+      String(remoteAudit.auditor_user_id) !== String(currentAccessUser?.id);
     const onOtherDevice = remoteAudit?.status === "in_progress" && localAudit?.status !== "in_progress";
     const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
-    const label = finished ? "Auditoria finalizada" : pendingSync ? "Aguardando sincronização" : onOtherDevice ? "Em andamento em outro aparelho" : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
+    const label = finished ? "Auditoria finalizada" : transferredHere ? `Transferida para ${remoteAudit.auditor_name || "outro auditor"}` : pendingSync ? "Aguardando sincronização" : onOtherDevice ? `Com ${remoteAudit.auditor_name || "outro auditor"} · Assumir` : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
     return `
       <article class="start-tile">
         <div class="start-tile-main">
           <img src="assets/icons/${escapeHtml(area.icon)}" alt="" />
           <div><h3>${escapeHtml(area.name)}</h3><p>${escapeHtml(area.subtitle || "Checklist da área")}</p></div>
         </div>
-        <button class="outline-btn" ${finished || pendingSync || onOtherDevice ? "disabled" : `data-start-area="${area.id}"`}>${label} ${finished || pendingSync || onOtherDevice ? "" : svgIcon("arrow")}</button>
+        <button class="outline-btn" ${finished || pendingSync || transferredHere ? "disabled" : `data-start-area="${area.id}"`}>${escapeHtml(label)} ${finished || pendingSync || transferredHere ? "" : svgIcon("arrow")}</button>
       </article>
     `;
   };
@@ -5881,6 +6032,7 @@ function startAuditPage() {
           </div>
           ${selectedParent ? `<button class="outline-btn" data-audit-back-groups type="button">Voltar para áreas</button>` : ""}
         </section>
+        ${state.auditStartError ? `<p class="audit-start-error" role="alert">${escapeHtml(state.auditStartError)}</p>` : ""}
         ${selectedParent ? `<div class="audit-group-actions"><button class="primary-btn" data-start-audit-group="${selectedParent.id}" type="button">Iniciar todas as subáreas ${svgIcon("arrow")}</button><span>${groupedAreas.length} subáreas nesta área</span></div>` : ""}
         <div class="start-grid">
           ${selectedParent ? areasToRender.map(areaStartMarkup).join("") : organizationAreas.map((parent) => `
@@ -5913,6 +6065,12 @@ function startAuditPage() {
           </section>
         </div>
       ` : ""}
+      ${state.pendingAuditTransfer ? `<div class="leave-audit-backdrop"><section class="leave-audit-modal surface" role="dialog" aria-modal="true" aria-labelledby="transfer-title">
+        <h2 id="transfer-title">Auditoria em andamento</h2>
+        <p>Iniciada por ${escapeHtml(state.pendingAuditTransfer.audit.auditor_name || "outro auditor")}. Deseja assumir esta auditoria?</p>
+        <p>As respostas e fotos já recebidas pelo servidor serão preservadas e ficarão bloqueadas. O trabalho ainda não enviado do outro aparelho será descartado. Você continuará na primeira questão incompleta.</p>
+        <div><button class="outline-btn" data-cancel-audit-transfer type="button">Cancelar</button><button class="primary-btn" data-confirm-audit-transfer type="button">Assumir auditoria</button></div>
+      </section></div>` : ""}
     </div>
   `;
 }
@@ -5995,6 +6153,7 @@ function checklistPage() {
                 const planNotice = questionActionPlanNotice(area, question);
                 const isPlanNoticeOpen = planNotice && state.actionPlanNoticeQuestion === question.id;
                 const answerStateClass = selectedAnswer ? `is-answered answer-${selectedAnswer.toLowerCase()}` : "";
+                const locked = Boolean(state.auditLockedQuestions?.[area.id]?.[question.id]);
                 return `
                   <section class="question-card surface ${isNC ? "has-nc" : ""} ${answerStateClass}" data-question-card="${question.id}" style="--question-risk:${risk.color}">
                     <div class="question-head">
@@ -6016,11 +6175,11 @@ function checklistPage() {
                         .map((answer) => {
                           const meta = answerMeta[answer];
                           const isSelected = selectedAnswer === answer;
-                          return `<button class="answer-btn answer-${answer.toLowerCase()} ${isSelected ? "is-selected" : ""}" data-answer="${answer}" data-question="${question.id}" aria-pressed="${isSelected}" style="--answer:${meta.color}">${meta.label} <small>(${meta.short})</small></button>`;
+                          return `<button class="answer-btn answer-${answer.toLowerCase()} ${isSelected ? "is-selected" : ""}" data-answer="${answer}" data-question="${question.id}" aria-pressed="${isSelected}" ${locked ? "disabled title=\"Resposta preservada da auditoria anterior\"" : ""} style="--answer:${meta.color}">${meta.label} <small>(${meta.short})</small></button>`;
                         })
                         .join("")}
                     </div>
-                    ${state.auditEvidenceCollapsed?.[area.id]?.[question.id] ? "" : `<div class="nc-evidence">
+                    ${locked || state.auditEvidenceCollapsed?.[area.id]?.[question.id] ? "" : `<div class="nc-evidence">
                       <div class="evidence-title">${svgIcon("warning")} Evidência da não conformidade</div>
                       <div class="nc-risk-record" style="--risk-color:${risk.color}">
                         <i></i>
@@ -7409,7 +7568,59 @@ function advanceAuditQuestion(questionId, stayOnCurrent = false) {
   });
 }
 
+function openFirstIncompleteQuestion(areaId) {
+  const area = areaById(areaId);
+  const blocks = blocksForArea(area);
+  for (const block of blocks) {
+    const index = block.questions.findIndex((question) => !state.answers?.[areaId]?.[question.id] ||
+      (state.answers[areaId][question.id] === "NC" && !state.auditEvidence?.[areaId]?.[question.id]));
+    if (index !== -1) {
+      state.checklistBlock = block.id;
+      state.checklistPage = Math.floor(index / 3);
+      return;
+    }
+  }
+  state.checklistBlock = blocks[0]?.id || null;
+  state.checklistPage = 0;
+}
+
+function enterAudit(areaId) {
+  state.selectedArea = areaId;
+  state.detailBlock = null;
+  openFirstIncompleteQuestion(areaId);
+  state.checklistBlocksOpen = false;
+  state.leaveAuditConfirm = false;
+  state.view = "checklist";
+  render();
+}
+
 document.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-cancel-audit-transfer]")) {
+    state.pendingAuditTransfer = null;
+    state.auditStartError = "";
+    render();
+    return;
+  }
+  if (event.target.closest("[data-confirm-audit-transfer]")) {
+    const pending = state.pendingAuditTransfer;
+    const button = event.target.closest("[data-confirm-audit-transfer]");
+    button.disabled = true;
+    try {
+      const result = await operationalRequest(`audit-sessions/${pending.audit.id}/transfer`, {
+        method: "POST", body: JSON.stringify({ deviceUid: await window.HAE_OFFLINE.deviceUid() })
+      });
+      await resumeRemoteAudit(pending.areaId, result.audit);
+      state.pendingAuditTransfer = null;
+      state.auditStartError = "";
+      await loadOperationalData();
+      enterAudit(pending.areaId);
+    } catch (error) {
+      state.auditStartError = error.message;
+      state.pendingAuditTransfer = null;
+      render();
+    }
+    return;
+  }
   const searchResult = event.target.closest("[data-global-search-result]");
   if (searchResult) {
     const resultId = searchResult.dataset.globalSearchResult || "";
@@ -7679,34 +7890,28 @@ document.addEventListener("click", async (event) => {
     state.auditQueue = queue;
     state.auditQueueIndex = 0;
     state.auditContinueModal = false;
-    state.selectedArea = queue[0];
-    state.detailBlock = null;
-    state.checklistBlock = null;
-    state.checklistPage = 0;
-    state.checklistBlocksOpen = false;
-    state.leaveAuditConfirm = false;
-    state.view = "checklist";
-    render();
-    ensureLocalAudit(state.selectedArea).catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+    try { await ensureLocalAudit(queue[0], true); }
+    catch (error) { state.auditStartError = error.message; render(); return; }
+    enterAudit(queue[0]);
     return;
   }
 
   const start = event.target.closest("[data-start-area]");
   if (start) {
+    const areaId = start.dataset.startArea;
+    start.disabled = true;
+    try {
+      await ensureLocalAudit(areaId, true);
+    } catch (error) {
+      state.auditStartError = error.message;
+      render();
+      return;
+    }
+    state.auditStartError = "";
     state.auditQueue = [];
     state.auditQueueIndex = 0;
     state.auditContinueModal = false;
-    state.selectedArea = start.dataset.startArea;
-    state.detailBlock = null;
-    state.checklistBlock = null;
-    state.checklistPage = 0;
-    state.checklistBlocksOpen = false;
-    state.leaveAuditConfirm = false;
-    state.view = "checklist";
-    render();
-    ensureLocalAudit(state.selectedArea).catch((error) => {
-      setOfflineNotice({ phase: "error", message: error.message });
-    });
+    enterAudit(areaId);
     return;
   }
 
@@ -8517,14 +8722,9 @@ document.addEventListener("click", async (event) => {
       return;
     }
     state.auditContinueModal = false;
-    state.selectedArea = nextAreaId;
-    state.detailBlock = null;
-    state.checklistBlock = null;
-    state.checklistPage = 0;
-    state.checklistBlocksOpen = false;
-    state.view = "checklist";
-    render();
-    ensureLocalAudit(nextAreaId).catch((error) => setOfflineNotice({ phase: "error", message: error.message }));
+    try { await ensureLocalAudit(nextAreaId, true); }
+    catch (error) { state.auditStartError = error.message; state.view = "start"; render(); return; }
+    enterAudit(nextAreaId);
     return;
   }
 
@@ -8565,6 +8765,7 @@ document.addEventListener("click", async (event) => {
     const areaId = state.selectedArea;
     const questionId = answer.dataset.question;
     const answerValue = answer.dataset.answer;
+    if (state.auditLockedQuestions?.[areaId]?.[questionId]) return;
     state.auditEvidenceCollapsed = {
       ...state.auditEvidenceCollapsed,
       [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: false }
@@ -8653,6 +8854,7 @@ document.addEventListener("click", async (event) => {
       const audit = await ensureLocalAudit(areaId);
       await window.HAE_OFFLINE.queueAuditFinalize({
         localAuditId: audit.localAuditId,
+        auditId: audit.remoteAuditId || null,
         finishedAt: new Date().toISOString(),
         generationMode
       });
@@ -8769,6 +8971,7 @@ document.addEventListener("change", (event) => {
         if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
         await window.HAE_OFFLINE.queueFileUpload(file, {
           localAuditId: audit.localAuditId,
+          auditId: audit.remoteAuditId || null,
           questionId: backendQuestionId,
           entityType: "audit_answer",
           fileType: "audit_photo",
@@ -9002,6 +9205,7 @@ function applyLocalPreviewActionPlans() {
           backendUrl: window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : location.origin
         });
       }
+      await restoreAuditStateForUser();
       await Promise.all([
         currentAccessUser.role === "admin" ? loadAccessUsers() : Promise.resolve(),
         loadAccessNotifications(),
@@ -9019,6 +9223,8 @@ function applyLocalPreviewActionPlans() {
         return;
       }
       currentAccessUser = cached;
+      if (window.HAE_OFFLINE) await window.HAE_OFFLINE.configure({ userScope: currentAccessUser.id });
+      await restoreAuditStateForUser();
       accessNotice = { type: "success", text: "Modo offline: os dados coletados serão sincronizados quando a conexão voltar." };
     }
     applyCurrentUserScope();

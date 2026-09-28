@@ -4,6 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const archiver = require("archiver");
 const syncService = require("./lib/sync-service");
+const auditSession = require("./lib/audit-session");
 const fileStorage = require("./lib/file-storage");
 const operationalApi = require("./lib/operational-api");
 const resourceApi = require("./lib/resource-api");
@@ -486,6 +487,18 @@ async function handleApi(request, response, url) {
       const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
       const device = await syncService.deviceFor(pool, user, request.headers["x-device-uid"]);
+      const auditId = request.headers["x-audit-id"];
+      if (auditId) {
+        const selected = await pool.query("select a.*,u.full_name as auditor_name from audits a left join app_users u on u.id=a.auditor_user_id where a.id=$1 and a.unit_id=$2", [auditId, unitId]);
+        const audit = selected.rows[0];
+        if (!audit || String(audit.auditor_user_id) !== String(user.id) ||
+            String(audit.active_device_id || audit.device_id) !== String(device.id) || audit.status !== "in_progress") {
+          sendJson(response, 409, { error: `Auditoria transferida para ${audit?.auditor_name || "outro auditor"}. Esta cópia será descartada.`,
+            code: "AUDIT_TRANSFERRED", auditId: audit?.id || auditId, areaId: audit?.area_id || null,
+            newAuditorName: audit?.auditor_name || "outro auditor" });
+          return true;
+        }
+      }
       sendJson(response, 201, { file: await fileStorage.upload(pool, request, user, device, unitId) });
     } catch (error) {
       if (!response.headersSent && !response.destroyed) sendJson(response, 400, { error: error.message });
@@ -849,68 +862,23 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const body = await readJsonBody(request);
-      const unitId = body.unitId || await defaultUnitId(pool);
+      const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
-      const device = body.deviceUid ? await syncService.deviceFor(pool, user, body.deviceUid) : null;
-      if (body.localAuditId && !device) throw new Error("deviceUid obrigatorio quando localAuditId for informado");
-      const areaId = body.areaId;
-      if (!areaId) {
-        sendJson(response, 400, { error: "areaId é obrigatório" });
+      if (!["admin", "quality", "auditor"].includes(user.role)) {
+        sendJson(response, 403, { error: "Este perfil não pode iniciar auditorias." });
         return true;
       }
-      const checklistId = body.checklistId || await defaultChecklistForArea(pool, unitId, areaId);
-      if (!checklistId) {
-        sendJson(response, 400, { error: "Checklist da área não encontrado" });
+      if (!user.all_areas && !(user.area_ids || []).some((id) => String(id) === String(body.areaId))) {
+        sendJson(response, 403, { error: "Você não tem acesso a esta área." });
         return true;
       }
-      const cycle = await ensureCycle(pool, unitId, body.monthStart || currentMonthStart());
-      const result = await pool.query(
-        `
-          insert into audits (
-            unit_id,
-            area_id,
-            subarea_id,
-            checklist_id,
-            cycle_id,
-            auditor_user_id,
-            responsible_user_id,
-            device_id,
-            local_audit_id,
-            source,
-            status,
-            started_at,
-            offline_created,
-            sync_status
-          )
-          values ($1, $2, $3, $4, $5, $6,
-            coalesce((select responsible_user_id from audit_areas where id=$2),(
-              select p.user_id from user_area_permissions p join app_users u on u.id=p.user_id
-              where p.area_id=$2 and p.active=true and u.active=true and u.role='area_responsible'
-              order by p.created_at,p.id limit 1
-            )),
-            $11, $7, $8, 'in_progress', now(), $9, $10)
-          on conflict (device_id, local_audit_id)
-          where device_id is not null and local_audit_id is not null
-          do update set local_audit_id = excluded.local_audit_id
-          returning *
-        `,
-        [
-          unitId,
-          areaId,
-          body.subareaId || null,
-          checklistId,
-          cycle.id,
-          user?.id || null,
-          body.localAuditId || null,
-          body.source || "web",
-          Boolean(body.offlineCreated),
-          body.offlineCreated ? "pending" : "synced",
-          device?.id || null
-        ]
-      );
-      sendJson(response, 201, { audit: result.rows[0] });
+      const result = await auditSession.start(pool, {
+        unitId, areaId: body.areaId, user, deviceUid: body.deviceUid,
+        localAuditId: body.localAuditId, source: body.source
+      });
+      sendJson(response, result.resumed ? 200 : 201, result);
     } catch (error) {
-      sendJson(response, 500, { error: error.message || "Erro ao iniciar auditoria" });
+      sendJson(response, error.status || 400, { error: error.message || "Erro ao iniciar auditoria" });
     }
     return true;
   }
@@ -921,6 +889,8 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const body = await readJsonBody(request);
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      const device = await syncService.deviceFor(pool, user, body.deviceUid);
       const answers = Array.isArray(body.answers) ? body.answers : [body];
       const saved = [];
       const client = await pool.connect();
@@ -928,6 +898,10 @@ async function handleApi(request, response, url) {
         await client.query("begin");
         const audit = await client.query("select * from audits where id=$1 for update", [auditAnswersMatch.id]);
         if (!audit.rows[0] || ["finished", "cancelled"].includes(audit.rows[0].status)) throw new Error("Auditoria inexistente ou encerrada");
+        if (String(audit.rows[0].auditor_user_id) !== String(user.id) ||
+            String(audit.rows[0].active_device_id || audit.rows[0].device_id) !== String(device.id)) {
+          throw new Error("Auditoria transferida para outro auditor ou aparelho. Esta cópia não pode ser enviada.");
+        }
         for (const answer of answers) {
           if (!answer.questionId || !["C", "NC", "X"].includes(answer.answer)) {
             throw new Error("Cada resposta precisa ter questionId e answer C/NC/X.");
@@ -937,6 +911,8 @@ async function handleApi(request, response, url) {
             [answer.questionId, audit.rows[0].checklist_id]
           );
           if (!question.rows[0]) throw new Error(`Pergunta não encontrada: ${answer.questionId}`);
+          const locked = await client.query("select 1 from audit_transfer_answer_locks where audit_id=$1 and question_id=$2", [auditAnswersMatch.id, answer.questionId]);
+          if (locked.rows.length) throw new Error("Resposta concluída antes da transferência não pode ser alterada.");
           if (answer.expectedRevision != null) {
             const current = await client.query("select revision from audit_answers where audit_id=$1 and question_id=$2", [auditAnswersMatch.id, answer.questionId]);
             if (answer.expectedRevision !== (current.rows[0]?.revision || 0)) throw new Error("Conflito de revisao da resposta");
@@ -950,15 +926,17 @@ async function handleApi(request, response, url) {
                 score_value,
                 risk_level_snapshot,
                 notes,
-                answered_at
+                answered_at,
+                answered_by_user_id
               )
-              values ($1, $2, $3, $4, $5, $6, now())
+              values ($1, $2, $3, $4, $5, $6, now(), $7)
               on conflict (audit_id, question_id)
               do update set
                 answer = excluded.answer,
                 score_value = excluded.score_value,
                 risk_level_snapshot = excluded.risk_level_snapshot,
                 notes = excluded.notes,
+                answered_by_user_id = excluded.answered_by_user_id,
                 revision = audit_answers.revision + 1,
                 answered_at = now(),
                 updated_at = now()
@@ -970,7 +948,8 @@ async function handleApi(request, response, url) {
               answer.answer,
               answer.answer === "C" ? Number(question.rows[0].weight) : answer.answer === "NC" ? 0 : null,
               question.rows[0].risk_level,
-              answer.notes || null
+              answer.notes || null,
+              user.id
             ]
           );
           saved.push(result.rows[0]);
@@ -995,6 +974,8 @@ async function handleApi(request, response, url) {
       const pool = await getPool();
       if (!requireDatabase(response, pool)) return true;
       const body = await readJsonBody(request);
+      const user = await currentUser(pool, request, await defaultUnitId(pool));
+      const device = await syncService.deviceFor(pool, user, body.deviceUid);
       const client = await pool.connect();
       let audit;
       let reportJob;
@@ -1003,6 +984,10 @@ async function handleApi(request, response, url) {
         await client.query("begin");
         const selectedAudit = await client.query("select * from audits where id=$1 for update", [auditFinalizeMatch.id]);
         if (!selectedAudit.rows[0]) throw new Error("Auditoria não encontrada");
+        if (String(selectedAudit.rows[0].auditor_user_id) !== String(user.id) ||
+            String(selectedAudit.rows[0].active_device_id || selectedAudit.rows[0].device_id) !== String(device.id)) {
+          throw new Error("Auditoria transferida para outro auditor ou aparelho. Esta cópia não pode ser finalizada.");
+        }
         await validateAuditReadyToFinalize(client, selectedAudit.rows[0]);
         const score = await auditScore(client, auditFinalizeMatch.id);
         const auditResult = await client.query(
@@ -1793,6 +1778,11 @@ async function handleApi(request, response, url) {
       const operations = Array.isArray(body.operations) ? body.operations : [body];
       const unitId = await defaultUnitId(pool);
       const user = await currentUser(pool, request, unitId);
+      if (operations.some((op) => ["audit", "audit_answer"].includes(op.entityType)) &&
+          !["admin", "quality", "auditor"].includes(user.role)) {
+        sendJson(response, 403, { error: "Este perfil não pode alterar auditorias." });
+        return true;
+      }
       const device = await syncService.deviceFor(pool, user, body.deviceUid);
       const saved = await syncService.enqueue(pool, user, device, operations);
       const processed = await syncService.processOperations(pool, user.id, device.id, saved.map((item) => item.client_operation_id), saved.length);

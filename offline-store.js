@@ -316,6 +316,18 @@
     } finally { db.close(); }
   }
 
+  async function discardTransferredAudit(localAuditId) {
+    if (!localAuditId) return;
+    const pending = (await listSyncableOperations()).filter((op) => op.payload?.localAuditId === localAuditId);
+    for (const op of pending) {
+      await updateOperation(op.clientOperationId, { status: "ignored", errorMessage: "Auditoria transferida", syncedAt: nowIso() });
+    }
+    const snapshot = await getAuditSnapshot(localAuditId);
+    for (const file of snapshot.files) {
+      await putRecord(FILE_STORE, { ...file, file: null, status: "discarded", updatedAt: nowIso() });
+    }
+  }
+
   async function configure(options = {}) {
     if (options.backendUrl != null) {
       const url = new URL(options.backendUrl || location.origin);
@@ -382,8 +394,10 @@
     let sent = 0;
     let failed = false;
     const reconciled = [];
+    const transferredAudits = new Set();
     for (let offset = 0; offset < operations.length; offset += 50) {
-      const batch = operations.slice(offset, offset + 50);
+      let batch = operations.slice(offset, offset + 50).filter((op) => !transferredAudits.has(op.payload?.localAuditId));
+      if (!batch.length) continue;
       for (const operation of batch) {
         if (operation.entityType === "audit_answer" && operation.dependsOn?.length) {
           operation.dependsOn = [];
@@ -391,6 +405,7 @@
         }
       }
       for (const op of batch) {
+        if (transferredAudits.has(op.payload?.localAuditId)) continue;
         if (op.entityType !== "stored_file") continue;
         const file = await getFile(op.payload.localFileId);
         if (!file?.file) throw new Error("Foto local nao encontrada; os dados pendentes foram mantidos");
@@ -398,15 +413,30 @@
           const upload = await fetchWithTimeout(base + "/api/offline-files", {
             method: "POST",
             headers: { ...headers, "content-type": file.mimeType, "x-device-uid": device,
-              "x-local-file-id": file.localFileId, "x-file-type": file.fileType, "x-file-name": encodeURIComponent(file.fileName) },
+              "x-local-file-id": file.localFileId, "x-file-type": file.fileType, "x-file-name": encodeURIComponent(file.fileName),
+              ...(op.payload.auditId ? { "x-audit-id": op.payload.auditId } : {}) },
             body: file.file
           }, 120000);
-          if (!upload.ok) throw new Error("Falha ao enviar foto: " + upload.status);
+          if (!upload.ok) {
+            const failure = await upload.json().catch(() => ({}));
+            if (failure.code === "AUDIT_TRANSFERRED") {
+              transferredAudits.add(op.payload.localAuditId);
+              await discardTransferredAudit(op.payload.localAuditId);
+              window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
+                reason: "transferred", localAuditId: op.payload.localAuditId, areaId: failure.areaId,
+                newAuditorName: failure.newAuditorName, message: failure.error
+              } }));
+              continue;
+            }
+            throw new Error(failure.error || "Falha ao enviar foto: " + upload.status);
+          }
           const result = await upload.json();
           if (!result.file?.id) throw new Error("Servidor nao confirmou o arquivo");
           await putRecord(FILE_STORE, { ...file, serverId: result.file.id, status: "uploaded", updatedAt: nowIso() });
         }
       }
+      batch = batch.filter((op) => !transferredAudits.has(op.payload?.localAuditId));
+      if (!batch.length) continue;
       const response = await fetchWithTimeout(base + "/api/sync-queue", {
         method: "POST",
         headers: { ...headers, "content-type": "application/json" },
@@ -422,9 +452,18 @@
       const result = await response.json();
       const received = new Map((result.operations || []).map((row) => [row.client_operation_id, row]));
       for (const local of batch) {
+        if (transferredAudits.has(local.payload?.localAuditId)) { sent++; continue; }
         const remote = received.get(local.clientOperationId);
         if (remote && ["synced", "ignored"].includes(remote.status)) {
           await updateOperation(local.clientOperationId, { status: remote.status, syncedAt: nowIso(), errorMessage: null, serverResult: remote.result_payload });
+          if (remote.result_payload?.reason === "transferred") {
+            const transfer = remote.result_payload;
+            transferredAudits.add(local.payload?.localAuditId);
+            await discardTransferredAudit(local.payload?.localAuditId);
+            window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: transfer }));
+            sent++;
+            continue;
+          }
           if (local.payload.localAuditId) {
             const key = "audit:" + local.payload.localAuditId;
             if (remote.result_payload?.entityType === "audit") await patchEntity(key, { serverId: remote.result_entity_id, serverSnapshot: remote.result_payload.audit });
@@ -512,6 +551,7 @@
     saveOperation,
     listOperations,
     listSyncableOperations,
+    discardTransferredAudit,
     updateOperation,
     saveFile,
     getFile,
