@@ -1022,18 +1022,29 @@ function reportFileRequest() {
   return { kind, area };
 }
 
+function reportDocumentPreviewToolbar(activeKind) {
+  if (new URLSearchParams(location.search).get("previewDocument") !== "1") return "";
+  document.body.classList.add("report-document-preview");
+  const links = [
+    ["organization-monthly", "Consolidado da área", "?preview=admin&previewDocument=1&reportFile=organization-monthly&parent=conforto-medico&reportWorker=1"],
+    ["comparison", "Comparativo", "?preview=admin&previewDocument=1&reportFile=comparison&area=cozinha-catering&reportWorker=1"],
+    ["monthly", "Individual", "?preview=admin&previewDocument=1&reportFile=monthly&area=cozinha-catering&reportWorker=1"]
+  ];
+  return `<nav class="report-preview-toolbar" aria-label="Navegação entre modelos de relatório"><strong>Prévia local para aprovação</strong><div>${links.map(([kind, label, href]) => `<a class="${kind === activeKind ? "is-active" : ""}" href="${href}">${label}</a>`).join("")}</div><span>Role a página para visualizar o relatório completo.</span></nav>`;
+}
+
 function renderReportFileRequest(request) {
   document.body.classList.add("report-document-body");
   app.className = "app-shell is-report-document";
   if (request.kind === "organization-monthly") {
-    app.innerHTML = `<main class="stored-report-view">${organizationMonthlyReportPage(request.parent)}</main>`;
+    app.innerHTML = `${reportDocumentPreviewToolbar(request.kind)}<main class="stored-report-view">${organizationMonthlyReportPage(request.parent)}</main>`;
     document.title = `hae-consolidado-area-${request.parent.id}-${currentMonthId}.pdf`;
     window.__IDAUDITOR_REPORT_READY__ = true;
     return;
   }
   state.selectedArea = request.area.id;
   state.reportKind = request.kind;
-  app.innerHTML = `<main class="stored-report-view">${approvedReportMarkup(request.area, request.kind)}</main>`;
+  app.innerHTML = `${reportDocumentPreviewToolbar(request.kind)}<main class="stored-report-view">${approvedReportMarkup(request.area, request.kind)}</main>`;
   document.title = reportPdfFilename(request.area, request.kind);
   window.__IDAUDITOR_REPORT_READY__ = true;
 }
@@ -1495,8 +1506,8 @@ function questionRowsForArea(area) {
   );
   return rows.map((question) => ({
     ...question,
-    answer: realAnswers.get(question.id)?.answer || "X",
-    notes: realAnswers.get(question.id)?.notes || "",
+    answer: realAnswers.get(question.id)?.answer || state.answers?.[area.id]?.[question.id] || "X",
+    notes: realAnswers.get(question.id)?.notes || state.auditNotes?.[area.id]?.[question.id] || "",
     evidenceFileId: filesByAnswer.get(String(realAnswers.get(question.id)?.id)) || null
   }));
 }
@@ -1566,6 +1577,14 @@ function actionPlansForArea(area) {
 }
 
 function reportResponsibleName(area) {
+  if (area?.isParentArea) {
+    const names = subareasForOrganizationArea(area)
+      .map((subarea) => (operationalAudits || []).find((item) => String(item.area_id) === String(subarea.backendId) && item.status === "finished")?.responsible_name)
+      .filter(Boolean);
+    const uniqueNames = [...new Set(names)];
+    if (uniqueNames.length === 1) return uniqueNames[0];
+    if (uniqueNames.length > 1) return "Responsáveis cadastrados";
+  }
   const audit = (operationalAudits || []).find((item) => String(item.area_id) === String(area.backendId) && item.status === "finished");
   if (audit?.responsible_name) return audit.responsible_name;
   if (isAreaResponsible() && canAccessArea(area.id)) return currentAccessUser?.full_name || "Responsável da área";
@@ -2845,7 +2864,15 @@ function chartsPage() {
 function reportPreviousMonthId() {
   const available = availableMonthIds();
   const currentIndex = available.indexOf(currentMonthId);
-  return currentIndex > 0 ? available[currentIndex - 1] : available[0] || currentMonthId;
+  if (currentIndex > 0) return available[currentIndex - 1];
+  const calendarIndex = months.findIndex(([id]) => id === currentMonthId);
+  if (calendarIndex > 0) return months[calendarIndex - 1][0];
+  const [year, month] = String(currentMonthId).split("-").map(Number);
+  if (Number.isFinite(year) && Number.isFinite(month)) {
+    const previous = new Date(year, month - 2, 1);
+    return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return available[0] || currentMonthId;
 }
 
 function reportMonthLabel(monthId) {
@@ -3438,27 +3465,55 @@ function reportPlanImpact(plan) {
   return reportTag("Pendente de avaliação", "neutral");
 }
 
+function reportPreviousPlansForArea(area) {
+  return actionPlansForArea(area).flatMap((plan) => {
+    if (plan.previousEvaluation) return [{ ...plan, ...plan.previousEvaluation }];
+    return ["concluido", "approved"].includes(plan.status) ? [plan] : [];
+  });
+}
+
+function reportCurrentPlansForArea(area) {
+  return actionPlansForArea(area).filter((plan) => !["concluido", "approved"].includes(plan.status));
+}
+
+function reportPlanEvaluationNarrative(plan, area) {
+  const previousScore = plan.previousScore ?? area.last;
+  const currentScore = plan.currentScore ?? area.score;
+  const scoreReading = currentScore > previousScore
+    ? `A nota evoluiu de ${formatScore(previousScore)} para ${formatScore(currentScore)}, indicando impacto positivo.`
+    : currentScore < previousScore
+      ? `A nota caiu de ${formatScore(previousScore)} para ${formatScore(currentScore)}, sem impacto positivo comprovado.`
+      : `A nota permaneceu em ${formatScore(currentScore)}, sem melhora mensurável no período.`;
+  if (plan.recurrent === true) {
+    return `O requisito voltou a apresentar não conformidade no ciclo atual. Foi identificada recorrência e o plano anterior não produziu impacto positivo comprovado. ${scoreReading}`;
+  }
+  if (plan.improved === true) {
+    return `O plano foi concluído e o requisito não voltou a apresentar não conformidade no ciclo atual. ${scoreReading}`;
+  }
+  if (plan.improved === false) {
+    return `O plano foi concluído, porém ainda não foi comprovada melhora no requisito avaliado. ${scoreReading}`;
+  }
+  return "O plano anterior permanece pendente de avaliação. O impacto será confirmado após a conclusão do ciclo atual.";
+}
+
 function reportPlanEvaluationRows(area) {
-  return actionPlansForArea(area).map((plan) => {
+  return reportPreviousPlansForArea(area).map((plan) => {
     const item = plan.backendItems?.[0];
     const question = item?.question || plan.question || plan.problem_description || plan.block || "Não conformidade vinculada à auditoria anterior";
     const code = plan.publicCode || plan.code || `PA-${String(plan.id || "").slice(0, 8).toUpperCase()}`;
     const previousScore = plan.previousScore ?? area.last;
     const currentScore = plan.currentScore ?? area.score;
-    const recurrence = plan.recurrent === true ? "Sim" : "Não identificada";
     return [
-      `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportCompactText(question, 74))}`,
+      `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportFullText(question))}`,
       `${formatScore(previousScore)} → ${formatScore(currentScore)}`,
-      reportActionStatusTag(plan.status),
       escapeHtml(reportPlanEvidenceDecision(plan)),
-      escapeHtml(recurrence),
-      reportPlanImpact(plan)
+      escapeHtml(reportPlanEvaluationNarrative(plan, area))
     ];
   });
 }
 
 function reportPreviousActionEvaluation(area) {
-  const plans = actionPlansForArea(area);
+  const plans = reportPreviousPlansForArea(area);
   if (!plans.length) {
     return `
       <p class="report-footnote report-plan-evaluation-note">
@@ -3470,7 +3525,7 @@ function reportPreviousActionEvaluation(area) {
     <p class="report-doc-text report-plan-evaluation-note">
       Esta seção verifica os planos de ação abertos em auditorias anteriores e seus efeitos na auditoria atual. O detalhamento completo, incluindo evidências, observações e a decisão sobre cada evidência, está disponível no relatório individual da subárea.
     </p>
-    ${reportDocTable(["Plano / pergunta", "Nota anterior → atual", "Situação", "Decisão sobre a evidência", "Recorrência", "Impacto"], reportPlanEvaluationRows(area), "is-plan-evaluation")}
+    ${reportDocTable(["Plano / pergunta", "Nota anterior → atual", "Evidência", "Avaliação"], reportPlanEvaluationRows(area), "is-plan-evaluation")}
   `;
 }
 
@@ -3479,9 +3534,9 @@ function organizationReportAreas(parent) {
 }
 
 function organizationReportScoreChart(areas) {
-  const width = 720;
+  const width = 760;
   const height = 300;
-  const pad = { left: 38, right: 58, top: 30, bottom: 96 };
+  const pad = { left: 42, right: 72, top: 30, bottom: 92 };
   const innerWidth = width - pad.left - pad.right;
   const innerHeight = height - pad.top - pad.bottom;
   const bottom = pad.top + innerHeight;
@@ -3496,10 +3551,11 @@ function organizationReportScoreChart(areas) {
           const hasResult = hasAreaResult(area);
           const score = hasResult ? Number(area.score) : null;
           const center = pad.left + slot * index + slot / 2;
-          const barWidth = Math.min(34, Math.max(18, slot * .42));
+          const barWidth = Math.min(38, Math.max(18, slot * .38));
           const barY = hasResult ? y(score) : bottom - 1;
           const barHeight = hasResult ? bottom - barY : 1;
-          return `<g><rect x="${center - barWidth / 2}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="5" fill="${hasResult ? "#0a6cff" : "#b9c5d3"}"/><text x="${center}" y="${barY - 7}" text-anchor="middle" fill="${hasResult ? "#0a6cff" : "#748399"}" font-size="9" font-weight="700">${hasResult ? formatScore(area.score) : "—"}</text><text transform="translate(${center}, ${bottom + 34}) rotate(-35)" text-anchor="end" fill="#071a3d" font-size="8.5" font-weight="700">${escapeHtml(area.name)}</text></g>`;
+          const label = reportFullText(area.name).toUpperCase();
+          return `<g><rect x="${center - barWidth / 2}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="5" fill="${hasResult ? "#0a6cff" : "#b9c5d3"}"/><text x="${center}" y="${barY - 7}" text-anchor="middle" fill="${hasResult ? "#0a6cff" : "#748399"}" font-size="9.6" font-weight="780">${hasResult ? formatScore(area.score) : "—"}</text><text transform="translate(${center}, ${bottom + 18}) rotate(-35)" text-anchor="end" fill="#111827" font-size="7.35" font-weight="800">${reportSvgLabelLines(label, 22).map((line, lineIndex) => `<tspan x="0" dy="${lineIndex === 0 ? 0 : 9}">${escapeHtml(line)}</tspan>`).join("")}</text></g>`;
         }).join("")}
       </svg>
       <figcaption>Figura 1 - Desempenho das subáreas no mês vigente.</figcaption>
@@ -3507,18 +3563,112 @@ function organizationReportScoreChart(areas) {
   `;
 }
 
+function organizationReportTotals(areas) {
+  return areas.filter(hasAreaResult).reduce((totals, area) => {
+    const current = reportAreaTotals(area);
+    totals.total += current.total;
+    totals.evaluated += current.evaluated;
+    totals.C += current.C;
+    totals.NC += current.NC;
+    totals.X += current.X;
+    return totals;
+  }, { total: 0, evaluated: 0, C: 0, NC: 0, X: 0 });
+}
+
+function organizationSummaryRows(parent, areas, average) {
+  const completed = areas.filter(hasAreaResult);
+  const totals = organizationReportTotals(areas);
+  const plans = areas.reduce((sum, area) => sum + actionPlansForArea(area).length, 0);
+  const conformity = totals.evaluated ? Math.round((totals.C / totals.evaluated) * 100) : 0;
+  return [
+    ["Nota média da área", `<strong>${formatScore(average)}/10</strong>`, "Classificação", average == null ? reportTag("Não auditada", "neutral") : reportStatusTag(scoreStatus(average))],
+    ["Subáreas auditadas", `${completed.length} de ${areas.length}`, "Conformidade", `${conformity}% dos itens avaliados`],
+    ["Itens avaliados", String(totals.total), "Não conformidades", `<strong>${totals.NC}</strong>`],
+    ["Conformes / não avaliados", `${totals.C} / ${totals.X}`, "Planos vinculados", String(plans)]
+  ].map((row) => row.map((cell, index) => (index % 2 === 0 ? `<strong>${cell}</strong>` : cell)));
+}
+
+function organizationMonthlyInsight(parent, areas, average) {
+  const completed = areas.filter(hasAreaResult).sort((a, b) => Number(a.score) - Number(b.score));
+  const totals = organizationReportTotals(areas);
+  const attention = completed.slice(0, 3).map((area) => `${area.name} (${formatScore(area.score)})`);
+  const missing = areas.filter((area) => !hasAreaResult(area));
+  const metaText = average != null && average >= 8
+    ? "A área permanece dentro da meta mínima definida para o ciclo mensal."
+    : "A área está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
+  return `<div class="report-note-box"><strong>Síntese técnica da área</strong><p>${metaText} Foram consolidadas ${completed.length} subáreas, com ${reportPlural(totals.NC, "não conformidade", "não conformidades")}. ${attention.length ? `As menores notas do período foram registradas em ${escapeHtml(reportPlainList(attention))}.` : "Não há resultado auditado no período."} ${missing.length ? `${reportPlural(missing.length, "subárea permanece", "subáreas permanecem")} sem auditoria concluída.` : "Todas as subáreas cadastradas foram auditadas."}</p></div>`;
+}
+
+function organizationSubareaRows(areas) {
+  return areas.map((area) => {
+    const totals = hasAreaResult(area) ? reportAreaTotals(area) : { total: 0, C: 0, NC: 0, X: 0 };
+    return [
+      `<strong>${escapeHtml(area.name)}</strong>`, String(totals.total), String(totals.C), String(totals.NC), String(totals.X),
+      hasAreaResult(area) ? `<strong>${formatScore(area.score)}</strong>` : "—",
+      hasAreaResult(area) ? reportStatusMarker(area.status) : reportTag("Não auditada", "neutral")
+    ];
+  });
+}
+
+function organizationMonthlyAttention(areas) {
+  const completed = areas.filter(hasAreaResult);
+  const ranked = completed
+    .map((area) => ({ area, totals: reportAreaTotals(area), high: reportHighRiskCount(area) }))
+    .filter(({ totals }) => totals.NC > 0)
+    .sort((a, b) => b.high - a.high || b.totals.NC - a.totals.NC || Number(a.area.score) - Number(b.area.score))
+    .slice(0, 3);
+  const missing = areas.filter((area) => !hasAreaResult(area));
+  const detail = ranked.map(({ area, totals, high }) => `${area.name} (nota ${formatScore(area.score)}, ${totals.NC} NC${high ? `, ${high} de risco alto` : ""})`);
+  return `<p class="report-doc-text report-monthly-attention-text">${detail.length ? `Os principais pontos de atenção do mês são ${escapeHtml(reportPlainList(detail))}, considerando nota, quantidade de não conformidades e risco.` : "Não foram registradas não conformidades nas subáreas auditadas neste ciclo."} ${missing.length ? `Permanecem sem resultado concluído: ${escapeHtml(reportPlainList(missing.map((area) => area.name)))}.` : ""}</p>`;
+}
+
+function organizationNcRows(areas) {
+  return areas.map((area) => {
+    const rows = reportNcRows(area, 3);
+    if (!rows.length) return null;
+    const high = rows.filter((row) => row.riskLevel === "critico").length;
+    return [
+      `<strong>${escapeHtml(area.name)}</strong>`, String(reportAreaTotals(area).NC), String(high),
+      escapeHtml(reportPlainList(rows.map((row) => reportFullText(row.text)))),
+      String(reportCurrentPlansForArea(area).length)
+    ];
+  }).filter(Boolean);
+}
+
+function organizationCurrentPlanRows(areas) {
+  return areas.flatMap((area) => reportCurrentPlansForArea(area).map((plan) => [
+    `<strong>${escapeHtml(area.name)}</strong>`,
+    escapeHtml(plan.publicCode || plan.code || plan.id || "—"),
+    escapeHtml(reportFullText(plan.question || plan.backendItems?.[0]?.question || plan.block || "Não conformidade vinculada")),
+    escapeHtml(reportFullText(plan.title || plan.requiredCorrection || "Ação corretiva em definição")),
+    escapeHtml(plan.due || shortDate(plan.dueAt)),
+    reportActionStatusTag(plan.status)
+  ]));
+}
+
+function organizationConclusion(parent, areas, average) {
+  const totals = organizationReportTotals(areas);
+  const plans = areas.reduce((sum, area) => sum + reportCurrentPlansForArea(area).length, 0);
+  const evaluatedPlans = areas.reduce((sum, area) => sum + reportPreviousPlansForArea(area).length, 0);
+  const reportArea = { ...aggregateOrganizationArea(parent), name: parent.name };
+  const planReading = evaluatedPlans
+    ? `${reportPlural(evaluatedPlans, "plano anterior foi avaliado", "planos anteriores foram avaliados")} quanto à recorrência e ao impacto na nota.`
+    : "Não havia planos anteriores disponíveis para avaliação neste ciclo.";
+  return `<div class="report-note-box"><strong>Conclusão técnica</strong><p>A área ${escapeHtml(parent.name)} encerrou o período com nota média ${formatScore(average)}, ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(plans, "plano de ação vigente", "planos de ação vigentes")}. ${planReading} O próximo ciclo deverá verificar a manutenção dos resultados e a efetividade das ações que permanecem em andamento. As 46 respostas, as observações e as evidências fotográficas estão detalhadas nos relatórios individuais das subáreas.</p></div><div class="report-signatures is-signed-report"><span><strong>${escapeHtml(reportAuditorName(reportArea))}</strong>Auditor responsável<small>Assinado eletronicamente em ${escapeHtml(reportAuditWindow(reportArea).signedAt)}</small></span><span><strong>${escapeHtml(reportResponsibleName(reportArea))}</strong>Responsável da área auditada<small>Responsável identificado no cadastro da área</small></span></div>`;
+}
+
 function organizationPlanEvaluation(parent, areas) {
-  const plans = areas.flatMap((area) => actionPlansForArea(area).map((plan) => ({ area, plan })));
+  const plans = areas.flatMap((area) => reportPreviousPlansForArea(area).map((plan) => ({ area, plan })));
   if (!plans.length) {
     return `<p class="report-footnote report-plan-evaluation-note">Não há planos de ação anteriores vigentes ou pendentes de avaliação para esta área ou suas subáreas. Portanto, não há impacto ou recorrência a avaliar neste período.</p>`;
   }
   return `
     <p class="report-doc-text report-plan-evaluation-note">Esta seção resume os planos de ação anteriores de ${escapeHtml(parent.name)}. Evidências e decisões detalhadas permanecem nos relatórios individuais das subáreas.</p>
-    ${reportDocTable(["Subárea", "Plano / pergunta", "Situação", "Recorrência", "Impacto"], plans.map(({ area, plan }) => {
+    ${reportDocTable(["Subárea", "Plano", "Avaliação"], plans.map(({ area, plan }) => {
       const question = plan.backendItems?.[0]?.question || plan.question || plan.block || "Não conformidade vinculada";
       const code = plan.publicCode || plan.code || `PA-${String(plan.id || "").slice(0, 8).toUpperCase()}`;
-      return [escapeHtml(area.name), `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportCompactText(question, 68))}`, reportActionStatusTag(plan.status), plan.recurrent === true ? "Sim" : "Não identificada", reportPlanImpact(plan)];
-    }), "is-plan-evaluation")}
+      return [escapeHtml(area.name), `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportFullText(question))}`, escapeHtml(reportPlanEvaluationNarrative(plan, area))];
+    }), "is-organization-plan-evaluation")}
   `;
 }
 
@@ -3527,26 +3677,31 @@ function organizationMonthlyReportPage(parent) {
   const completed = areas.filter(hasAreaResult);
   const scores = completed.map((area) => Number(area.score));
   const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
-  const totalNcs = areas.reduce((sum, area) => sum + Number(area.ncs || 0), 0);
-  const totalPlans = areas.reduce((sum, area) => sum + actionPlansForArea(area).length, 0);
   const reportArea = { ...aggregateOrganizationArea(parent), name: parent.name };
-  const summaryRows = areas.map((area) => [
-    escapeHtml(area.name),
-    formatScore(area.score),
-    hasAreaResult(area) ? reportStatusTag(area.status) : reportTag("Não auditada", "neutral"),
-    String(area.ncs || 0),
-    String(actionPlansForArea(area).length)
-  ]);
+  const totals = organizationReportTotals(areas);
+  const planCount = areas.reduce((sum, area) => sum + reportCurrentPlansForArea(area).length, 0);
+  const conformity = totals.evaluated ? Math.round((totals.C / totals.evaluated) * 100) : 0;
+  const highRisk = areas.reduce((sum, area) => sum + reportHighRiskCount(area), 0);
+  const title = "Relatório Consolidado Mensal da Área";
+  const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
   const pages = [
-    reportMonthlyPage("Relatório Consolidado Mensal", reportArea, 1, 2, `
-      ${reportSection("1", "Síntese executiva da área", `<div class="report-mini-kpis"><div class="report-mini-kpi is-good"><span>Nota média</span><strong>${formatScore(average)}</strong><small>resultado consolidado</small></div><div class="report-mini-kpi is-neutral"><span>Subáreas auditadas</span><strong>${completed.length}</strong><small>de ${areas.length} cadastradas</small></div><div class="report-mini-kpi is-medium"><span>Não conformidades</span><strong>${totalNcs}</strong><small>registradas no período</small></div><div class="report-mini-kpi is-neutral"><span>Planos vinculados</span><strong>${totalPlans}</strong><small>em acompanhamento</small></div></div><p class="report-doc-text">O consolidado apresenta a visão gerencial de ${escapeHtml(parent.name)}. O detalhamento técnico, as 46 respostas e as evidências permanecem nos relatórios individuais de cada subárea.</p>`) }
-      ${reportSection("2", "Resultado por subárea", organizationReportScoreChart(areas))}
-      ${reportSection("3", "Resumo das subáreas", reportDocTable(["Subárea", "Nota", "Classificação", "NCs", "Planos"], summaryRows))}
+    reportMonthlyPage(title, reportArea, 1, 3, `
+      <h1>${titleWithMonth}</h1>
+      <p class="report-doc-lead">Relatório gerencial da área ${escapeHtml(parent.name)}, com consolidação das subáreas auditadas no período. O detalhamento técnico, as 46 respostas e as evidências permanecem nos relatórios individuais.</p>
+      <div class="report-mini-kpis"><div class="report-mini-kpi is-good"><span>Nota média</span><strong>${formatScore(average)}</strong><small>resultado consolidado</small></div><div class="report-mini-kpi is-good"><span>Conformidade</span><strong>${conformity}%</strong><small>itens avaliados</small></div><div class="report-mini-kpi is-neutral"><span>Subáreas auditadas</span><strong>${completed.length}</strong><small>de ${areas.length} cadastradas</small></div><div class="report-mini-kpi is-medium"><span>Não conformidades</span><strong>${totals.NC}</strong><small>registradas no período</small></div><div class="report-mini-kpi is-danger"><span>Risco alto</span><strong>${highRisk}</strong><small>ocorrências prioritárias</small></div><div class="report-mini-kpi is-neutral"><span>Planos vinculados</span><strong>${planCount}</strong><small>em acompanhamento</small></div></div>
+      ${reportMonthlyLegendBlock()}
+      ${reportSection("1", "Síntese executiva da área", `${reportDocTable(["Indicador", "Resultado", "Indicador", "Resultado"], organizationSummaryRows(parent, areas, average), "is-meta")}${organizationMonthlyInsight(parent, areas, average)}`)}
+      ${reportSection("2", "Escopo e critérios de leitura", reportDocTable(["Critério", "Aplicação no relatório"], [["Conforme (C)", "Requisito atendido conforme checklist e referência legal aplicada."], ["Não Conforme (NC)", "Requisito não atendido, com necessidade de evidência, plano de ação e acompanhamento."], ["Não Avaliado (X)", "Item não aplicável ou não verificado no ciclo mensal analisado."], ["Subárea não auditada", "Subárea cadastrada sem auditoria concluída no período; não participa do cálculo da nota média."], ["Meta de desempenho", "Nota mínima de 8,0 para leitura satisfatória da área no mês vigente."], ["Risco da pergunta", "Cada pergunta possui risco previamente atribuído; uma NC herda esse nível de risco."]]))}
     `),
-    reportMonthlyPage("Relatório Consolidado Mensal", reportArea, 2, 2, `
-      ${reportSection("4", "Avaliação dos planos de ação anteriores", organizationPlanEvaluation(parent, areas))}
-      ${reportSection("5", "Planos de ação vigentes", reportDocTable(["Subárea", "Código", "Pergunta / ação", "Prazo", "Situação"], areas.flatMap((area) => actionPlansForArea(area).map((plan) => [escapeHtml(area.name), escapeHtml(plan.publicCode || plan.code || plan.id || "—"), escapeHtml(reportCompactText(plan.question || plan.title || plan.block || "Plano vinculado", 74)), escapeHtml(plan.due || shortDate(plan.dueAt)), reportActionStatusTag(plan.status)]))))}
-      <p class="report-footnote">Consulte os relatórios individuais das subáreas para visualizar respostas, observações e evidências fotográficas.</p>
+    reportMonthlyPage(title, reportArea, 2, 3, `
+      ${reportSection("3", "Resultado por subárea", `${organizationReportScoreChart(areas)}${reportDocTable(["Subárea", "Itens", "C", "NC", "X", "Nota", "Class."], organizationSubareaRows(areas), "is-blocks")}`)}
+      ${reportSection("4", "Pontos de atenção do mês", organizationMonthlyAttention(areas))}
+      ${reportSection("5", "Não conformidades registradas", reportDocTable(["Subárea", "NCs", "Risco alto", "Principais requisitos", "Planos"], organizationNcRows(areas), "is-organization-ncs"))}
+    `),
+    reportMonthlyPage(title, reportArea, 3, 3, `
+      ${reportSection("6", "Avaliação dos planos de ação anteriores", organizationPlanEvaluation(parent, areas))}
+      ${reportSection("7", "Planos de ação vigentes", `${reportDocTable(["Subárea", "Código", "Pergunta", "Ação corretiva", "Prazo", "Situação"], organizationCurrentPlanRows(areas), "is-organization-plans")}<p class="report-footnote">Consulte os relatórios individuais das subáreas para visualizar respostas, observações, decisões do auditor e evidências fotográficas.</p>`)}
+      ${reportSection("8", "Conclusão", organizationConclusion(parent, areas, average))}
     `)
   ];
   return `<div class="technical-report report-organization-monthly">${pages.join("")}</div>`;
@@ -3602,7 +3757,7 @@ function reportDocHeader(title, area, showMeta = false) {
       ${showMeta ? `<div class="report-doc-meta-strip">
         <span><strong>Unidade</strong>Hospital Einstein - Morumbi</span>
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName(area))}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
         <span><strong>Data</strong>${audit.date}</span>
         <span><strong>Início</strong>${audit.start}</span>
@@ -3614,7 +3769,7 @@ function reportDocHeader(title, area, showMeta = false) {
 }
 
 function reportMonthlyDocHeader(title, area, showMeta = false) {
-  const audit = reportAuditWindow();
+  const audit = reportAuditWindow(area);
   return `
     <header class="report-doc-header report-monthly-header">
       <div class="report-doc-brand">
@@ -3633,7 +3788,7 @@ function reportMonthlyDocHeader(title, area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName(area))}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
@@ -3645,7 +3800,7 @@ function reportComparisonPeriodLabel() {
 }
 
 function reportComparisonDocHeader(area, showMeta = false) {
-  const audit = reportAuditWindow();
+  const audit = reportAuditWindow(area);
   return `
     <header class="report-doc-header report-monthly-header report-comparison-header">
       <div class="report-doc-brand">
@@ -3664,7 +3819,7 @@ function reportComparisonDocHeader(area, showMeta = false) {
       </div>
       ${showMeta ? `<div class="report-doc-meta-strip report-monthly-meta-strip">
         <span><strong>Área</strong>${escapeHtml(area.name)}</span>
-        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName())}</span>
+        <span><strong>Auditor</strong>${escapeHtml(reportAuditorName(area))}</span>
         <span><strong>Responsável</strong>${escapeHtml(reportResponsibleName(area))}</span>
       </div>` : ""}
     </header>
@@ -4179,7 +4334,7 @@ function reportSummaryRows(area) {
   const stats = actionPlanStats(area);
   const conformity = totals.evaluated ? Math.round((totals.C / totals.evaluated) * 100) : 0;
   return [
-    ["Nota final da área", `<strong>${formatScore(area.score)}/10</strong>`, "Classificação", reportStatusTag(area.status)],
+    ["Nota final da subárea", `<strong>${formatScore(area.score)}/10</strong>`, "Classificação", reportStatusTag(area.status)],
     ["Itens avaliados", String(totals.total), "Conformidade", `${conformity}% dos itens avaliados`],
     ["Conformes", String(totals.C), "Não conformidades", `<strong>${totals.NC}</strong>`],
     ["Não avaliados", String(totals.X), "Planos gerados", `${stats.total} (${reportOpenActions(stats)} abertos)`]
@@ -4209,7 +4364,7 @@ function reportMiniKpis(area, mode = "monthly") {
         { label: "Planos avaliados", value: String(stats.total), note: `${actionPlansForArea(area).filter((plan) => plan.status !== "concluido").length} não concluídos`, tone: actionPlansForArea(area).some((plan) => plan.status !== "concluido") ? "danger" : "good" }
       ]
     : [
-        { label: "Nota da área", value: formatScore(area.score), note: "/10", tone: area.score >= 8 ? "good" : "danger" },
+        { label: "Nota da subárea", value: formatScore(area.score), note: "/10", tone: area.score >= 8 ? "good" : "danger" },
         { label: "Conformidade", value: `${reportConformityPercent(area)}%`, note: "itens conformes", tone: reportConformityPercent(area) >= 80 ? "good" : "medium" },
         { label: "NCs", value: String(totals.NC), note: "não conformidades", tone: totals.NC ? "medium" : "good" },
         { label: "Risco alto", value: String(reportHighRiskCount(area)), note: "NCs críticas", tone: reportHighRiskCount(area) ? "danger" : "good" },
@@ -4315,7 +4470,7 @@ function reportComparisonLegendBlock() {
 function reportActionFootnote() {
   return `
     <p class="report-footnote">
-      Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da área.
+      Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da subárea.
     </p>
   `;
 }
@@ -4323,7 +4478,7 @@ function reportActionFootnote() {
 function reportComparisonIntroNote() {
   return `
     <p class="report-footnote">
-      Nota: planos de ação gerados em ${reportMonthLabel(currentMonthId)} permanecem vigentes e serão avaliados na auditoria de Setembro/2026, mediante conclusão, evidência registrada e ausência de repetição da ocorrência relacionada.
+      Nota: os planos de ação originados no ciclo anterior são avaliados neste comparativo mediante situação, evidência registrada, recorrência do requisito e impacto observado na nota atual.
     </p>
   `;
 }
@@ -4349,11 +4504,11 @@ function reportMonthlyInsight(area) {
     .slice(0, 2)
     .map((block) => block.title);
   const metaText = area.score >= 8
-    ? "A área permanece dentro da meta mínima definida para o ciclo mensal."
-    : "A área está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
+    ? "A subárea permanece dentro da meta mínima definida para o ciclo mensal."
+    : "A subárea está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
   return `
     <div class="report-note-box">
-      <strong>Síntese técnica da área</strong>
+      <strong>Síntese técnica da subárea</strong>
       <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}; ${worstBlocks.length ? `os blocos que exigem atenção neste mês são ${escapeHtml(worstBlocks.join(" e "))}` : "não há bloco com não conformidade no ciclo"}.</p>
     </div>
   `;
@@ -4422,7 +4577,7 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
   const plotBottom = pad.top + innerH;
   const slot = innerW / blocks.length;
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
-  const barW = Math.min(38, slot * 0.38);
+  const barW = Math.min(34, slot * 0.34);
   const ticks = [0, 5, 8, 10];
   const previousPoints = blocks.map((block, index) => {
     const center = pad.left + index * slot + slot / 2;
@@ -4445,14 +4600,14 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
           .join("")}
         <text x="${width - pad.right + 6}" y="${yFor(8) - 5}" text-anchor="start" font-size="10" font-weight="760" fill="#2d8a43">Meta 8,0</text>
         ${isComparison ? `
-          <path d="${reportSmoothChartPath(previousPoints)}" fill="none" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="${reportSmoothChartPath(previousPoints)}" fill="none" stroke="#374151" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
         ` : ""}
         ${blocks
           .map((block, index) => {
             const center = pad.left + index * slot + slot / 2;
             const current = block.score;
             const currentY = yFor(current);
-            const barTone = current < 7 ? "#ee2f36" : "#0a6cff";
+            const barTone = "#0a6cff";
             return `
               <rect x="${center - barW / 2}" y="${currentY}" width="${barW}" height="${plotBottom - currentY}" rx="5" fill="${barTone}"></rect>
             `;
@@ -4468,8 +4623,8 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
             const previousLabelX = center;
             const previousLabelY = Math.min(plotBottom - 7, previousY + (labelsAreClose ? 16 : 14));
             return `
-              <circle cx="${center}" cy="${previousY}" r="3.4" fill="#ffffff" stroke="#9aa6b6" stroke-width="2"></circle>
-              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="middle" font-size="9.6" font-weight="780" fill="#8a97a8">${formatScore(previous)}</text>
+              <circle cx="${center}" cy="${previousY}" r="3.6" fill="#ffffff" stroke="#374151" stroke-width="2.2"></circle>
+              <text x="${previousLabelX}" y="${previousLabelY}" text-anchor="middle" font-size="9.8" font-weight="760" fill="#374151">${formatScore(previous)}</text>
             `;
           })
           .join("") : ""}
@@ -4481,12 +4636,12 @@ function reportBlockScoreChart(area, comparison = false, options = {}) {
             const previousY = yFor(reportPreviousBlockScore(area, block, index));
             const labelsAreClose = isComparison && Math.abs(currentY - previousY) < 16;
             const currentLabelY = Math.max(14, currentY - (labelsAreClose ? 14 : 6));
-            const barTone = current < 7 ? "#ee2f36" : "#0a6cff";
+            const barTone = "#0a6cff";
             return `<text x="${center}" y="${currentLabelY}" text-anchor="middle" font-size="9.6" font-weight="780" fill="${barTone}">${formatScore(current)}</text>`;
           })
           .join("")}
         ${isComparison ? `
-          <line x1="${pad.left}" y1="8" x2="${pad.left + 18}" y2="8" stroke="#9aa6b6" stroke-width="2" stroke-linecap="round"></line>
+          <line x1="${pad.left}" y1="8" x2="${pad.left + 18}" y2="8" stroke="#374151" stroke-width="2.2" stroke-linecap="round"></line>
           <text x="${pad.left + 20}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(reportPreviousMonthId())}</text>
           <rect x="${pad.left + 86}" y="5" width="14" height="6" rx="3" fill="#0a6cff"></rect>
           <text x="${pad.left + 106}" y="11" font-size="10" font-weight="700" fill="#526174">${reportShortMonthLabel(currentMonthId)}</text>
@@ -4563,17 +4718,27 @@ function reportNcDetailRows(area) {
       escapeHtml(reportFullText(row.text)),
       reportRiskTag(row.riskLevel),
       escapeHtml(reportObservationForQuestion(row)),
-      escapeHtml(plan?.title || `Plano para ${row.blockTitle}`)
+      escapeHtml(plan?.publicCode || plan?.code || plan?.id || `Plano para ${row.blockTitle}`)
     ];
   });
 }
 
 function reportEvidenceImageForQuestion(row) {
+  if (row.previewEvidenceUrl) return row.previewEvidenceUrl;
   return row.evidenceFileId ? apiUrl(`/api/files/${row.evidenceFileId}/content`) : null;
 }
 
 function reportEvidenceGrid(area) {
-  const rows = reportNcRows(area, 4).filter((row) => row.evidenceFileId);
+  let rows = reportNcRows(area, 4).filter((row) => row.evidenceFileId);
+  const isLocalPreview = ["localhost", "127.0.0.1"].includes(location.hostname) && new URLSearchParams(location.search).get("preview");
+  if (!rows.length && isLocalPreview && area.id === "cozinha-catering") {
+    const previewEvidence = {
+      20: "assets/report-evidence-catering-1.png",
+      10: "assets/report-evidence-catering-2.png",
+      3: "assets/report-evidence-catering-3.png"
+    };
+    rows = reportNcRows(area, 3).map((row) => ({ ...row, previewEvidenceUrl: previewEvidence[row.number] })).filter((row) => row.previewEvidenceUrl);
+  }
   if (!rows.length) return `<p class="report-muted">Sem evidências fotográficas vinculadas para esta área.</p>`;
   return `
     <div class="${rows.length === 1 ? "report-evidence-list" : "report-evidence-grid"}">
@@ -4622,24 +4787,30 @@ function reportMonthlyAttention(area) {
 }
 
 function reportPlanRowsForArea(area) {
-  const dueDates = ["05/09/2026", "10/09/2026", "16/09/2026", "20/09/2026"];
-  return actionPlansForArea(area).map((plan, index) => [
-    `<strong>${escapeHtml(plan.block)}</strong>`,
-    escapeHtml(reportFullText(plan.title)),
-    escapeHtml(plan.owner),
-    dueDates[index % dueDates.length],
+  return reportCurrentPlansForArea(area).map((plan) => [
+    `<strong>${escapeHtml(plan.publicCode || plan.code || plan.id || "—")}</strong>`,
+    escapeHtml(reportFullText(plan.question || plan.backendItems?.[0]?.question || plan.block || "Não conformidade vinculada")),
+    escapeHtml(reportFullText(plan.title || plan.requiredCorrection || "Ação corretiva em definição")),
+    escapeHtml(plan.due || shortDate(plan.dueAt)),
     reportActionStatusTag(plan.status)
   ]);
 }
 
 function reportConclusion(area) {
   const totals = reportAreaTotals(area);
-  const stats = actionPlanStats(area);
+  const previousPlans = reportPreviousPlansForArea(area);
+  const currentPlans = reportCurrentPlansForArea(area);
   const statusText = area.score >= 8 ? "resultado satisfatório para o mês vigente" : "necessidade de plano de correção com acompanhamento no próximo ciclo";
+  const previousPlanText = previousPlans.length
+    ? `A avaliação do plano anterior registrou: ${reportPlanEvaluationNarrative(previousPlans[0], area)}`
+    : "Não havia plano de ação anterior a ser avaliado neste período.";
+  const currentPlanText = currentPlans.length
+    ? `${reportPlural(currentPlans.length, "plano de ação permanece vigente", "planos de ação permanecem vigentes")} e deverá ser acompanhado na próxima auditoria.`
+    : "Não há plano de ação vigente originado nesta auditoria.";
   return `
     <div class="report-note-box">
       <strong>Conclusão técnica</strong>
-      <p>A área ${escapeHtml(area.name)} apresentou ${statusText}. O relatório registra ${reportPlural(totals.NC, "não conformidade", "não conformidades")}, ${reportPlural(stats.total, "plano de ação", "planos de ação")} e ${reportPlural(reportOpenActions(stats), "ação aberta", "ações abertas")}. A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
+      <p>A subárea ${escapeHtml(area.name)} apresentou ${statusText} e registrou ${reportPlural(totals.NC, "não conformidade", "não conformidades")}. ${escapeHtml(previousPlanText)} ${escapeHtml(currentPlanText)} A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
     <div class="report-signatures is-signed-report">
       <span><strong>${escapeHtml(reportAuditorName())}</strong>Auditor responsável<small>Assinado eletronicamente em ${escapeHtml(reportAuditWindow().signedAt)}</small></span>
@@ -4894,16 +5065,18 @@ function reportBlockPriorityRows(area) {
 }
 
 function reportComparativeNarrative(area) {
-  const { delta } = reportComparisonMetrics(area);
+  const { delta, recurring, stats } = reportComparisonMetrics(area);
   const tendency = delta > 0.15 ? "melhora" : delta < -0.15 ? "queda" : "estabilidade";
-  const subject = area.name.trim().toLowerCase().startsWith("área ")
-    ? `A ${escapeHtml(area.name)}`
-    : `A área ${escapeHtml(area.name)}`;
-  const followUp = delta > 0.15
-    ? "Neste comparativo, a melhora da nota não elimina a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo."
-    : delta < -0.15
-      ? "Neste comparativo, a queda da nota reforça a necessidade de acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo."
-      : "Neste comparativo, a estabilidade da nota ainda exige acompanhamento, pois permanecem ocorrências recorrentes e plano de ação não concluído no prazo.";
+  const subject = `A subárea ${escapeHtml(area.name)}`;
+  const planReading = stats.total
+    ? stats.improved
+      ? "O plano avaliado apresentou impacto positivo, mas os requisitos recorrentes devem continuar sendo monitorados."
+      : "Os planos avaliados ainda não apresentaram impacto positivo comprovado."
+    : "Não havia plano anterior disponível para avaliação de efetividade.";
+  const recurrenceReading = recurring
+    ? `Foram identificadas ${reportPlural(recurring, "ocorrência recorrente", "ocorrências recorrentes")}.`
+    : "Não foram identificadas ocorrências recorrentes.";
+  const followUp = `${recurrenceReading} ${planReading}`;
 
   return `
     <div class="report-analysis-note">
@@ -4987,7 +5160,7 @@ function reportAnalyticQuestionRows(area) {
       : "Ação ainda inconclusiva: impacto será confirmado no próximo ciclo.";
 
   return [
-    ["A nota da área melhorou?", delta > 0.15 ? `Sim. Houve ganho de ${reportDeltaText(delta)} ponto.` : delta < -0.15 ? `Não. Houve queda de ${reportDeltaText(delta)} ponto.` : "A nota permaneceu estável."],
+    ["A nota da subárea melhorou?", delta > 0.15 ? `Sim. Houve ganho de ${reportDeltaText(delta)} ponto.` : delta < -0.15 ? `Não. Houve queda de ${reportDeltaText(delta)} ponto.` : "A nota permaneceu estável."],
     ["As NCs anteriores se repetiram?", recurring ? `Sim. ${recurring} NC(s) aparecem como recorrentes e devem ser priorizadas.` : "Não há recorrência relevante no recorte."],
     ["Houve novas NCs?", newNcs ? `Sim. ${newNcs} nova(s) NC(s) foram registradas no mês atual.` : "Não houve aumento de NCs em relação ao mês anterior."],
     ["Alguma NC foi resolvida?", resolvedNcs ? `Sim. ${resolvedNcs} NC(s) deixaram de aparecer no mês atual.` : "Não há resolução mensurável de NCs neste comparativo."],
@@ -5004,18 +5177,18 @@ function monthlyReportPage() {
   const area = reportSelectedArea();
   const needsExtraPage = reportMonthlyNeedsExtraPage(area);
   const pages = needsExtraPage ? 4 : 3;
-  const title = "Relatório Consolidado da Auditoria do Mês";
+  const title = "Relatório Individual da Auditoria do Mês";
   const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
   const ncSection = reportSection("5", "Não conformidades registradas", `
     ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
   `);
   const evidenceSection = reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area));
   const plansConclusionSections = `
-    ${reportSection("7", "Planos de ação vigentes", `
+    ${reportSection("7", "Planos de ação", `
       <h3 class="report-subsection-title">Avaliação dos planos de ação anteriores</h3>
       ${reportPreviousActionEvaluation(area)}
       <h3 class="report-subsection-title">Planos de ação vigentes nesta auditoria</h3>
-      ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
+      ${reportDocTable(["Código", "Pergunta", "Ação corretiva", "Prazo", "Situação"], reportPlanRowsForArea(area), "is-plans")}
       ${reportActionFootnote()}
     `)}
     ${reportSection("8", "Conclusão", reportConclusion(area))}
@@ -5025,10 +5198,10 @@ function monthlyReportPage() {
     <div class="technical-report">
       ${reportMonthlyPage(title, area, 1, pages, `
         <h1>${titleWithMonth}</h1>
-        <p class="report-doc-lead">Relatório mensal individual da área auditada, com resultado do mês vigente, blocos do checklist, não conformidades, evidências e planos de ação gerados.</p>
+        <p class="report-doc-lead">Relatório mensal individual da subárea auditada, com resultado do período, blocos do checklist, não conformidades, evidências fotográficas e planos de ação vinculados.</p>
         ${reportMiniKpis(area)}
         ${reportMonthlyLegendBlock()}
-        ${reportSection("1", "Síntese executiva da área", `
+        ${reportSection("1", "Síntese executiva da subárea", `
           ${reportDocTable(["Indicador", "Resultado", "Indicador", "Resultado"], reportSummaryRows(area), "is-meta")}
           ${reportMonthlyInsight(area)}
         `)}
@@ -5063,17 +5236,17 @@ function monthlyReportPage() {
 function comparativeReportPage() {
   const area = reportSelectedArea();
   const pages = 4;
-  const title = "Relatório Comparativo Analítico";
+  const title = "Relatório Comparativo Analítico da Subárea";
 
   return `
     <div class="technical-report">
       ${reportComparisonPage(area, 1, pages, `
         <h1>${title}</h1>
-        <p class="report-doc-lead">Este relatório compara o desempenho da área auditada entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}, considerando a nota final, a variação dos blocos do checklist, as não conformidades recorrentes, os itens novamente não avaliados e a efetividade dos planos de ação vigentes. A análise busca verificar se a evolução observada representa melhoria efetiva do processo e identificar os pontos que permanecem sob correção, acompanhamento ou reavaliação.</p>
+        <p class="report-doc-lead">Este relatório analítico compara o desempenho da subárea ${escapeHtml(area.name)} entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}. A análise considera a nota final, a variação dos blocos do checklist, as não conformidades recorrentes e a efetividade dos planos de ação, sem reproduzir as evidências fotográficas do relatório individual.</p>
         ${reportComparisonIntroNote()}
         ${reportMiniKpis(area, "comparison")}
         ${reportComparisonLegendBlock()}
-        ${reportSection("1", "Resumo comparativo da área", `
+        ${reportSection("1", "Resumo comparativo da subárea", `
           <p class="report-doc-text report-comparison-reading-text">O resumo apresenta os principais indicadores do período comparado, incluindo nota anterior, nota atual, variação da nota, ocorrências recorrentes, novos apontamentos, itens resolvidos e planos de ação vinculados à área auditada.</p>
           ${reportDocTable(["Indicador", reportShortMonthLabel(reportPreviousMonthId()), "Indicador", reportShortMonthLabel(currentMonthId)], reportComparisonSummaryRows(area), "is-meta")}
         `)}
@@ -5107,7 +5280,7 @@ function comparativeReportPage() {
           ${reportDocTable(["Nº", "Bloco / requisito", "Nota", "Risco", "Motivo da priorização", "Conduta sugerida"], reportBlockPriorityRows(area), "is-priority")}
           <div class="report-note-box">
             <strong>Direcionamento das correções</strong>
-            <p>${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)} constitui a principal prioridade para o próximo ciclo, devido à recorrência de não conformidade de risco alto e à existência de plano de ação não concluído no prazo. O acompanhamento deverá considerar a execução da ação, o cumprimento do prazo, a evidência registrada e a validação de sua efetividade na auditoria subsequente.</p>
+            <p>${escapeHtml(reportBlockPriorityData(area)[0]?.block.title || area.name)} constitui a principal prioridade para o próximo ciclo por concentrar as ocorrências recorrentes do período. O acompanhamento deverá confirmar a manutenção da melhoria, a ausência de novas repetições e a efetividade da medida corretiva na auditoria subsequente.</p>
           </div>
         `)}
         <div class="report-signatures is-signed-report">
@@ -8624,17 +8797,56 @@ document.addEventListener("submit", (event) => {
 const reportRequest = reportFileRequest();
 
 function applyLocalPreviewScores() {
-  const previewScores = [8.7, 9.1, 8.4, 9.3, 8.8, 9.0, 8.5, 9.2, 8.9, 9.4, 8.6, 9.0, 8.3, 8.8, 9.1, 8.7, 9.2, 8.9, 8.4, 9.0, 8.6, 9.3, 8.5, 8.8, 9.1, 8.7, 9.0];
+  const previewScores = [9.3, 8.8, 9.1, 8.9, 8.4, 9.0, 8.6, 9.2, 8.9, 9.4, 8.6, 9.0, 8.3, 8.8, 9.1, 8.7, 9.2, 8.9, 8.4, 9.0, 8.6, 9.3, 8.5, 8.8, 9.1, 8.7, 9.0];
   let previewIndex = 0;
   for (const area of areaData) {
     if (!area.parentAreaId) continue;
     area.score = previewScores[previewIndex % previewScores.length];
-    area.last = Math.max(0, area.score - 0.2);
+    area.last = Math.max(0, area.score - (area.id === "cozinha-catering" ? 0.6 : 0.2));
     area.audits = 1;
     area.status = scoreStatus(area.score);
+    const questions = blocksForArea(area).flatMap((block) => block.questions || []);
+    const nonConformities = area.id === "cozinha-catering" ? 3 : 0;
+    const notEvaluated = area.id === "cozinha-catering" ? 1 : 0;
+    state.answers = {
+      ...state.answers,
+      [area.id]: Object.fromEntries(questions.map((question, questionIndex) => [
+        question.id,
+        area.id === "cozinha-catering" && [20, 10, 3].includes(Number(question.number))
+          ? "NC"
+          : area.id === "cozinha-catering" && Number(question.number) === 46
+            ? "X"
+            : "C"
+      ]))
+    };
+    if (area.id === "cozinha-catering") {
+      state.auditNotes = {
+        ...state.auditNotes,
+        [area.id]: {
+          ...(state.auditNotes?.[area.id] || {}),
+          "equipamentos-moveis-e-utensilios-20": "Equipamento sujo com resto de comida.",
+          "edificacao-e-instalacao-10": "Alimento na cuba suja.",
+          "edificacao-e-instalacao-3": "Recipiente sujo."
+        }
+      };
+    }
+    area.ncs = nonConformities;
+    area.critical = Math.min(1, nonConformities);
+    area.pending = area.id === "cozinha-catering" ? 1 : 0;
     previewIndex += 1;
   }
   monthLines[currentMonthId] = areaData.map((area) => area.score);
+  operationalAudits = areaData
+    .filter((area) => area.parentAreaId)
+    .map((area, index) => ({
+      id: `local-audit-${area.id}`,
+      area_id: area.backendId,
+      status: "finished",
+      responsible_name: area.parentAreaId === "conforto-medico" ? "Caio Teste" : "Responsável da área",
+      auditor_name: "David Souza",
+      started_at: new Date(Date.now() - (45 + index) * 60000).toISOString(),
+      finished_at: new Date().toISOString()
+    }));
   document.body.classList.add("local-hierarchy-preview");
 }
 
@@ -8644,23 +8856,29 @@ function applyLocalPreviewActionPlans() {
   operationalActionPlans = [{
     id: "local-pa-catering-001",
     area,
-    title: "PA-2026-CATERING-001",
-    publicCode: "PA-2026-CATERING-001",
+    title: "Higienizar a pia, retirar os alimentos da cuba e regularizar os insumos para higienização das mãos.",
+    publicCode: "PA-2026-4D20AA31",
     block: "Edificação e Instalação",
     question: "Pia para higienização das mãos: limpa, em ponto estratégico, com papel toalha branca, sabonete bactericida ou neutro e antisséptico.",
-    owner: "Caio",
-    status: "concluido",
-    due: "21/09/2026",
-    improved: true,
-    recurrent: false,
-    previousScore: 7.1,
-    currentScore: 8.7,
+    owner: "Caio Teste",
+    status: "andamento",
+    due: "21/10/2026",
+    previousEvaluation: {
+      publicCode: "PA-2026-CATERING-AGO-01",
+      question: "Pia para higienização das mãos: limpa, ponto estratégico, com papel toalha branco, sabonete bactericida ou neutro e antisséptico.",
+      status: "concluido",
+      improved: true,
+      recurrent: false,
+      previousScore: 8.7,
+      currentScore: 9.3,
+      evidenceSent: true,
+      evidenceDecision: "approved"
+    },
     evidenceSent: true,
     evidenceDecision: "approved",
     backendItems: [{
       question: "Pia para higienização das mãos: limpa, em ponto estratégico, com papel toalha branca, sabonete bactericida ou neutro e antisséptico.",
-      feedbackStatus: "approved",
-      responseEvidenceFileId: "local-demo-evidence"
+      feedbackStatus: "pending_review"
     }]
   }];
 }
