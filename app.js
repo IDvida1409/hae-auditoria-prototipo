@@ -201,6 +201,7 @@ let operationalAudits = null;
 let reportRefreshTimer = null;
 let reportRefreshAttempts = 0;
 let operationalAuditDetails = new Map();
+let globalSearchQuery = "";
 const pendingActionPlanEvidence = new Map();
 const pendingActionPlanEvidencePreview = new Map();
 const pendingAuditStarts = new Map();
@@ -1810,11 +1811,28 @@ function topbarMeta() {
   return titles[state.view] || titles.home;
 }
 
+function globalSearchResults(query) {
+  const term = String(query || "").trim().toLocaleLowerCase("pt-BR");
+  if (!term) return [];
+  const results = [];
+  const add = (id, label, detail, parentId = "") => {
+    if (`${label} ${detail}`.toLocaleLowerCase("pt-BR").includes(term)) results.push({ id, label, detail, parentId });
+  };
+  for (const parent of organizationAreas) {
+    add(`parent:${parent.id}`, parent.name, "Área com subáreas", parent.id);
+    for (const area of subareasForOrganizationArea(parent)) add(`area:${area.id}`, area.name, `Subárea de ${parent.name}`, parent.id);
+  }
+  for (const area of standaloneAuditAreas()) add(`area:${area.id}`, area.name, "Área independente", "");
+  if ("relatório".includes(term) || "relatorios".includes(term) || "pdf".includes(term)) add("nav:reports", "Relatórios", "Biblioteca de relatórios por área");
+  return results.slice(0, 10);
+}
+
 function topbar() {
   const displayName = currentAccessUser?.full_name || "Usuário";
   const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "US";
   const roleLabel = accessRoleLabels[currentAccessUser?.role] || "Acesso offline";
   const unreadNotifications = accessNotifications.filter((item) => !item.read_at).length;
+  const searchResults = globalSearchResults(globalSearchQuery);
   return `
     <header class="topbar fichario-topbar">
       <div class="brand-row">
@@ -1827,7 +1845,8 @@ function topbar() {
       </div>
       <label class="top-search">
         ${icons.search}
-        <input type="search" placeholder="Buscar área ou relatório..." aria-label="Buscar área ou relatório" />
+        <input type="search" placeholder="Buscar área ou relatório..." aria-label="Buscar área ou relatório" value="${escapeHtml(globalSearchQuery)}" />
+        ${globalSearchQuery.trim() ? `<div class="top-search-results" role="listbox">${searchResults.length ? searchResults.map((result) => `<button type="button" data-global-search-result="${escapeHtml(result.id)}" data-global-search-parent="${escapeHtml(result.parentId || "")}" title="Abrir ${escapeHtml(result.label)}"><strong>${escapeHtml(result.label)}</strong><small>${escapeHtml(result.detail)}</small></button>`).join("") : `<span class="top-search-empty">Nenhum resultado encontrado.</span>`}</div>` : ""}
       </label>
       <div class="notifications-anchor">
       <button class="message-btn" type="button" data-notifications-toggle aria-label="Notificações" aria-expanded="${notificationsOpen}">
@@ -5384,8 +5403,8 @@ function reportFileButtons({ area = null, report = null, kind = "monthly" } = {}
 function reportOptionRow(report, area) {
   return `
     <article class="report-option-row ${report.available ? "" : "is-disabled"}">
-      <div><h3>${escapeHtml(report.title)}</h3><p>${escapeHtml(report.note)}</p></div>
-      <span>${escapeHtml(report.status)}</span>
+      <div><h3>${escapeHtml(report.title)}</h3><p title="${escapeHtml(report.note)}">${escapeHtml(report.note)}</p></div>
+      <span title="${escapeHtml(report.status)}">${escapeHtml(report.status)}</span>
       <div class="report-option-actions">${report.available ? reportFileButtons({ area, kind: report.id }) : reportFileButtons()}</div>
     </article>
   `;
@@ -7377,6 +7396,30 @@ function advanceAuditQuestion(questionId, stayOnCurrent = false) {
 }
 
 document.addEventListener("click", async (event) => {
+  const searchResult = event.target.closest("[data-global-search-result]");
+  if (searchResult) {
+    const resultId = searchResult.dataset.globalSearchResult || "";
+    const parentId = searchResult.dataset.globalSearchParent || "";
+    globalSearchQuery = "";
+    state.reportFolderTab = "subareas";
+    if (resultId === "nav:reports") {
+      state.view = "reports";
+      state.reportFolderParentArea = "";
+      state.reportFolderArea = "";
+    } else if (resultId.startsWith("parent:")) {
+      state.view = "reports";
+      state.reportFolderParentArea = resultId.slice(7);
+      state.reportFolderArea = "";
+    } else {
+      state.view = "reports";
+      state.reportFolderParentArea = parentId;
+      state.reportFolderArea = resultId.startsWith("area:") ? resultId.slice(5) : "";
+    }
+    syncHashWithView("reports");
+    render();
+    return;
+  }
+
   const openActionPlanImage = event.target.closest("[data-open-action-plan-image]");
   if (openActionPlanImage) {
     state.actionPlanImagePreview = openActionPlanImage.dataset.openActionPlanImage;
@@ -8738,6 +8781,16 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches(".top-search input")) {
+    globalSearchQuery = event.target.value;
+    render({ skipSave: true });
+    requestAnimationFrame(() => {
+      const input = document.querySelector(".top-search input");
+      input?.focus();
+      input?.setSelectionRange(globalSearchQuery.length, globalSearchQuery.length);
+    });
+    return;
+  }
   if (event.target.matches('[data-access-user-form] [name="fullName"]')) {
     refreshUsernameSuggestions(event.target.form);
     return;
