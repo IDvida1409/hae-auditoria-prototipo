@@ -1938,7 +1938,7 @@ function selectedPanel(extraClass = "") {
     : "Acompanhar as não conformidades registradas e manter a evolução da nota.";
   return `
     <aside class="selected-panel surface ${extraClass}">
-      <button class="panel-close" data-clear-selection title="Fechar detalhe">${icons.close}</button>
+      <button class="panel-close" data-clear-selection data-clear-parent-area title="Fechar detalhe">${icons.close}</button>
       <h2>Área selecionada</h2>
       <div class="selected-area-head" style="--status-color:${status.color}">
         <img class="selected-icon" src="assets/icons/${area.icon}" alt="" />
@@ -1973,8 +1973,8 @@ function selectedPanel(extraClass = "") {
         </div>
       </div>
       <div class="detail-links">
-        <button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>
-        <button class="link-inline" data-area-detail="${area.id}">Expandir subárea ${svgIcon("externalLink")}</button>
+        <button class="primary-btn" data-area="${area.id}" data-open-area-detail>Ver análise completa da subárea ${svgIcon("arrow")}</button>
+        <button class="link-inline" data-area="${area.id}" data-open-area-detail>Expandir subárea ${svgIcon("externalLink")}</button>
       </div>
     </aside>
   `;
@@ -2296,6 +2296,7 @@ function dashboardHome() {
   const latePlans = planningActionRows().filter((plan) => plan.status === "overdue" && scopedIds.has(plan.area?.id)).length;
   const feedback = recentFeedbackNotifications();
   const areaContextLabel = visibleParent ? ` - ${visibleParent.name}` : "";
+  const showOrganizationBack = Boolean(visibleParent && (adminParent || hasSelection));
   const cardsMarkup = visibleParent
     ? visibleSubareas.map((area) => areaTile(area)).join("")
     : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
@@ -2341,7 +2342,7 @@ function dashboardHome() {
             </section>
           </div>
           ${hasSelection ? selectedPanel("mobile-selected-panel") : ""}
-          ${adminParent ? `<button class="organization-back" type="button" data-clear-parent-area>${icons.chevron}<span>Voltar para todas as áreas</span></button>` : ""}
+          ${showOrganizationBack ? `<button class="organization-back" type="button" data-clear-parent-area>${icons.chevron}<span>Voltar para áreas</span></button>` : ""}
           <div class="area-grid ${hasSelection ? "is-focused" : ""}">
             ${cardsMarkup}
           </div>
@@ -2596,7 +2597,7 @@ function areaQuickComparison(area) {
     ${linkedActionSummary(area)}
     ${area.isParentArea
       ? `<button class="primary-btn" data-parent-area="${area.id}">Ver todas as subáreas ${svgIcon("arrow")}</button>`
-      : `<button class="primary-btn" data-area-detail="${area.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
+      : `<button class="primary-btn" data-area="${area.id}" data-open-area-detail>Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
   `;
 }
 
@@ -2800,7 +2801,7 @@ function chartsPage() {
         <div class="graph-action-row">
           ${!focusedArea ? "" : focusedArea.isParentArea
             ? `<button class="primary-btn" data-parent-area="${focusedArea.id}">Ver todas as subáreas ${svgIcon("arrow")}</button>`
-            : `<button class="primary-btn" data-area-detail="${focusedArea.id}">Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
+            : `<button class="primary-btn" data-area="${focusedArea.id}" data-open-area-detail>Ver análise completa da subárea ${svgIcon("arrow")}</button>`}
         </div>`}
       </div>
       ${state.chartExpanded ? "" : `<aside class="compare-panel surface ${focusedArea ? "area-mode" : ""}">
@@ -5268,6 +5269,7 @@ function areaDetailPage() {
   }
   const summaries = blockSummaries(area);
   const allRows = questionRowsForArea(area);
+  const totalRows = allRows.length;
   const counts = countsFromRows(allRows);
   const conformityPct = Math.round(Number(area.score || 0) * 10);
   const ncPct = hasAreaResult(area) ? 100 - conformityPct : 0;
@@ -7009,6 +7011,31 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const clearSelection = event.target.closest("[data-clear-selection]");
+  if (clearSelection) {
+    state.selectedArea = "";
+    state.selectedParentArea = "";
+    state.chartFocusArea = null;
+    state.detailBlock = null;
+    state.view = "home";
+    syncHashWithView("home");
+    render();
+    return;
+  }
+
+  const areaDetail = event.target.closest("[data-area-detail]");
+  if (areaDetail) {
+    goAreaDetail(areaDetail.dataset.areaDetail);
+    return;
+  }
+
+  const feedbackToggle = event.target.closest("[data-toggle-feedback]");
+  if (feedbackToggle) {
+    state.feedbackExpanded = !state.feedbackExpanded;
+    render();
+    return;
+  }
+
   const usernameChoice = event.target.closest("[data-username-suggestion]");
   if (usernameChoice) {
     const form = usernameChoice.closest("[data-access-user-form]");
@@ -7158,9 +7185,20 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const clearParentArea = event.target.closest("[data-clear-parent-area]");
+  if (clearParentArea) {
+    state.selectedParentArea = "";
+    state.selectedArea = "";
+    state.view = "home";
+    syncHashWithView("home");
+    render();
+    return;
+  }
+
   const area = event.target.closest("[data-area]");
   if (area) {
-    setSelectedArea(area.dataset.area);
+    if (area.hasAttribute("data-open-area-detail")) goAreaDetail(area.dataset.area);
+    else setSelectedArea(area.dataset.area);
     return;
   }
 
@@ -7176,12 +7214,6 @@ document.addEventListener("click", async (event) => {
         document.querySelector(".graph-layout .compare-panel.area-mode")?.scrollIntoView({ block: "start", behavior: "smooth" });
       });
     }
-    return;
-  }
-
-  const detail = event.target.closest("[data-area-detail]");
-  if (detail) {
-    goAreaDetail(detail.dataset.areaDetail);
     return;
   }
 
@@ -7391,12 +7423,6 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.closest("[data-toggle-users-list]")) {
     state.settingsUsersExpanded = !state.settingsUsersExpanded;
-    render();
-    return;
-  }
-
-  if (event.target.closest("[data-toggle-feedback]")) {
-    state.feedbackExpanded = !state.feedbackExpanded;
     render();
     return;
   }
@@ -8199,13 +8225,6 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
-  if (event.target.closest("[data-clear-selection]")) {
-    state.selectedArea = "";
-    state.chartFocusArea = null;
-    render();
-    return;
-  }
-
   if (event.target.closest("[data-back]")) {
     state.detailBlock = null;
     if (state.view === "checklist") {
@@ -8222,15 +8241,6 @@ document.addEventListener("change", (event) => {
   if (consent) {
     const button = document.querySelector("[data-confirm-responsible-consent]");
     if (button) button.disabled = !consent.checked;
-    return;
-  }
-
-  if (event.target.closest("[data-clear-parent-area]")) {
-    state.selectedParentArea = "";
-    state.selectedArea = "";
-    state.view = "home";
-    syncHashWithView("home");
-    render();
     return;
   }
 
@@ -8323,7 +8333,7 @@ document.addEventListener("change", (event) => {
       });
   }
 
-});
+}, true);
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.actionPlanImagePreview) {
