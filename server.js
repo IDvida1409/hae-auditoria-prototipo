@@ -17,6 +17,7 @@ const { enqueueMonthlyAuditReport, reconcileFinishedAuditReports, validateAuditR
 const { weightedAuditScore } = require("./lib/scoring");
 const activityLog = require("./lib/activity-log");
 const { buildAndroidWeb } = require("./tools/build-android-web");
+const areaHierarchy = require("./assets/area-hierarchy.js");
 
 const root = __dirname;
 const dataDir = path.join(root, "data");
@@ -381,6 +382,28 @@ function staticPathFor(urlPath) {
   if (!resolved.startsWith(root + path.sep)) return null;
   if (relativePath.startsWith("assets/") && !resolved.startsWith(path.join(root, "assets") + path.sep)) return null;
   return resolved;
+}
+
+function reportAreaSlugFromFilename(filename) {
+  const name = path.basename(filename).toLowerCase();
+  const candidates = [
+    ...areaHierarchy.groups.map((group) => group.id),
+    ...areaHierarchy.groups.flatMap((group) => group.subareaIds),
+    ...areaHierarchy.standaloneIds
+  ].sort((a, b) => b.length - a.length);
+  return candidates.find((slug) =>
+    name.includes(`-${slug}-`) || name.includes(`-area-${slug}-`)
+  ) || null;
+}
+
+function canAccessStaticReport(user, filename) {
+  if (user?.all_areas) return true;
+  const reportSlug = reportAreaSlugFromFilename(filename);
+  if (!reportSlug) return false;
+  const allowed = new Set(user?.area_slugs || []);
+  if (allowed.has(reportSlug)) return true;
+  const group = areaHierarchy.groupById(reportSlug);
+  return Boolean(group && group.subareaIds.some((slug) => allowed.has(slug)));
 }
 
 function readStaticReports() {
@@ -1837,6 +1860,10 @@ async function handleApi(request, response, url) {
         return true;
       }
       request.accessUser = await accessApi.withAccessAreas(pool, user);
+      if (!canAccessStaticReport(request.accessUser, path.basename(url.pathname))) {
+        sendJson(response, 403, { error: "Você não tem permissão para abrir este relatório." });
+        return true;
+      }
     } catch (error) {
       sendJson(response, 500, { error: "Não foi possível validar a sessão para abrir o relatório." });
       return true;
