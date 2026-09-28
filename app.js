@@ -5355,9 +5355,9 @@ function reportsForOrganizationArea(parent) {
 }
 
 function organizationMonthlyReportItem(parent) {
-  const storedReport = reportsForOrganizationArea(parent)[0] || null;
+  const storedReport = reportsForOrganizationArea(parent).find((item) => item?.file_url) || null;
   const localUrl = parent?.id === "conforto-medico"
-    ? "assets/reports/hae-consolidado-area-conforto-medico-set-26.pdf?v=approved-pdf-catering-1"
+    ? "/assets/reports/hae-consolidado-area-conforto-medico-set-26.pdf?v=approved-pdf-catering-2"
     : "";
   const report = storedReport || (localUrl ? { file_url: localUrl, period_label: reportMonthLabel(currentMonthId) } : null);
   return {
