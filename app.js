@@ -8591,6 +8591,9 @@ document.addEventListener("click", async (event) => {
       ...state.auditEvidenceCollapsed,
       [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: true }
     };
+    // Remove the open editor before navigating so the mobile card cannot remain
+    // visible during the render/scroll transition.
+    completeEvidence.closest(".nc-evidence")?.remove();
     saveState();
     advanceAuditQuestion(questionId);
     return;

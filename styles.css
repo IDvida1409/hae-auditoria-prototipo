@@ -17383,3 +17383,117 @@ button.planning-kpi:hover {
 .top-search-results strong { font-size: 12px; font-weight: 620; }
 .top-search-results small,
 .top-search-empty { color: #60718a; font-size: 11px; }
+
+/* Final mobile audit layout: keep card content in normal flow and prevent
+   legacy fixed grid rows from stacking labels over buttons. */
+@media (max-width: 760px) {
+  .audit-start .start-grid {
+    align-items: stretch;
+  }
+
+  .audit-start .start-tile,
+  .audit-start .start-parent-tile {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-content: start !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    height: auto !important;
+    min-height: 164px !important;
+    padding: 12px 10px !important;
+    gap: 8px !important;
+    overflow: hidden !important;
+  }
+
+  .audit-start .start-tile-main {
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    align-items: center !important;
+    justify-items: start !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+  }
+
+  .audit-start .start-tile-main img {
+    grid-row: 1 !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .audit-start .start-tile-main > div {
+    min-width: 0 !important;
+  }
+
+  .audit-start .start-tile h3,
+  .audit-start .start-tile p {
+    max-width: 100% !important;
+    margin: 0 !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+
+  .audit-start .start-tile h3 {
+    font-size: 12px !important;
+    line-height: 1.18 !important;
+  }
+
+  .audit-start .start-tile p {
+    min-height: 0 !important;
+    max-height: none !important;
+    margin-top: 3px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  .audit-start .start-tile > .outline-btn {
+    grid-column: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 32px !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 5px 6px !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .audit-question-list .question-head {
+    min-width: 0 !important;
+    align-items: start !important;
+  }
+
+  .audit-question-list .question-head > div:last-child,
+  .audit-question-list .question-meta-row,
+  .audit-question-list .law-ref {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .audit-question-list .question-head h2,
+  .audit-question-list .law-ref,
+  .audit-question-list .question-risk-chip {
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+
+  .audit-question-list .question-meta-row {
+    align-items: flex-start !important;
+    gap: 5px !important;
+  }
+
+  .audit-question-list .answer-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+  }
+
+  .audit-question-list .nc-evidence {
+    width: auto !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+}
