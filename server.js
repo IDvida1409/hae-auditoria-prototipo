@@ -375,7 +375,7 @@ function staticPathFor(urlPath) {
     ["vendor/jspdf.umd.min.js", path.join(root, "node_modules", "jspdf", "dist", "jspdf.umd.min.js")]
   ]);
   if (vendorFiles.has(relativePath)) return vendorFiles.get(relativePath);
-  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "idauditor-web.zip"]);
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "icon-concepts-hierarchy.html", "idauditor-web.zip"]);
   if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;
@@ -1827,10 +1827,29 @@ async function handleApi(request, response, url) {
     return true;
   }
 
+  if (/^\/assets\/reports\/.*\.pdf$/i.test(url.pathname)) {
+    try {
+      const pool = await getPool();
+      if (!requireDatabase(response, pool)) return true;
+      const user = await accessApi.authenticated(pool, request);
+      if (!user) {
+        sendJson(response, 401, { error: "Entre na sua conta para abrir este relatório." });
+        return true;
+      }
+      request.accessUser = await accessApi.withAccessAreas(pool, user);
+    } catch (error) {
+      sendJson(response, 500, { error: "Não foi possível validar a sessão para abrir o relatório." });
+      return true;
+    }
+  }
+
   return false;
 }
 
 function serveStatic(request, response, url) {
+  if (url.pathname === "/icon-concepts-hierarchy.html") {
+    response.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  }
   if (url.pathname === "/plano-acao-preview.html") {
     response.writeHead(302, {
       location: "/#actions",
