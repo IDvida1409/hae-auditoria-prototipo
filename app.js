@@ -47,7 +47,7 @@ const areaData = [
   { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png" }
 ];
 
-const organizationAreas = [
+const organizationAreas = (window.HAE_AREA_HIERARCHY?.groups || [
   {
     id: "despensa",
     name: "Despensa",
@@ -117,7 +117,7 @@ const organizationAreas = [
       ["dml-2-andar", "DML 2º Andar", "Depósito de material de limpeza do 2º andar", "dml-produto-quimico.png"]
     ]
   }
-];
+]).map((group) => ({ ...group, subareas: group.subareas.map((subarea) => [...subarea]) }));
 
 const existingAreaIds = new Set(areaData.map((area) => area.id));
 for (const parent of organizationAreas) {
@@ -297,12 +297,19 @@ function auditGroupAreaIds(parentId) {
 
 function responsibleOrganizationArea() {
   const allowed = Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : [];
-  return organizationAreas.find((parent) => parent.subareaIds.some((id) => allowed.includes(id))) || organizationAreas[0];
+  return organizationAreas.find((parent) => parent.subareaIds.some((id) => allowed.includes(id))) || null;
+}
+
+function responsibleScopedAreas() {
+  const parent = responsibleOrganizationArea();
+  if (parent) return subareasForOrganizationArea(parent);
+  const allowed = new Set(Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : []);
+  return areaData.filter((area) => allowed.has(area.id));
 }
 
 function allowedAreaIds() {
   if (!isAreaResponsible()) return areaData.map((area) => area.id);
-  return subareasForOrganizationArea(responsibleOrganizationArea()).map((area) => area.id);
+  return responsibleScopedAreas().map((area) => area.id);
 }
 
 function canAccessArea(areaId) {
@@ -315,7 +322,7 @@ function primaryUserArea() {
 
 function orderedAreasForUser() {
   if (!isAreaResponsible()) return areaData;
-  return subareasForOrganizationArea(responsibleOrganizationArea());
+  return responsibleScopedAreas();
 }
 
 function moduleAllowed(view) {
@@ -1005,8 +1012,12 @@ function registerServiceWorker() {
 function reportFileRequest() {
   const params = new URLSearchParams(location.search);
   const kind = params.get("reportFile");
+  if (kind === "organization-monthly") {
+    const parent = organizationAreaById(params.get("parent") || "");
+    return parent ? { kind, parent } : null;
+  }
   if (kind !== "monthly" && kind !== "comparison") return null;
-  const area = areaById(params.get("area") || "");
+  const area = areaData.find((item) => item.id === (params.get("area") || "")) || null;
   if (!area) return null;
   return { kind, area };
 }
@@ -1014,6 +1025,12 @@ function reportFileRequest() {
 function renderReportFileRequest(request) {
   document.body.classList.add("report-document-body");
   app.className = "app-shell is-report-document";
+  if (request.kind === "organization-monthly") {
+    app.innerHTML = `<main class="stored-report-view">${organizationMonthlyReportPage(request.parent)}</main>`;
+    document.title = `hae-consolidado-area-${request.parent.id}-${currentMonthId}.pdf`;
+    window.__IDAUDITOR_REPORT_READY__ = true;
+    return;
+  }
   state.selectedArea = request.area.id;
   state.reportKind = request.kind;
   app.innerHTML = `<main class="stored-report-view">${approvedReportMarkup(request.area, request.kind)}</main>`;
@@ -1591,7 +1608,7 @@ function generalScore() {
 
 function chartScopeAreas() {
   return isAreaResponsible()
-    ? subareasForOrganizationArea(responsibleOrganizationArea())
+    ? responsibleScopedAreas()
     : organizationAreaCards();
 }
 
@@ -2164,7 +2181,8 @@ function graphGeneralAssessment() {
     return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada no período.")}</div>`;
   }
   if (isAreaResponsible()) {
-    const area = aggregateOrganizationArea(responsibleOrganizationArea());
+    const parent = responsibleOrganizationArea();
+    const area = parent ? aggregateOrganizationArea(parent) : responsibleScopedAreas()[0] || null;
     if (!hasAreaResult(area)) return `<div class="graph-card-body graph-assessment is-panel-style">${emptyDataState("Nenhuma nota registrada para esta área.")}</div>`;
     const hasPrevious = Number.isFinite(area.last);
     const delta = hasPrevious ? area.score - area.last : null;
@@ -2242,7 +2260,9 @@ function graphStatusSummary() {
 }
 
 function graphRiskSummary() {
-  const counts = ncRiskCounts(isAreaResponsible() ? aggregateOrganizationArea(responsibleOrganizationArea()) : null);
+  const responsibleParent = isAreaResponsible() ? responsibleOrganizationArea() : null;
+  const responsibleArea = isAreaResponsible() && !responsibleParent ? responsibleScopedAreas()[0] || null : null;
+  const counts = ncRiskCounts(responsibleParent ? aggregateOrganizationArea(responsibleParent) : responsibleArea);
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const rows = riskDisplayOrder.map((level) => ({
     label: riskMeta[level].label,
@@ -2289,7 +2309,11 @@ function dashboardHome() {
   const visibleParent = responsibleParent || adminParent;
   const visibleSubareas = visibleParent ? subareasForOrganizationArea(visibleParent) : [];
   const scopeArea = visibleParent ? aggregateOrganizationArea(visibleParent) : selectedArea;
-  const scopedAreas = visibleParent ? visibleSubareas : [...organizationAreas.flatMap(subareasForOrganizationArea), ...standaloneAuditAreas()];
+  const scopedAreas = visibleParent
+    ? visibleSubareas
+    : isAreaResponsible()
+      ? responsibleScopedAreas()
+      : [...organizationAreas.flatMap(subareasForOrganizationArea), ...standaloneAuditAreas()];
   const pendingPlans = scopedAreas.reduce((sum, area) => sum + area.pending, 0);
   const criticalNcs = scopedAreas.reduce((sum, area) => sum + area.critical, 0);
   const scopedIds = new Set(scopedAreas.map((area) => area.id));
@@ -3142,7 +3166,7 @@ function reportPriorityRows() {
     .join("");
 }
 
-function monthlyReportPage() {
+function legacyOverviewMonthlyReportPage() {
   const totals = reportQuestionTotals();
   const actionTotals = reportActionTotals();
   const belowMeta = areaData.filter((area) => area.score < 8).length;
@@ -3290,7 +3314,7 @@ function comparativeReportPage() {
   `;
 }
 
-function reportsPage() {
+function legacyOverviewReportsPage() {
   const isComparison = state.reportKind === "comparison";
   return `
     <section class="reports-page">
@@ -3448,6 +3472,84 @@ function reportPreviousActionEvaluation(area) {
     </p>
     ${reportDocTable(["Plano / pergunta", "Nota anterior → atual", "Situação", "Decisão sobre a evidência", "Recorrência", "Impacto"], reportPlanEvaluationRows(area), "is-plan-evaluation")}
   `;
+}
+
+function organizationReportAreas(parent) {
+  return subareasForOrganizationArea(parent);
+}
+
+function organizationReportScoreChart(areas) {
+  const width = 720;
+  const height = 300;
+  const pad = { left: 38, right: 58, top: 30, bottom: 96 };
+  const innerWidth = width - pad.left - pad.right;
+  const innerHeight = height - pad.top - pad.bottom;
+  const bottom = pad.top + innerHeight;
+  const slot = innerWidth / Math.max(areas.length, 1);
+  const y = (value) => pad.top + innerHeight - (Math.max(0, Math.min(10, Number(value) || 0)) / 10) * innerHeight;
+  return `
+    <figure class="report-doc-chart is-monthly-chart report-organization-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Notas das subáreas">
+        ${[0, 5, 8, 10].map((tick) => `<line x1="${pad.left}" y1="${y(tick)}" x2="${width - pad.right}" y2="${y(tick)}" stroke="${tick === 8 ? "#9dd2ae" : "#dfe7f0"}" stroke-width="${tick === 8 ? 1.6 : 1}"/><text x="${pad.left - 9}" y="${y(tick) + 4}" text-anchor="end" fill="#53657d" font-size="9">${tick}</text>`).join("")}
+        <text x="${width - pad.right + 8}" y="${y(8) + 4}" fill="#2f8f46" font-size="9" font-weight="700">Meta 8,0</text>
+        ${areas.map((area, index) => {
+          const hasResult = hasAreaResult(area);
+          const score = hasResult ? Number(area.score) : null;
+          const center = pad.left + slot * index + slot / 2;
+          const barWidth = Math.min(34, Math.max(18, slot * .42));
+          const barY = hasResult ? y(score) : bottom - 1;
+          const barHeight = hasResult ? bottom - barY : 1;
+          return `<g><rect x="${center - barWidth / 2}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="5" fill="${hasResult ? "#0a6cff" : "#b9c5d3"}"/><text x="${center}" y="${barY - 7}" text-anchor="middle" fill="${hasResult ? "#0a6cff" : "#748399"}" font-size="9" font-weight="700">${hasResult ? formatScore(area.score) : "—"}</text><text transform="translate(${center}, ${bottom + 34}) rotate(-35)" text-anchor="end" fill="#071a3d" font-size="8.5" font-weight="700">${escapeHtml(area.name)}</text></g>`;
+        }).join("")}
+      </svg>
+      <figcaption>Figura 1 - Desempenho das subáreas no mês vigente.</figcaption>
+    </figure>
+  `;
+}
+
+function organizationPlanEvaluation(parent, areas) {
+  const plans = areas.flatMap((area) => actionPlansForArea(area).map((plan) => ({ area, plan })));
+  if (!plans.length) {
+    return `<p class="report-footnote report-plan-evaluation-note">Não há planos de ação anteriores vigentes ou pendentes de avaliação para esta área ou suas subáreas. Portanto, não há impacto ou recorrência a avaliar neste período.</p>`;
+  }
+  return `
+    <p class="report-doc-text report-plan-evaluation-note">Esta seção resume os planos de ação anteriores de ${escapeHtml(parent.name)}. Evidências e decisões detalhadas permanecem nos relatórios individuais das subáreas.</p>
+    ${reportDocTable(["Subárea", "Plano / pergunta", "Situação", "Recorrência", "Impacto"], plans.map(({ area, plan }) => {
+      const question = plan.backendItems?.[0]?.question || plan.question || plan.block || "Não conformidade vinculada";
+      const code = plan.publicCode || plan.code || `PA-${String(plan.id || "").slice(0, 8).toUpperCase()}`;
+      return [escapeHtml(area.name), `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportCompactText(question, 68))}`, reportActionStatusTag(plan.status), plan.recurrent === true ? "Sim" : "Não identificada", reportPlanImpact(plan)];
+    }), "is-plan-evaluation")}
+  `;
+}
+
+function organizationMonthlyReportPage(parent) {
+  const areas = organizationReportAreas(parent);
+  const completed = areas.filter(hasAreaResult);
+  const scores = completed.map((area) => Number(area.score));
+  const average = scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null;
+  const totalNcs = areas.reduce((sum, area) => sum + Number(area.ncs || 0), 0);
+  const totalPlans = areas.reduce((sum, area) => sum + actionPlansForArea(area).length, 0);
+  const reportArea = { ...aggregateOrganizationArea(parent), name: parent.name };
+  const summaryRows = areas.map((area) => [
+    escapeHtml(area.name),
+    formatScore(area.score),
+    hasAreaResult(area) ? reportStatusTag(area.status) : reportTag("Não auditada", "neutral"),
+    String(area.ncs || 0),
+    String(actionPlansForArea(area).length)
+  ]);
+  const pages = [
+    reportMonthlyPage("Relatório Consolidado Mensal", reportArea, 1, 2, `
+      ${reportSection("1", "Síntese executiva da área", `<div class="report-mini-kpis"><div class="report-mini-kpi is-good"><span>Nota média</span><strong>${formatScore(average)}</strong><small>resultado consolidado</small></div><div class="report-mini-kpi is-neutral"><span>Subáreas auditadas</span><strong>${completed.length}</strong><small>de ${areas.length} cadastradas</small></div><div class="report-mini-kpi is-medium"><span>Não conformidades</span><strong>${totalNcs}</strong><small>registradas no período</small></div><div class="report-mini-kpi is-neutral"><span>Planos vinculados</span><strong>${totalPlans}</strong><small>em acompanhamento</small></div></div><p class="report-doc-text">O consolidado apresenta a visão gerencial de ${escapeHtml(parent.name)}. O detalhamento técnico, as 46 respostas e as evidências permanecem nos relatórios individuais de cada subárea.</p>`) }
+      ${reportSection("2", "Resultado por subárea", organizationReportScoreChart(areas))}
+      ${reportSection("3", "Resumo das subáreas", reportDocTable(["Subárea", "Nota", "Classificação", "NCs", "Planos"], summaryRows))}
+    `),
+    reportMonthlyPage("Relatório Consolidado Mensal", reportArea, 2, 2, `
+      ${reportSection("4", "Avaliação dos planos de ação anteriores", organizationPlanEvaluation(parent, areas))}
+      ${reportSection("5", "Planos de ação vigentes", reportDocTable(["Subárea", "Código", "Pergunta / ação", "Prazo", "Situação"], areas.flatMap((area) => actionPlansForArea(area).map((plan) => [escapeHtml(area.name), escapeHtml(plan.publicCode || plan.code || plan.id || "—"), escapeHtml(reportCompactText(plan.question || plan.title || plan.block || "Plano vinculado", 74)), escapeHtml(plan.due || shortDate(plan.dueAt)), reportActionStatusTag(plan.status)]))))}
+      <p class="report-footnote">Consulte os relatórios individuais das subáreas para visualizar respostas, observações e evidências fotográficas.</p>
+    `)
+  ];
+  return `<div class="technical-report report-organization-monthly">${pages.join("")}</div>`;
 }
 
 function reportEffectTag(plan) {
@@ -5027,7 +5129,7 @@ function reportLibraryItems(area) {
   return [
     {
       id: "monthly",
-      title: "Relatório da auditoria mensal",
+      title: "Relatório individual mensal",
       status: monthlyAvailable ? "Disponível" : completedAudit ? pendingReportStatus(area, "Preparando relatório") : "Ainda não gerado",
       note: monthlyReport?.period_label || reportMonthLabel(currentMonthId),
       available: monthlyAvailable
@@ -5063,6 +5165,102 @@ function reportLibraryItems(area) {
   ];
 }
 
+function reportScopeForFolder(parentId, areaId) {
+  const parent = parentId ? organizationAreaById(parentId) : null;
+  if (parent) {
+    const subareas = subareasForOrganizationArea(parent);
+    const selectedArea = subareas.find((area) => area.id === areaId) || null;
+    return { kind: "group", parent, subareas, area: selectedArea };
+  }
+  const area = areaId ? areaData.find((item) => item.id === areaId) || null : null;
+  if (!area) return null;
+  const containingParent = organizationAreaForSubarea(area);
+  if (containingParent) {
+    return {
+      kind: "group",
+      parent: containingParent,
+      subareas: subareasForOrganizationArea(containingParent),
+      area
+    };
+  }
+  return { kind: "standalone", parent: null, subareas: [], area };
+}
+
+function reportsForOrganizationArea(parent) {
+  if (!parent || !Array.isArray(operationalReports)) return [];
+  return operationalReports.filter((report) =>
+    report.report_type === "general" &&
+    (report.scope_key === parent.id || report.metadata?.scopeKey === parent.id)
+  );
+}
+
+function organizationMonthlyReportItem(parent) {
+  const storedReport = reportsForOrganizationArea(parent)[0] || null;
+  const localUrl = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? `?preview=admin&reportFile=organization-monthly&parent=${encodeURIComponent(parent.id)}&reportWorker=1`
+    : "";
+  const report = storedReport || (localUrl ? { file_url: localUrl, period_label: reportMonthLabel(currentMonthId) } : null);
+  return {
+    report,
+    title: `Relatório consolidado mensal — ${parent.name}`,
+    note: report?.period_label || reportMonthLabel(currentMonthId),
+    status: report?.file_url ? "Disponível" : "Ainda não gerado",
+    available: Boolean(report?.file_url)
+  };
+}
+
+function reportFileButtons({ area = null, report = null, kind = "monthly" } = {}) {
+  const url = report?.file_url || (area ? reportsForArea(area).find((item) => item.report_type === kind)?.file_url : "") || (area ? localApprovedPdfUrl(area, kind) : "");
+  if (!url) {
+    return `<button disabled>${svgIcon("externalLink")} Abrir PDF</button><button disabled>${svgIcon("document")} Baixar</button>`;
+  }
+  const areaId = area?.id || "";
+  return `
+    <button class="report-file-action" data-report-action="open" data-report-area="${escapeHtml(areaId)}" data-report-kind="${escapeHtml(kind)}" data-report-url="${escapeHtml(url)}" type="button">${svgIcon("externalLink")} Abrir PDF</button>
+    <button class="report-file-action" data-report-action="download" data-report-area="${escapeHtml(areaId)}" data-report-kind="${escapeHtml(kind)}" data-report-url="${escapeHtml(url)}" type="button">${svgIcon("document")} Baixar</button>
+  `;
+}
+
+function reportOptionRow(report, area) {
+  return `
+    <article class="report-option-row ${report.available ? "" : "is-disabled"}">
+      <div><h3>${escapeHtml(report.title)}</h3><p>${escapeHtml(report.note)}</p></div>
+      <span>${escapeHtml(report.status)}</span>
+      <div class="report-option-actions">${report.available ? reportFileButtons({ area, kind: report.id }) : reportFileButtons()}</div>
+    </article>
+  `;
+}
+
+function organizationReportOverview(parent, subareas) {
+  const consolidated = organizationMonthlyReportItem(parent);
+  return `
+    <section class="report-group-overview" aria-label="Relatórios de ${escapeHtml(parent.name)}">
+      <article class="report-consolidated-row ${consolidated.available ? "" : "is-disabled"}">
+        <div>
+          <span>Relatório consolidado da área</span>
+          <h3>${escapeHtml(parent.name)}</h3>
+          <p>${escapeHtml(consolidated.note)}</p>
+        </div>
+        <strong>${escapeHtml(consolidated.status)}</strong>
+        <div class="report-option-actions">${reportFileButtons({ report: consolidated.report, kind: "general" })}</div>
+      </article>
+      <div class="report-subarea-grid" aria-label="Subáreas de ${escapeHtml(parent.name)}">
+        ${subareas.map((area) => {
+          const monthly = reportLibraryItems(area)[0];
+          return `
+            <button class="report-subarea-card" data-report-folder-subarea="${escapeHtml(area.id)}" type="button">
+              <span class="report-subarea-card-icon"><img src="assets/icons/${escapeHtml(area.icon || parent.icon)}" alt="" aria-hidden="true" /></span>
+              <strong>${escapeHtml(area.name)}</strong>
+              <small>${monthly.available ? "Relatório individual disponível" : monthly.status}</small>
+            </button>
+          `;
+        }).join("")}
+      </div>
+      <button class="report-history-link" data-report-folder-history type="button">${svgIcon("clock")} Histórico de ${escapeHtml(parent.name)}</button>
+    </section>
+  `;
+}
+
 function reportsForArea(area) {
   if (!area || !Array.isArray(operationalReports)) return [];
   return operationalReports.filter((report) => String(report.area_id) === String(area.backendId));
@@ -5087,9 +5285,12 @@ function pendingReportStatus(area, fallback = "Ainda não gerado") {
   return fallback;
 }
 
-function reportHistoryRows(area) {
-  const rows = reportsForArea(area);
-  const completedAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(area.backendId) && audit.status === "finished");
+function reportHistoryRows(area, parent = null) {
+  const scopedAreas = parent ? subareasForOrganizationArea(parent) : [area].filter(Boolean);
+  const rows = parent
+    ? [...reportsForOrganizationArea(parent), ...scopedAreas.flatMap(reportsForArea)]
+    : reportsForArea(area);
+  const completedAudit = (operationalAudits || []).find((audit) => scopedAreas.some((item) => String(audit.area_id) === String(item.backendId)) && audit.status === "finished");
   if (!rows.length && completedAudit) {
     const status = pendingReportStatus(area, "Preparando relatório");
     return `<tr><td>${escapeHtml(reportMonthLabel(currentMonthId))}</td><td>Auditoria mensal</td><td>${escapeHtml(status)}</td><td><span>${status.startsWith("Falha") ? "Verifique novamente" : "Aguarde"}</span></td></tr>`;
@@ -5105,7 +5306,7 @@ function reportHistoryRows(area) {
       <td>${escapeHtml(ready && row.status === "generated" ? "PDF disponível" : ready ? row.status : pendingReportStatus(area, "Preparando relatório"))}</td>
       <td>
         ${ready && row.file_url
-          ? reportStoredPdfLink(area, row.report_type, "open", "Abrir")
+          ? reportFileButtons({ area: scopedAreas.find((item) => String(item.backendId) === String(row.area_id)) || area, report: row, kind: row.report_type })
           : `<span>Aguarde</span>`}
       </td>
     </tr>
@@ -5113,75 +5314,28 @@ function reportHistoryRows(area) {
   }).join("");
 }
 
-function reportAreaSummary(parent) {
-  if (!parent) return "";
-  const subareas = parent.subareaIds.map((id) => areaById(id)).filter((area) => area && (hasAreaResult(area) || actionPlansForArea(area).length));
-  const scores = subareas.map((area) => Number(area.score)).filter(Number.isFinite);
-  const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
-  const riskCount = subareas.reduce((sum, area) => sum + reportHighRiskCount(area), 0);
-  const planCount = subareas.reduce((sum, area) => sum + actionPlansForArea(area).length, 0);
-  return `
-    <section class="report-area-summary" aria-label="Relatório consolidado da área ${escapeHtml(parent.name)}">
-      <div class="report-area-summary-head">
-        <div>
-          <span class="report-section-kicker">Relatório consolidado da área</span>
-          <h3>${escapeHtml(parent.name)}</h3>
-          <p>Visão gerencial das subáreas auditadas no período. O detalhamento técnico e as evidências ficam no relatório individual de cada subárea.</p>
-        </div>
-        <div class="report-area-summary-metrics">
-          <strong>${average == null ? "—" : formatScore(average)}</strong><span>nota média</span>
-          <strong>${subareas.length}</strong><span>subáreas</span>
-          <strong>${riskCount}</strong><span>NCs de alto risco</span>
-          <strong>${planCount}</strong><span>planos vinculados</span>
-        </div>
-      </div>
-      <div class="report-area-summary-table-wrap">
-        <table class="report-area-summary-table">
-          <thead><tr><th>Subárea</th><th>Nota</th><th>Classificação</th></tr></thead>
-          <tbody>${subareas.map((area) => `<tr><td>${escapeHtml(area.name)}</td><td>${formatScore(area.score)}/10</td><td>${reportStatusTag(area.status)}</td></tr>`).join("")}</tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
 function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = state.reportFolderArea, inline = false } = {}) {
-  const parent = parentId ? organizationAreaById(parentId) : null;
-  const selectedReportAreaId = areaId || parent?.subareaIds?.[0] || "";
-  const area = selectedReportAreaId ? areaById(selectedReportAreaId) : null;
-  if (!area) return "";
-  const reports = reportLibraryItems(area);
+  const scope = reportScopeForFolder(parentId, areaId);
+  if (!scope) return "";
+  const { parent, area, subareas, kind } = scope;
+  const reports = area ? reportLibraryItems(area) : [];
   const showHistory = state.reportFolderTab === "history";
+  const title = parent?.name || area?.name || "Relatórios";
   return `
     <div class="${inline ? "report-library-inline" : "report-library-backdrop"}" ${inline ? "" : "data-close-report-folder"}>
-      <section class="${inline ? "report-library-inline-panel" : "report-library-modal surface"}" role="${inline ? "region" : "dialog"}" ${inline ? "" : "aria-modal=\"true\""} aria-label="Relatórios da área ${escapeHtml(parent?.name || area.name)}" data-report-folder-modal>
+      <section class="${inline ? "report-library-inline-panel" : "report-library-modal surface"}" role="${inline ? "region" : "dialog"}" ${inline ? "" : "aria-modal=\"true\""} aria-label="Relatórios da área ${escapeHtml(title)}" data-report-folder-modal>
         <div class="report-library-modal-head">
           <div>
             <span>Relatórios da área</span>
-            <h2>${escapeHtml(parent?.name || area.name)}</h2>
-            <p>${parent ? `Subárea selecionada: ${escapeHtml(area.name)}.` : ""} Escolha o tipo de relatório disponível para abrir em PDF ou baixar o arquivo.</p>
+            <h2>${escapeHtml(title)}</h2>
+            <p>${area && parent ? `Subárea selecionada: ${escapeHtml(area.name)}.` : ""} Escolha o relatório disponível para abrir em PDF ou baixar o arquivo.</p>
           </div>
           ${inline ? "" : `<button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>`}
         </div>
         <div class="report-library-content">
-          ${parent ? reportAreaSummary(parent) : ""}
-          ${parent ? `<div class="fichario-sub-tabs report-subarea-tabs" role="tablist" aria-label="Subáreas de ${escapeHtml(parent.name)}">${parent.subareaIds.map((id) => { const subarea = areaById(id); return subarea ? `<button class="fichario-sub-tab report-subarea-tab ${!showHistory && subarea.id === area.id ? "is-active" : ""}" data-report-folder-subarea="${escapeHtml(subarea.id)}" type="button">${escapeHtml(subarea.name)}</button>` : ""; }).join("")}<button class="fichario-sub-tab report-subarea-tab ${showHistory ? "is-active" : ""}" data-report-folder-history type="button">Histórico</button></div>` : ""}
-          ${showHistory ? `<div class="report-history-panel is-tab-content"><div class="report-history-head"><h3>Histórico de relatórios</h3><p>Auditorias e relatórios já registrados para esta área.</p></div><div class="report-history-table-wrap"><table class="report-history-table"><thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead><tbody>${reportHistoryRows(area)}</tbody></table></div></div>` : `<div class="report-individual-heading"><span class="report-section-kicker">Relatório individual da subárea</span><strong>${escapeHtml(area.name)}</strong><span>Resultado técnico, respostas, não conformidades, evidências e plano de ação.</span></div>
-          <div class="report-option-list">
-            ${reports.map((report) => `
-              <article class="report-option-row ${report.available ? "" : "is-disabled"}">
-                <div>
-                  <h3>${escapeHtml(report.title)}</h3>
-                  <p>${escapeHtml(report.note)}</p>
-                </div>
-                <span>${escapeHtml(report.status)}</span>
-                <div class="report-option-actions">
-                  ${report.available ? reportStoredPdfLink(area, report.id, "open", "Abrir PDF") : `<button disabled>${svgIcon("externalLink")} Abrir PDF</button>`}
-                  ${report.available ? reportStoredPdfLink(area, report.id, "download", "Baixar") : `<button disabled>${svgIcon("document")} Baixar</button>`}
-                </div>
-              </article>
-            `).join("")}
-          </div>`}
+          ${showHistory ? `<div class="report-history-panel is-tab-content"><button class="report-back-link" data-report-folder-overview type="button">${svgIcon("arrow")} Voltar</button><div class="report-history-head"><h3>Histórico de relatórios</h3><p>Auditorias e relatórios já registrados para esta área.</p></div><div class="report-history-table-wrap"><table class="report-history-table"><thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead><tbody>${reportHistoryRows(area, parent)}</tbody></table></div></div>` : ""}
+          ${!showHistory && kind === "group" && !area ? organizationReportOverview(parent, subareas) : ""}
+          ${!showHistory && area ? `<div class="report-individual-view">${parent ? `<button class="report-back-link" data-report-folder-overview type="button">${svgIcon("arrow")} Voltar para ${escapeHtml(parent.name)}</button>` : ""}<div class="report-individual-heading"><span class="report-section-kicker">Relatório individual ${parent ? "da subárea" : "da área"}</span><strong>${escapeHtml(area.name)}</strong><span>Resultado técnico, respostas, não conformidades, evidências e plano de ação.</span></div><div class="report-option-list">${reports.map((report) => reportOptionRow(report, area)).join("")}</div>${parent ? `<button class="report-history-link" data-report-folder-history type="button">${svgIcon("clock")} Histórico de ${escapeHtml(area.name)}</button>` : `<button class="report-history-link" data-report-folder-history type="button">${svgIcon("clock")} Histórico</button>`}</div>` : ""}
         </div>
       </section>
     </div>
@@ -5189,13 +5343,18 @@ function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = s
 }
 
 function reportsPage() {
-  const parentTiles = organizationAreas.map((parent) => `
+  const responsibleParent = isAreaResponsible() ? responsibleOrganizationArea() : null;
+  const visibleParents = isAreaResponsible() ? (responsibleParent ? [responsibleParent] : []) : organizationAreas;
+  const visibleStandalone = isAreaResponsible()
+    ? responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area))
+    : standaloneAuditAreas();
+  const parentTiles = visibleParents.map((parent) => `
     <button class="report-folder-tile" data-report-parent-area="${escapeHtml(parent.id)}" aria-label="Abrir relatórios de ${escapeHtml(parent.name)}" type="button">
       <span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span>
       <span>${escapeHtml(parent.name)}</span><small>${parent.subareaIds.length} subáreas</small>
     </button>
   `).join("");
-  const standaloneTiles = standaloneAuditAreas().map((area) => {
+  const standaloneTiles = visibleStandalone.map((area) => {
     const locked = !canAccessArea(area.id);
     return `<button class="report-folder-tile ${locked ? "is-locked" : ""}" ${locked ? "data-locked-area" : `data-report-folder-area="${area.id}"`} aria-label="${locked ? `Sem acesso aos relatórios de ${escapeHtml(area.name)}` : `Abrir relatórios de ${escapeHtml(area.name)}`}" type="button"><span class="report-folder-icon">${assetIcon("reportFolder", "blue")}</span><span>${escapeHtml(area.name)}</span>${locked ? `<i class="report-folder-lock">${icons.lock}</i>` : ""}</button>`;
   }).join("");
@@ -7374,9 +7533,8 @@ document.addEventListener("click", async (event) => {
   if (reportParentFolder) {
     const parent = organizationAreaById(reportParentFolder.dataset.reportParentArea);
     state.reportFolderParentArea = parent?.id || "";
-    state.reportFolderArea = parent?.subareaIds?.[0] || "";
+    state.reportFolderArea = "";
     state.reportFolderTab = "subareas";
-    state.selectedArea = state.reportFolderArea;
     render();
     return;
   }
@@ -7392,6 +7550,13 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.closest("[data-report-folder-history]")) {
     state.reportFolderTab = "history";
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-report-folder-overview]")) {
+    state.reportFolderArea = state.reportFolderParentArea ? "" : state.reportFolderArea;
+    state.reportFolderTab = "subareas";
     render();
     return;
   }

@@ -18,6 +18,7 @@ test("outdated completed report job is reopened instead of remaining stuck", asy
     if (sql.includes("from reports r")) return { rows: [] };
     if (sql.includes("from report_generation_jobs")) return { rows: [{ id: "job-1", status: "completed" }] };
     if (sql.startsWith("update report_generation_jobs")) return { rows: [{ id: "job-1", status: "queued", attempts: 0 }] };
+    if (sql.startsWith("select slug from audit_areas")) return { rows: [{ slug: "documentacao" }] };
     throw new Error("Unexpected query");
   } };
   const result = await enqueueMonthlyAuditReport(db, audit, "user-1");
