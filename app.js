@@ -2365,7 +2365,7 @@ function dashboardHome() {
   const cardsMarkup = visibleParent
     ? visibleSubareas.map((area) => areaTile(area)).join("")
     : isAreaResponsible()
-      ? `${responsibleParents.map((parent) => organizationAreaTile(parent)).join("")}${responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area)).map((area) => areaTile(area)).join("")}`
+      ? `${responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area)).map((area) => areaTile(area)).join("")}${responsibleParents.map((parent) => organizationAreaTile(parent)).join("")}`
       : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
