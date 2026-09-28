@@ -3937,25 +3937,12 @@ function reportStoredPdfUrl(area, reportKind) {
   return `assets/reports/${reportPdfFilename(area, reportKind)}?v=20260914-evidence-2`;
 }
 
-const localApprovedPdfAreas = new Set([
-  "area-residuos",
-  "cozinha-catering",
-  "cozinha-fria-sarp",
-  "cozinha-pedido-especial",
-  "cozinha-sarp",
-  "distribuicao",
-  "dml-produto-quimico",
-  "documentacao",
-  "higienizacao-cubas",
-  "higienizacao-louca",
-  "room-service",
-  "saladas"
-]);
+const localApprovedPdfAreas = new Set(["cozinha-catering"]);
 
 function localApprovedPdfUrl(area, reportKind) {
-  if (window.location.hostname !== "localhost" || !localApprovedPdfAreas.has(area?.id)) return "";
+  if (!localApprovedPdfAreas.has(area?.id)) return "";
   const kind = reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
-  return `assets/reports/hae-${kind}-${area.id}-ago-26.pdf?v=local-approved-pdf-1`;
+  return `assets/reports/hae-${kind}-${area.id}-set-26.pdf?v=approved-pdf-catering-1`;
 }
 
 function reportStoredPdfLink(area, reportKind, mode = "open", label = "Abrir PDF") {
@@ -5369,8 +5356,8 @@ function reportsForOrganizationArea(parent) {
 
 function organizationMonthlyReportItem(parent) {
   const storedReport = reportsForOrganizationArea(parent)[0] || null;
-  const localUrl = ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? `?preview=admin&reportFile=organization-monthly&parent=${encodeURIComponent(parent.id)}&reportWorker=1`
+  const localUrl = parent?.id === "conforto-medico"
+    ? "assets/reports/hae-consolidado-area-conforto-medico-set-26.pdf?v=approved-pdf-catering-1"
     : "";
   const report = storedReport || (localUrl ? { file_url: localUrl, period_label: reportMonthLabel(currentMonthId) } : null);
   return {
