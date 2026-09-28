@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v63-report-recovery";
+const CACHE_NAME = "idauditor-v64-report-recovery";
 const APP_SHELL = [
   "/",
   "/index.html",
