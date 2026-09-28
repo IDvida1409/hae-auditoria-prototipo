@@ -11068,6 +11068,41 @@ h3 {
   padding-bottom: 6px;
 }
 
+.report-subsection-title {
+  margin: 12px 0 7px;
+  color: #10264e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-plan-evaluation-note {
+  margin-bottom: 8px;
+}
+
+.report-doc-table.is-plan-evaluation {
+  table-layout: fixed;
+  font-size: 8.7px;
+}
+
+.report-doc-table.is-plan-evaluation th,
+.report-doc-table.is-plan-evaluation td {
+  padding: 5px 6px;
+  vertical-align: middle;
+}
+
+.report-doc-table.is-plan-evaluation th:nth-child(1),
+.report-doc-table.is-plan-evaluation td:nth-child(1) { width: 29%; }
+.report-doc-table.is-plan-evaluation th:nth-child(2),
+.report-doc-table.is-plan-evaluation td:nth-child(2) { width: 14%; text-align: center; }
+.report-doc-table.is-plan-evaluation th:nth-child(3),
+.report-doc-table.is-plan-evaluation td:nth-child(3) { width: 14%; }
+.report-doc-table.is-plan-evaluation th:nth-child(4),
+.report-doc-table.is-plan-evaluation td:nth-child(4) { width: 16%; }
+.report-doc-table.is-plan-evaluation th:nth-child(5),
+.report-doc-table.is-plan-evaluation td:nth-child(5) { width: 11%; }
+.report-doc-table.is-plan-evaluation th:nth-child(6),
+.report-doc-table.is-plan-evaluation td:nth-child(6) { width: 16%; }
+
 .report-empty-chart {
   min-height: 120px;
   display: grid;

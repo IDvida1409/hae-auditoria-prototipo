@@ -3386,10 +3386,68 @@ function reportActionStatusTag(status) {
     pendente: ["Pendente", "medium"],
     andamento: ["Em andamento", "neutral"],
     concluido: ["Concluído", "good"],
-    atrasado: ["Atrasado", "danger"]
+    atrasado: ["Atrasado", "danger"],
+    in_progress: ["Em andamento", "neutral"],
+    pending_review: ["Aguardando análise", "medium"],
+    approved: ["Aprovado", "good"],
+    rejected: ["Reprovado", "danger"],
+    reopened: ["Correção solicitada", "danger"],
+    overdue: ["Atrasado", "danger"]
   };
   const [label, tone] = labels[status] || [status || "Pendente", "neutral"];
   return reportTag(label, tone);
+}
+
+function reportPlanEvidenceDecision(plan) {
+  const item = plan?.backendItems?.[0];
+  const decision = item?.feedbackStatus || plan?.evidenceDecision;
+  if (decision === "approved" || plan?.status === "approved" || (plan?.status === "concluido" && plan?.improved === true)) return "Evidência aprovada";
+  if (decision === "rejected" || plan?.status === "rejected" || plan?.status === "reopened") return "Evidência reprovada";
+  if (item?.responseEvidenceFileId || plan?.evidenceSent) return "Aguardando análise";
+  return "Não enviada";
+}
+
+function reportPlanImpact(plan) {
+  if (plan?.recurrent === true) return reportTag("Recorrência", "danger");
+  if (plan?.improved === true) return reportTag("Impacto positivo", "good");
+  if (plan?.improved === false) return reportTag("Sem impacto comprovado", "danger");
+  return reportTag("Pendente de avaliação", "neutral");
+}
+
+function reportPlanEvaluationRows(area) {
+  return actionPlansForArea(area).map((plan) => {
+    const item = plan.backendItems?.[0];
+    const question = item?.question || plan.question || plan.problem_description || plan.block || "Não conformidade vinculada à auditoria anterior";
+    const code = plan.publicCode || plan.code || `PA-${String(plan.id || "").slice(0, 8).toUpperCase()}`;
+    const previousScore = plan.previousScore ?? area.last;
+    const currentScore = plan.currentScore ?? area.score;
+    const recurrence = plan.recurrent === true ? "Sim" : "Não identificada";
+    return [
+      `<strong>${escapeHtml(code)}</strong><br>${escapeHtml(reportCompactText(question, 74))}`,
+      `${formatScore(previousScore)} → ${formatScore(currentScore)}`,
+      reportActionStatusTag(plan.status),
+      escapeHtml(reportPlanEvidenceDecision(plan)),
+      escapeHtml(recurrence),
+      reportPlanImpact(plan)
+    ];
+  });
+}
+
+function reportPreviousActionEvaluation(area) {
+  const plans = actionPlansForArea(area);
+  if (!plans.length) {
+    return `
+      <p class="report-footnote report-plan-evaluation-note">
+        Não há planos de ação anteriores vigentes ou pendentes de avaliação para esta área ou suas subáreas. Portanto, não há impacto ou recorrência a avaliar neste período.
+      </p>
+    `;
+  }
+  return `
+    <p class="report-doc-text report-plan-evaluation-note">
+      Esta seção verifica os planos de ação abertos em auditorias anteriores e seus efeitos na auditoria atual. O detalhamento completo, incluindo evidências, observações e a decisão sobre cada evidência, está disponível no relatório individual da subárea.
+    </p>
+    ${reportDocTable(["Plano / pergunta", "Nota anterior → atual", "Situação", "Decisão sobre a evidência", "Recorrência", "Impacto"], reportPlanEvaluationRows(area), "is-plan-evaluation")}
+  `;
 }
 
 function reportEffectTag(plan) {
@@ -4852,6 +4910,9 @@ function monthlyReportPage() {
   const evidenceSection = reportSection("6", "Evidências fotográficas", reportEvidenceGrid(area));
   const plansConclusionSections = `
     ${reportSection("7", "Planos de ação vigentes", `
+      <h3 class="report-subsection-title">Avaliação dos planos de ação anteriores</h3>
+      ${reportPreviousActionEvaluation(area)}
+      <h3 class="report-subsection-title">Planos de ação vigentes nesta auditoria</h3>
       ${reportDocTable(["Origem", "Ação corretiva", "Responsável", "Prazo", "Status"], reportPlanRowsForArea(area), "is-plans")}
       ${reportActionFootnote()}
     `)}
@@ -5054,7 +5115,7 @@ function reportHistoryRows(area) {
 
 function reportAreaSummary(parent) {
   if (!parent) return "";
-  const subareas = parent.subareaIds.map((id) => areaById(id)).filter(Boolean);
+  const subareas = parent.subareaIds.map((id) => areaById(id)).filter((area) => area && (hasAreaResult(area) || actionPlansForArea(area).length));
   const scores = subareas.map((area) => Number(area.score)).filter(Number.isFinite);
   const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
   const riskCount = subareas.reduce((sum, area) => sum + reportHighRiskCount(area), 0);
@@ -5103,6 +5164,7 @@ function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = s
           ${inline ? "" : `<button class="panel-close" data-close-report-folder aria-label="Fechar">${icons.close}</button>`}
         </div>
         <div class="report-library-content">
+          ${parent ? reportAreaSummary(parent) : ""}
           ${parent ? `<div class="fichario-sub-tabs report-subarea-tabs" role="tablist" aria-label="Subáreas de ${escapeHtml(parent.name)}">${parent.subareaIds.map((id) => { const subarea = areaById(id); return subarea ? `<button class="fichario-sub-tab report-subarea-tab ${!showHistory && subarea.id === area.id ? "is-active" : ""}" data-report-folder-subarea="${escapeHtml(subarea.id)}" type="button">${escapeHtml(subarea.name)}</button>` : ""; }).join("")}<button class="fichario-sub-tab report-subarea-tab ${showHistory ? "is-active" : ""}" data-report-folder-history type="button">Histórico</button></div>` : ""}
           ${showHistory ? `<div class="report-history-panel is-tab-content"><div class="report-history-head"><h3>Histórico de relatórios</h3><p>Auditorias e relatórios já registrados para esta área.</p></div><div class="report-history-table-wrap"><table class="report-history-table"><thead><tr><th>Período</th><th>Relatório</th><th>Status</th><th>Ação</th></tr></thead><tbody>${reportHistoryRows(area)}</tbody></table></div></div>` : `<div class="report-individual-heading"><span class="report-section-kicker">Relatório individual da subárea</span><strong>${escapeHtml(area.name)}</strong><span>Resultado técnico, respostas, não conformidades, evidências e plano de ação.</span></div>
           <div class="report-option-list">
@@ -8411,6 +8473,33 @@ function applyLocalPreviewScores() {
   document.body.classList.add("local-hierarchy-preview");
 }
 
+function applyLocalPreviewActionPlans() {
+  const area = areaById("cozinha-catering");
+  if (!area) return;
+  operationalActionPlans = [{
+    id: "local-pa-catering-001",
+    area,
+    title: "PA-2026-CATERING-001",
+    publicCode: "PA-2026-CATERING-001",
+    block: "Edificação e Instalação",
+    question: "Pia para higienização das mãos: limpa, em ponto estratégico, com papel toalha branca, sabonete bactericida ou neutro e antisséptico.",
+    owner: "Caio",
+    status: "concluido",
+    due: "21/09/2026",
+    improved: true,
+    recurrent: false,
+    previousScore: 7.1,
+    currentScore: 8.7,
+    evidenceSent: true,
+    evidenceDecision: "approved",
+    backendItems: [{
+      question: "Pia para higienização das mãos: limpa, em ponto estratégico, com papel toalha branca, sabonete bactericida ou neutro e antisséptico.",
+      feedbackStatus: "approved",
+      responseEvidenceFileId: "local-demo-evidence"
+    }]
+  }];
+}
+
 (async function bootstrapAuthenticatedApp() {
     updateStartupProgress(15, "Validando o acesso...");
     const localPreviewRole = ["localhost", "127.0.0.1"].includes(location.hostname)
@@ -8421,6 +8510,11 @@ function applyLocalPreviewScores() {
         ? { id: "local-admin", username: "preview.admin", full_name: "David Souza", role: "admin", area_slugs: [] }
         : { id: "local-responsible", username: "preview.responsavel", full_name: "Responsável", role: "area_responsible", area_slugs: ["cozinha-catering"] };
       applyLocalPreviewScores();
+      applyLocalPreviewActionPlans();
+      if (reportRequest) {
+        renderReportFileRequest(reportRequest);
+        return;
+      }
       const requestedPreviewView = viewFromHash();
       resetViewForFreshLogin();
       if (requestedPreviewView) state.view = requestedPreviewView;
