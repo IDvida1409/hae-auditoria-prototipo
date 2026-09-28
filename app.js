@@ -568,7 +568,7 @@ function setOfflineNotice(detail) {
 
 window.addEventListener("offline:sync-status", (event) => setOfflineNotice(event.detail || {}));
 window.addEventListener("offline:audit-transferred", (event) => {
-  const { localAuditId, areaId, newAuditorName } = event.detail || {};
+  const { localAuditId, areaId, newAuditorName, newAuditorUserId } = event.detail || {};
   const area = uiAreaFromBackendId(areaId) || Object.values(state.offlineAudits || {}).find((audit) => audit.localAuditId === localAuditId);
   const areaKey = area?.areaId || area?.id;
   if (!areaKey) return;
@@ -579,7 +579,9 @@ window.addEventListener("offline:audit-transferred", (event) => {
   delete state.auditEvidenceCollapsed[areaKey];
   delete state.auditLockedQuestions[areaKey];
   state.auditQueue = [];
-  state.auditStartError = `A auditoria foi transferida para ${newAuditorName || "outro auditor"}. A cópia deste aparelho foi descartada e não pode ser enviada novamente neste mês.`;
+  state.auditStartError = newAuditorUserId && String(newAuditorUserId) === String(currentAccessUser?.id)
+    ? "Você continuou esta auditoria em outro aparelho. A cópia deste aparelho foi descartada e não pode ser enviada novamente neste mês."
+    : `A auditoria foi transferida para ${newAuditorName || "outro auditor"}. A cópia deste aparelho foi descartada e não pode ser enviada novamente neste mês.`;
   state.view = "start";
   saveState();
   loadOperationalData().catch(() => {}).finally(() => render());
@@ -1436,7 +1438,8 @@ async function ensureLocalAudit(areaId, validateSession = false) {
     if (remote && String(remote.auditor_user_id) !== String(currentAccessUser?.id)) {
       await window.HAE_OFFLINE.discardTransferredAudit(existing.localAuditId);
       window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
-        localAuditId: existing.localAuditId, areaId: remote.area_id, newAuditorName: remote.auditor_name
+        localAuditId: existing.localAuditId, areaId: remote.area_id, newAuditorName: remote.auditor_name,
+        newAuditorUserId: remote.auditor_user_id
       } }));
       throw new Error(`Auditoria transferida para ${remote.auditor_name || "outro auditor"}. Esta cópia foi descartada.`);
     }
@@ -1448,13 +1451,16 @@ async function ensureLocalAudit(areaId, validateSession = false) {
         }) });
       } catch (error) {
         if (error.code === "AUDIT_EXISTS" && error.audit?.status === "in_progress") {
+          if (String(error.audit.auditor_user_id) === String(currentAccessUser?.id)) {
+            return continueOwnAuditOnThisDevice(areaId, error.audit, existing.localAuditId);
+          }
           state.pendingAuditTransfer = { areaId, audit: error.audit };
         }
         if (error.code === "AUDIT_TRANSFERRED") {
           await window.HAE_OFFLINE.discardTransferredAudit(existing.localAuditId);
           window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
             localAuditId: existing.localAuditId, areaId: error.audit?.area_id,
-            newAuditorName: error.audit?.auditor_name
+            newAuditorName: error.audit?.auditor_name, newAuditorUserId: error.audit?.auditor_user_id
           } }));
         }
         throw error;
@@ -1473,12 +1479,25 @@ async function ensureLocalAudit(areaId, validateSession = false) {
     return await startPromise;
   } catch (error) {
     if (error.code === "AUDIT_EXISTS" && error.audit?.status === "in_progress") {
+      if (String(error.audit.auditor_user_id) === String(currentAccessUser?.id)) {
+        return continueOwnAuditOnThisDevice(areaId, error.audit);
+      }
       state.pendingAuditTransfer = { areaId, audit: error.audit };
     }
     throw error;
   } finally {
     pendingAuditStarts.delete(areaId);
   }
+}
+
+async function continueOwnAuditOnThisDevice(areaId, remoteAudit, oldLocalAuditId = null) {
+  const result = await operationalRequest(`audit-sessions/${remoteAudit.id}/transfer`, {
+    method: "POST", body: JSON.stringify({ deviceUid: await window.HAE_OFFLINE.deviceUid() })
+  });
+  if (oldLocalAuditId) await window.HAE_OFFLINE.discardTransferredAudit(oldLocalAuditId);
+  const audit = await resumeRemoteAudit(areaId, result.audit);
+  await loadOperationalData();
+  return audit;
 }
 
 async function resumeRemoteAudit(areaId, remoteAudit) {
@@ -6010,8 +6029,9 @@ function startAuditPage() {
     const transferredHere = remoteAudit?.status === "in_progress" && localAudit?.status === "in_progress" &&
       String(remoteAudit.auditor_user_id) !== String(currentAccessUser?.id);
     const onOtherDevice = remoteAudit?.status === "in_progress" && localAudit?.status !== "in_progress";
+    const otherAuditor = onOtherDevice && String(remoteAudit.auditor_user_id) !== String(currentAccessUser?.id);
     const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
-    const label = finished ? "Auditoria finalizada" : transferredHere ? `Transferida para ${remoteAudit.auditor_name || "outro auditor"}` : pendingSync ? "Aguardando sincronização" : onOtherDevice ? `Com ${remoteAudit.auditor_name || "outro auditor"} · Assumir` : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
+    const label = finished ? "Auditoria finalizada" : transferredHere ? `Transferida para ${remoteAudit.auditor_name || "outro auditor"}` : pendingSync ? "Aguardando sincronização" : otherAuditor ? `Com ${remoteAudit.auditor_name || "outro auditor"} · Assumir` : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
     return `
       <article class="start-tile">
         <div class="start-tile-main">

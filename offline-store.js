@@ -424,7 +424,8 @@
               await discardTransferredAudit(op.payload.localAuditId);
               window.dispatchEvent(new CustomEvent("offline:audit-transferred", { detail: {
                 reason: "transferred", localAuditId: op.payload.localAuditId, areaId: failure.areaId,
-                newAuditorName: failure.newAuditorName, message: failure.error
+                newAuditorName: failure.newAuditorName, newAuditorUserId: failure.newAuditorUserId,
+                message: failure.error
               } }));
               continue;
             }

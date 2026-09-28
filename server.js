@@ -493,9 +493,12 @@ async function handleApi(request, response, url) {
         const audit = selected.rows[0];
         if (!audit || String(audit.auditor_user_id) !== String(user.id) ||
             String(audit.active_device_id || audit.device_id) !== String(device.id) || audit.status !== "in_progress") {
-          sendJson(response, 409, { error: `Auditoria transferida para ${audit?.auditor_name || "outro auditor"}. Esta cópia será descartada.`,
+          const sameAuditor = audit && String(audit.auditor_user_id) === String(user.id);
+          sendJson(response, 409, { error: sameAuditor
+            ? "Você continuou esta auditoria em outro aparelho. Esta cópia será descartada."
+            : `Auditoria transferida para ${audit?.auditor_name || "outro auditor"}. Esta cópia será descartada.`,
             code: "AUDIT_TRANSFERRED", auditId: audit?.id || auditId, areaId: audit?.area_id || null,
-            newAuditorName: audit?.auditor_name || "outro auditor" });
+            newAuditorName: audit?.auditor_name || "outro auditor", newAuditorUserId: audit?.auditor_user_id || null });
           return true;
         }
       }

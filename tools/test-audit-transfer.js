@@ -73,7 +73,25 @@ async function main() {
       deviceUid: "test-device-2", localAuditId: "local-3" });
     assert.equal(resumed.resumed, true);
     assert.equal(resumed.audit.id, started.audit.id);
-    console.log("PASS: real PostgreSQL start, duplicate prevention, transfer, retained answer lock, old-device rejection and first incomplete answer.");
+    const secondArea = (await pool.query("select a.id,c.id as checklist_id from audit_areas a join checklists c on c.area_id=a.id where c.is_active=true and a.unit_id=$1 and a.id<>$2 order by a.name limit 1", [area.unit_id, area.id])).rows[0];
+    const ownQuestion = (await pool.query("select q.id from checklist_questions q join checklist_blocks b on b.id=q.block_id where b.checklist_id=$1 order by b.display_order,q.question_number limit 1", [secondArea.checklist_id])).rows[0];
+    const ownStart = await session.start(pool, { unitId: area.unit_id, areaId: secondArea.id, user: users[0],
+      deviceUid: "own-device-1", localAuditId: "own-local-1" });
+    await sync.applyOperation(pool, { user_id: users[0].id, device_id: ownStart.audit.active_device_id,
+      created_at: new Date(), entity_type: "audit_answer", payload: { auditId: ownStart.audit.id,
+        localAuditId: "own-local-1", questionId: ownQuestion.id, answer: "C" } });
+    await assert.rejects(session.start(pool, { unitId: area.unit_id, areaId: secondArea.id, user: users[0],
+      deviceUid: "own-device-2", localAuditId: "own-local-2" }), (error) => error.code === "AUDIT_EXISTS");
+    const ownContinue = await session.transfer(pool, { auditId: ownStart.audit.id, unitId: area.unit_id,
+      user: users[0], deviceUid: "own-device-2", allowedAreaIds: [], allAreas: true });
+    assert.equal(ownContinue.continuedOnAnotherDevice, true);
+    assert.equal(ownContinue.audit.auditor_user_id, users[0].id);
+    assert.equal(ownContinue.retainedAnswerCount, 1);
+    await assert.rejects(sync.applyOperation(pool, { user_id: users[0].id, device_id: ownStart.audit.active_device_id,
+      created_at: new Date(), entity_type: "audit_answer", payload: { auditId: ownStart.audit.id,
+        localAuditId: "own-local-1", questionId: ownQuestion.id, answer: "C" } }),
+    (error) => error.code === "AUDIT_TRANSFERRED" && /outro aparelho/.test(error.message));
+    console.log("PASS: real PostgreSQL transfer, same-auditor device continuation, retained answers, old-device rejection and first incomplete answer.");
   } finally {
     if (pool) await pool.end().catch(() => {});
     await Promise.race([database.stop(), new Promise((resolve) => setTimeout(resolve, 10000))]);
