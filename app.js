@@ -297,13 +297,15 @@ function auditGroupAreaIds(parentId) {
 }
 
 function responsibleOrganizationArea() {
+  return responsibleOrganizationAreas()[0] || null;
+}
+
+function responsibleOrganizationAreas() {
   const allowed = Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : [];
-  return organizationAreas.find((parent) => parent.subareaIds.some((id) => allowed.includes(id))) || null;
+  return organizationAreas.filter((parent) => parent.subareaIds.some((id) => allowed.includes(id)));
 }
 
 function responsibleScopedAreas() {
-  const parent = responsibleOrganizationArea();
-  if (parent) return subareasForOrganizationArea(parent);
   const allowed = new Set(Array.isArray(currentAccessUser?.area_slugs) ? currentAccessUser.area_slugs : []);
   return areaData.filter((area) => allowed.has(area.id));
 }
@@ -2342,10 +2344,11 @@ function recentFeedbackNotifications() {
 function dashboardHome() {
   const hasSelection = Boolean(state.selectedArea);
   const selectedArea = hasSelection ? areaById(state.selectedArea) : null;
+  const responsibleParents = isAreaResponsible() ? responsibleOrganizationAreas() : [];
   const responsibleParent = isAreaResponsible() ? responsibleOrganizationArea() : null;
   const adminParent = !isAreaResponsible() && state.selectedParentArea ? organizationAreaById(state.selectedParentArea) : null;
   const visibleParent = responsibleParent || adminParent;
-  const visibleSubareas = visibleParent ? subareasForOrganizationArea(visibleParent) : [];
+  const visibleSubareas = visibleParent ? subareasForOrganizationArea(visibleParent).filter((area) => canAccessArea(area.id)) : [];
   const scopeArea = visibleParent ? aggregateOrganizationArea(visibleParent) : selectedArea;
   const scopedAreas = visibleParent
     ? visibleSubareas
@@ -2361,7 +2364,9 @@ function dashboardHome() {
   const showOrganizationBack = Boolean(visibleParent && (adminParent || hasSelection));
   const cardsMarkup = visibleParent
     ? visibleSubareas.map((area) => areaTile(area)).join("")
-    : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
+    : isAreaResponsible()
+      ? `${responsibleParents.map((parent) => organizationAreaTile(parent)).join("")}${responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area)).map((area) => areaTile(area)).join("")}`
+      : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
       <div class="fichario-panel-head">
@@ -5522,8 +5527,7 @@ function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = s
 }
 
 function reportsPage() {
-  const responsibleParent = isAreaResponsible() ? responsibleOrganizationArea() : null;
-  const visibleParents = isAreaResponsible() ? (responsibleParent ? [responsibleParent] : []) : organizationAreas;
+  const visibleParents = isAreaResponsible() ? responsibleOrganizationAreas() : organizationAreas;
   const visibleStandalone = isAreaResponsible()
     ? responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area))
     : standaloneAuditAreas();
