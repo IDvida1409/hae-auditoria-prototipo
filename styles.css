@@ -14658,11 +14658,11 @@ button.planning-kpi:hover {
 
   .fichario-shell .start-tile {
     grid-template-columns: 1fr;
-    grid-template-rows: 52px 50px 34px;
+    grid-template-rows: minmax(0, 1fr) auto;
     align-items: start;
     justify-items: center;
-    min-height: 156px;
-    height: 156px;
+    min-height: 164px;
+    height: auto;
     padding: 12px 10px;
     gap: 6px;
     text-align: center;
@@ -14684,6 +14684,7 @@ button.planning-kpi:hover {
     margin: 0;
     font-size: 12.7px;
     line-height: 1.12;
+    overflow-wrap: anywhere;
   }
 
   .fichario-shell .start-tile p {
@@ -14691,18 +14692,28 @@ button.planning-kpi:hover {
     margin: 3px 0 0;
     font-size: 10.4px;
     line-height: 1.18;
+    overflow-wrap: anywhere;
+  }
+
+  .fichario-shell .start-tile-main {
+    min-height: 0;
+    align-content: start;
+    gap: 2px;
   }
 
   .fichario-shell .start-tile .outline-btn {
     grid-column: auto;
     width: 100%;
-    min-height: 34px;
+    min-height: 32px;
     margin-top: 2px;
-    padding-inline: 0;
+    padding: 2px 0;
     border: 0;
     background: transparent;
-    text-align: left;
-    justify-content: flex-start;
+    text-align: center;
+    justify-content: center;
+    white-space: normal;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
   }
 
   .fichario-shell .how-panel {
@@ -17300,6 +17311,34 @@ button.planning-kpi:hover {
 .report-file-action .tiny-icon {
   width: 14px;
   height: 14px;
+}
+
+@media (max-width: 720px) {
+  .report-option-actions {
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .report-option-actions button,
+  .report-option-actions .report-file-action {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+    padding-inline: 8px;
+    white-space: nowrap;
+  }
+
+  .report-option-actions .asset-icon-holder,
+  .report-option-actions .tiny-icon,
+  .report-file-action .asset-icon-holder,
+  .report-file-action .tiny-icon {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+  }
 }
 
 .top-search {

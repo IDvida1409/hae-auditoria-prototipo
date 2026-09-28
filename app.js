@@ -530,6 +530,13 @@ function paintOfflineStatus() {
 
 function setOfflineNotice(detail) {
   const phase = detail?.phase;
+  // Sync retries continue in the background; a transient server error must not hide the saved audit.
+  if (phase === "error") {
+    clearTimeout(offlineNoticeTimer);
+    offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
+    paintOfflineStatus();
+    return;
+  }
   if (["pending", "error"].includes(phase)) {
     const now = Date.now();
     if (now - lastSyncProblemNoticeAt < 60000) return;
@@ -819,6 +826,7 @@ function defaultState() {
     answers: {},
     auditNotes: {},
     auditEvidence: {},
+    auditEvidenceCollapsed: {},
     offlineAudits: {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -879,6 +887,7 @@ function persistableState(source = state) {
     answers: source.answers,
     auditNotes: source.auditNotes,
     auditEvidence: source.auditEvidence,
+    auditEvidenceCollapsed: source.auditEvidenceCollapsed,
     offlineAudits: source.offlineAudits,
     checklistBlock: source.checklistBlock,
     checklistPage: source.checklistPage,
@@ -931,6 +940,7 @@ function normalizeSavedState(saved = {}) {
     answers: merged.answers && typeof merged.answers === "object" ? merged.answers : {},
     auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
     auditEvidence: merged.auditEvidence && typeof merged.auditEvidence === "object" ? merged.auditEvidence : {},
+    auditEvidenceCollapsed: merged.auditEvidenceCollapsed && typeof merged.auditEvidenceCollapsed === "object" ? merged.auditEvidenceCollapsed : {},
     offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
     detailBlock: null,
     detailEvidenceOpen: false,
@@ -6010,7 +6020,7 @@ function checklistPage() {
                         })
                         .join("")}
                     </div>
-                    <div class="nc-evidence">
+                    ${state.auditEvidenceCollapsed?.[area.id]?.[question.id] ? "" : `<div class="nc-evidence">
                       <div class="evidence-title">${svgIcon("warning")} Evidência da não conformidade</div>
                       <div class="nc-risk-record" style="--risk-color:${risk.color}">
                         <i></i>
@@ -6033,7 +6043,7 @@ function checklistPage() {
                         <div class="note-field"><label>Prazo</label><input type="date" /></div>
                       </div>
                       <button class="primary-btn audit-evidence-complete" data-complete-audit-evidence="${question.id}" type="button" ${state.auditEvidence?.[area.id]?.[question.id] ? "" : "disabled"}>${svgIcon("check")} Concluir evidência e avançar</button>
-                    </div>
+                    </div>`}
                   </section>
                 `;
               })
@@ -8555,6 +8565,10 @@ document.addEventListener("click", async (event) => {
     const areaId = state.selectedArea;
     const questionId = answer.dataset.question;
     const answerValue = answer.dataset.answer;
+    state.auditEvidenceCollapsed = {
+      ...state.auditEvidenceCollapsed,
+      [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: false }
+    };
     state.answers = {
       ...state.answers,
       [areaId]: {
@@ -8571,7 +8585,14 @@ document.addEventListener("click", async (event) => {
 
   const completeEvidence = event.target.closest("[data-complete-audit-evidence]");
   if (completeEvidence) {
-    advanceAuditQuestion(completeEvidence.dataset.completeAuditEvidence);
+    const areaId = state.selectedArea;
+    const questionId = completeEvidence.dataset.completeAuditEvidence;
+    state.auditEvidenceCollapsed = {
+      ...state.auditEvidenceCollapsed,
+      [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: true }
+    };
+    saveState();
+    advanceAuditQuestion(questionId);
     return;
   }
 
