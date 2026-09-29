@@ -218,7 +218,10 @@
     const payload = {
       userScope: userScope(),
       localFileId,
-      file,
+      // Safari/WebKit can reject Blob/File values while cloning an IndexedDB
+      // record. ArrayBuffer is supported consistently and can be rebuilt for upload.
+      file: metadata.fileBytes ? null : file,
+      fileBytes: metadata.fileBytes || null,
       fileName: metadata.fileName || file?.name || "evidencia",
       mimeType: metadata.mimeType || file?.type || "application/octet-stream",
       fileSizeBytes: metadata.fileSizeBytes || file?.size || null,
@@ -234,14 +237,20 @@
     return payload;
   }
 
-  async function prepareFileBlob(file) {
+  async function prepareFileBytes(file) {
     if (!file || typeof file.arrayBuffer !== "function") throw new Error("Arquivo de foto inválido.");
-    const bytes = await file.arrayBuffer();
-    return new Blob([bytes], { type: file.type || "application/octet-stream" });
+    return file.arrayBuffer();
   }
 
   async function saveFile(file, metadata = {}) {
-    return putRecord(FILE_STORE, fileRecord(file, metadata));
+    const fileBytes = await prepareFileBytes(file);
+    return putRecord(FILE_STORE, fileRecord(null, {
+      ...metadata,
+      fileBytes,
+      fileName: metadata.fileName || file.name || "evidencia",
+      mimeType: metadata.mimeType || file.type || "application/octet-stream",
+      fileSizeBytes: metadata.fileSizeBytes || file.size || fileBytes.byteLength
+    }));
   }
 
   async function getFile(localFileId) {
@@ -286,12 +295,13 @@
   }
 
   async function queueFileUpload(file, metadata = {}) {
-    const prepared = await prepareFileBlob(file);
-    const savedFile = fileRecord(prepared, {
+    const fileBytes = await prepareFileBytes(file);
+    const savedFile = fileRecord(null, {
       ...metadata,
+      fileBytes,
       fileName: metadata.fileName || file.name || "evidencia",
       mimeType: metadata.mimeType || file.type || "application/octet-stream",
-      fileSizeBytes: file.size || prepared.size
+      fileSizeBytes: file.size || fileBytes.byteLength
     });
     const operation = await saveOperation({
       localFileRecord: savedFile,
@@ -315,6 +325,60 @@
     return { file: savedFile, operation };
   }
 
+  async function uploadFileNow(file, metadata = {}) {
+    if (navigator.onLine === false) throw new Error("Sem conexão para envio direto.");
+    const localFileId = metadata.localFileId || uid("file");
+    const base = syncOptions.backendUrl || await getMeta("backendUrl") || location.origin;
+    const device = await deviceUid();
+    const headers = { ...(typeof syncOptions.headers === "function" ? syncOptions.headers() : syncOptions.headers || {}) };
+    const response = await fetchWithTimeout(base + "/api/offline-files", {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": metadata.mimeType || file.type || "application/octet-stream",
+        "x-device-uid": device,
+        "x-local-file-id": localFileId,
+        "x-file-type": metadata.fileType || "audit_photo",
+        "x-file-name": encodeURIComponent(metadata.fileName || file.name || "evidencia"),
+        ...(metadata.auditId ? { "x-audit-id": metadata.auditId } : {})
+      },
+      body: file
+    }, 120000);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.file?.id) throw new Error(result.error || `Falha ao enviar foto: ${response.status}`);
+    const savedFile = {
+      ...fileRecord(null, {
+        ...metadata,
+        localFileId,
+        fileName: metadata.fileName || file.name || "evidencia",
+        mimeType: metadata.mimeType || file.type || "application/octet-stream",
+        fileSizeBytes: file.size || null
+      }),
+      serverId: result.file.id,
+      status: "uploaded"
+    };
+    const operation = await saveOperation({
+      localFileRecord: savedFile,
+      entityType: "stored_file",
+      operation: "upload",
+      dependsOn: metadata.dependsOn || [],
+      payload: {
+        localFileId,
+        fileName: savedFile.fileName,
+        mimeType: savedFile.mimeType,
+        fileSizeBytes: savedFile.fileSizeBytes,
+        fileType: savedFile.fileType,
+        entityType: savedFile.entityType,
+        entityId: savedFile.entityId,
+        localAuditId: metadata.localAuditId || null,
+        auditId: metadata.auditId || null,
+        questionId: metadata.questionId || null,
+        caption: metadata.caption || null
+      }
+    });
+    return { file: savedFile, operation, direct: true };
+  }
+
   async function getAuditSnapshot(localAuditId) {
     const db = await openDb();
     try {
@@ -336,7 +400,7 @@
     }
     const snapshot = await getAuditSnapshot(localAuditId);
     for (const file of snapshot.files) {
-      await putRecord(FILE_STORE, { ...file, file: null, status: "discarded", updatedAt: nowIso() });
+      await putRecord(FILE_STORE, { ...file, file: null, fileBytes: null, status: "discarded", updatedAt: nowIso() });
     }
   }
 
@@ -442,14 +506,18 @@
         if (transferredAudits.has(op.payload?.localAuditId)) continue;
         if (op.entityType !== "stored_file") continue;
         const file = await getFile(op.payload.localFileId);
-        if (!file?.file) throw new Error("Foto local nao encontrada; os dados pendentes foram mantidos");
+        if (!file) throw new Error("Foto local nao encontrada; os dados pendentes foram mantidos");
         if (!file.serverId) {
+          const uploadBody = file.fileBytes
+            ? new Blob([file.fileBytes], { type: file.mimeType || "application/octet-stream" })
+            : file.file;
+          if (!uploadBody) throw new Error("Foto local nao encontrada; os dados pendentes foram mantidos");
           const upload = await fetchWithTimeout(base + "/api/offline-files", {
             method: "POST",
             headers: { ...headers, "content-type": file.mimeType, "x-device-uid": device,
               "x-local-file-id": file.localFileId, "x-file-type": file.fileType, "x-file-name": encodeURIComponent(file.fileName),
               ...(op.payload.auditId ? { "x-audit-id": op.payload.auditId } : {}) },
-            body: file.file
+            body: uploadBody
           }, 120000);
           if (!upload.ok) {
             const failure = await upload.json().catch(() => ({}));
@@ -506,7 +574,7 @@
           if (local.entityType === "audit_answer") await patchEntity("answer:" + local.payload.localAuditId + ":" + local.payload.questionId, { serverId: remote.result_entity_id, serverRevision: remote.result_payload?.answer?.revision });
           if (local.entityType === "stored_file") {
             const file = await getFile(local.payload.localFileId);
-            await putRecord(FILE_STORE, { ...file, status: "synced" });
+            await putRecord(FILE_STORE, { ...file, file: null, fileBytes: null, status: "synced", updatedAt: nowIso() });
           }
           reconciled.push(remote.result_payload);
           sent++;
@@ -598,6 +666,7 @@
     queueAuditAnswer,
     queueActionPlanFeedback,
     queueFileUpload,
+    uploadFileNow,
     syncPending,
     configure,
     applyOperationalReset,

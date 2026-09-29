@@ -213,6 +213,8 @@ const pendingActionPlanEvidencePreview = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
 const pendingAuditEvidence = new Set();
+const pendingAuditEvidencePreview = new Map();
+let auditEvidenceImagePreview = "";
 const REPORT_LAYOUT_VERSION = "approved-layout-v5-jspdf";
 
 const accessRoleLabels = {
@@ -615,7 +617,7 @@ const offlineNoticeContent = {
 function offlineStatusNotice() {
   if (!offlineNotice || !offlineNoticeContent[offlineNotice.phase]) return "";
   const [title, description] = offlineNoticeContent[offlineNotice.phase];
-  const detail = offlineNotice.phase === "error" && offlineNotice.message ? ` ${offlineNotice.message}` : "";
+  const detail = offlineNotice.message ? ` ${offlineNotice.message}` : "";
   const pending = Number(offlineNotice.pending || 0);
   return `<aside class="offline-status is-${offlineNotice.phase}" role="status" aria-live="polite">
     <i class="offline-status-dot" aria-hidden="true"></i>
@@ -674,6 +676,7 @@ window.addEventListener("offline:audit-transferred", (event) => {
   delete state.answers[areaKey];
   delete state.auditNotes[areaKey];
   delete state.auditEvidence[areaKey];
+  delete state.auditEvidenceFiles[areaKey];
   delete state.auditEvidenceCollapsed[areaKey];
   delete state.auditLockedQuestions[areaKey];
   state.auditQueue = [];
@@ -685,7 +688,29 @@ window.addEventListener("offline:audit-transferred", (event) => {
   loadOperationalData().catch(() => {}).finally(() => render());
 });
 window.addEventListener("offline:sync-complete", async (event) => {
-  const finalized = (event.detail?.results || []).find((result) => result?.entityType === "audit" && result?.audit?.status === "finished");
+  const results = event.detail?.results || [];
+  let evidenceChanged = false;
+  for (const result of results.filter((item) => item?.entityType === "stored_file" && item?.file)) {
+    const localFileId = result.file.local_file_id || result.file.localFileId;
+    if (!localFileId) continue;
+    for (const [areaId, records] of Object.entries(state.auditEvidenceFiles || {})) {
+      for (const [questionId, record] of Object.entries(records || {})) {
+        if (record?.localFileId !== localFileId) continue;
+        state.auditEvidenceFiles[areaId][questionId] = {
+          ...record,
+          status: "synced",
+          serverFileId: result.file.id || record.serverFileId,
+          updatedAt: new Date().toISOString()
+        };
+        evidenceChanged = true;
+      }
+    }
+  }
+  if (evidenceChanged) {
+    saveState();
+    render();
+  }
+  const finalized = results.find((result) => result?.entityType === "audit" && result?.audit?.status === "finished");
   if (!finalized) return;
   const area = uiAreaFromBackendId(finalized.audit.area_id);
   if (area) {
@@ -945,6 +970,7 @@ function defaultState() {
     answers: {},
     auditNotes: {},
     auditEvidence: {},
+    auditEvidenceFiles: {},
     auditEvidenceCollapsed: {},
     auditLockedQuestions: {},
     offlineAudits: {},
@@ -1010,6 +1036,7 @@ function persistableState(source = state) {
     answers: source.answers,
     auditNotes: source.auditNotes,
     auditEvidence: source.auditEvidence,
+    auditEvidenceFiles: source.auditEvidenceFiles,
     auditEvidenceCollapsed: source.auditEvidenceCollapsed,
     auditLockedQuestions: source.auditLockedQuestions,
     offlineAudits: source.offlineAudits,
@@ -1067,6 +1094,7 @@ function normalizeSavedState(saved = {}) {
     answers: merged.answers && typeof merged.answers === "object" ? merged.answers : {},
     auditNotes: merged.auditNotes && typeof merged.auditNotes === "object" ? merged.auditNotes : {},
     auditEvidence: merged.auditEvidence && typeof merged.auditEvidence === "object" ? merged.auditEvidence : {},
+    auditEvidenceFiles: merged.auditEvidenceFiles && typeof merged.auditEvidenceFiles === "object" ? merged.auditEvidenceFiles : {},
     auditEvidenceCollapsed: merged.auditEvidenceCollapsed && typeof merged.auditEvidenceCollapsed === "object" ? merged.auditEvidenceCollapsed : {},
     auditLockedQuestions: merged.auditLockedQuestions && typeof merged.auditLockedQuestions === "object" ? merged.auditLockedQuestions : {},
     offlineAudits: merged.offlineAudits && typeof merged.offlineAudits === "object" ? merged.offlineAudits : {},
@@ -1141,12 +1169,12 @@ function saveState() {
   const snapshot = persistableState();
   try {
     if (currentAccessUser?.id && !String(currentAccessUser.id).startsWith("local-")) {
-      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) delete snapshot[key];
+      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceFiles", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) delete snapshot[key];
     }
     localStorage.setItem(stateStorageKey, JSON.stringify(snapshot));
     if (currentAccessUser?.id && !String(currentAccessUser.id).startsWith("local-")) {
       localStorage.setItem(`${stateStorageKey}:audits:${currentAccessUser.id}`, JSON.stringify({
-        answers: state.answers, auditNotes: state.auditNotes, auditEvidence: state.auditEvidence,
+        answers: state.answers, auditNotes: state.auditNotes, auditEvidence: state.auditEvidence, auditEvidenceFiles: state.auditEvidenceFiles,
         auditEvidenceCollapsed: state.auditEvidenceCollapsed, auditLockedQuestions: state.auditLockedQuestions,
         offlineAudits: state.offlineAudits
       }));
@@ -1161,22 +1189,72 @@ async function restoreAuditStateForUser() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(`${stateStorageKey}:audits:${currentAccessUser.id}`) || "null"); } catch {}
   if (!saved) {
-    saved = { answers: {}, auditNotes: {}, auditEvidence: {}, auditEvidenceCollapsed: {}, auditLockedQuestions: {}, offlineAudits: {} };
+    saved = { answers: {}, auditNotes: {}, auditEvidence: {}, auditEvidenceFiles: {}, auditEvidenceCollapsed: {}, auditLockedQuestions: {}, offlineAudits: {} };
     for (const [areaId, audit] of Object.entries(state.offlineAudits || {})) {
       const owned = String(audit.ownerUserId) === String(currentAccessUser.id) ||
         (!audit.ownerUserId && audit.localAuditId && Boolean((await window.HAE_OFFLINE?.getAuditSnapshot(audit.localAuditId).catch(() => null))?.audit));
       if (!owned) continue;
       saved.offlineAudits[areaId] = { ...audit, ownerUserId: currentAccessUser.id };
-      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions"]) {
+      for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceFiles", "auditEvidenceCollapsed", "auditLockedQuestions"]) {
         if (state[key]?.[areaId]) saved[key][areaId] = state[key][areaId];
       }
     }
   }
-  for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) {
+  for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceFiles", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits"]) {
     state[key] = saved[key] && typeof saved[key] === "object" ? saved[key] : {};
   }
   state.auditQueue = [];
   state.auditQueueIndex = 0;
+  await restoreAuditEvidencePreviews();
+}
+
+function auditEvidenceRecord(areaId, questionId) {
+  return state.auditEvidenceFiles?.[areaId]?.[questionId] || null;
+}
+
+function auditEvidenceIsSynced(areaId, questionId) {
+  const record = auditEvidenceRecord(areaId, questionId);
+  if (record) return record.status === "synced";
+  return Boolean(state.auditEvidence?.[areaId]?.[questionId] && state.auditLockedQuestions?.[areaId]?.[questionId]);
+}
+
+function auditEvidencePreviewUrl(areaId, questionId) {
+  const key = `${areaId}:${questionId}`;
+  const localPreview = pendingAuditEvidencePreview.get(key);
+  if (localPreview) return localPreview;
+  const record = auditEvidenceRecord(areaId, questionId);
+  return record?.serverFileId ? apiUrl(`/api/files/${record.serverFileId}/content`) : "";
+}
+
+function setAuditEvidenceRecord(areaId, questionId, patch) {
+  state.auditEvidenceFiles = {
+    ...state.auditEvidenceFiles,
+    [areaId]: {
+      ...(state.auditEvidenceFiles?.[areaId] || {}),
+      [questionId]: { ...(state.auditEvidenceFiles?.[areaId]?.[questionId] || {}), ...patch }
+    }
+  };
+}
+
+async function restoreAuditEvidencePreviews() {
+  if (!window.HAE_OFFLINE) return;
+  for (const [areaId, records] of Object.entries(state.auditEvidenceFiles || {})) {
+    for (const [questionId, record] of Object.entries(records || {})) {
+      if (!record?.localFileId || record.serverFileId || pendingAuditEvidencePreview.has(`${areaId}:${questionId}`)) continue;
+      const stored = await window.HAE_OFFLINE.getFile(record.localFileId).catch(() => null);
+      if (!stored) continue;
+      if (stored.serverId || stored.status === "synced") {
+        setAuditEvidenceRecord(areaId, questionId, {
+          status: stored.status === "synced" ? "synced" : record.status,
+          serverFileId: stored.serverId || record.serverFileId
+        });
+      }
+      const contents = stored.fileBytes || stored.file;
+      if (!contents) continue;
+      const blob = contents instanceof Blob ? contents : new Blob([contents], { type: stored.mimeType || record.mimeType || "image/jpeg" });
+      pendingAuditEvidencePreview.set(`${areaId}:${questionId}`, URL.createObjectURL(blob));
+    }
+  }
 }
 
 function registerServiceWorker() {
@@ -1279,7 +1357,7 @@ async function loadOfflineBootstrap() {
       if (response.ok) {
         payload = await response.json();
         if (await window.HAE_OFFLINE.applyOperationalReset(payload.operationalResetAt)) {
-          for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits", "auditProgress"]) state[key] = {};
+          for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceFiles", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits", "auditProgress"]) state[key] = {};
           state.auditQueue = [];
           state.auditQueueIndex = 0;
           saveState();
@@ -1349,6 +1427,7 @@ async function loadOperationalData(options = {}) {
       delete state.answers[area.id];
       delete state.auditNotes[area.id];
       delete state.auditEvidence[area.id];
+      delete state.auditEvidenceFiles[area.id];
       delete state.auditProgress[area.id];
     }
   }
@@ -1627,22 +1706,31 @@ async function resumeRemoteAudit(areaId, remoteAudit) {
   const answers = {};
   const notes = {};
   const evidence = {};
+  const evidenceFiles = {};
   const collapsed = {};
   const locked = {};
   for (const backendId of detail.lockedQuestionIds || []) {
     const questionId = reverseIds.get(String(backendId));
     if (questionId) locked[questionId] = true;
   }
-  const filesByAnswer = new Set((detail.files || [])
+  const filesByAnswer = new Map((detail.files || [])
     .filter((file) => file.entity_type === "audit_answer")
-    .map((file) => String(file.entity_id)));
+    .map((file) => [String(file.entity_id), file]));
   for (const answer of detail.answers || []) {
     const questionId = reverseIds.get(String(answer.question_id));
     if (!questionId) continue;
     answers[questionId] = answer.answer;
     notes[questionId] = answer.notes || "";
-    if (filesByAnswer.has(String(answer.id))) {
+    const answerFile = filesByAnswer.get(String(answer.id));
+    if (answerFile) {
       evidence[questionId] = true;
+      evidenceFiles[questionId] = {
+        status: "synced",
+        serverFileId: answerFile.id,
+        fileName: answerFile.original_filename || "Evidência fotográfica",
+        mimeType: answerFile.mime_type || "image/jpeg",
+        updatedAt: answerFile.created_at || new Date().toISOString()
+      };
       collapsed[questionId] = true;
     }
   }
@@ -1655,6 +1743,7 @@ async function resumeRemoteAudit(areaId, remoteAudit) {
   state.answers = { ...state.answers, [areaId]: answers };
   state.auditNotes = { ...state.auditNotes, [areaId]: notes };
   state.auditEvidence = { ...state.auditEvidence, [areaId]: evidence };
+  state.auditEvidenceFiles = { ...state.auditEvidenceFiles, [areaId]: evidenceFiles };
   state.auditEvidenceCollapsed = { ...state.auditEvidenceCollapsed, [areaId]: collapsed };
   state.auditLockedQuestions = { ...state.auditLockedQuestions, [areaId]: locked };
   state.offlineAudits = { ...state.offlineAudits, [areaId]: audit };
@@ -1672,6 +1761,7 @@ async function createLocalAudit(areaId) {
     delete state.answers[areaId];
     delete state.auditNotes[areaId];
     delete state.auditEvidence[areaId];
+    delete state.auditEvidenceFiles[areaId];
   }
   const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString() };
@@ -6219,6 +6309,22 @@ function startAuditPage() {
   `;
 }
 
+function auditEvidenceThumbnail(areaId, questionId) {
+  if (!state.auditEvidence?.[areaId]?.[questionId]) return "";
+  const record = auditEvidenceRecord(areaId, questionId);
+  const previewUrl = auditEvidencePreviewUrl(areaId, questionId);
+  const synced = auditEvidenceIsSynced(areaId, questionId);
+  const statusText = synced ? "Foto sincronizada" : "Aguardando sincronização";
+  return `
+    <div class="audit-evidence-thumbnail ${synced ? "is-synced" : "is-pending"}">
+      <button type="button" class="audit-evidence-image-button" ${previewUrl ? `data-open-audit-evidence-image="${escapeHtml(previewUrl)}"` : "disabled"} aria-label="Visualizar foto da evidência">
+        ${previewUrl ? `<img src="${escapeHtml(previewUrl)}" alt="Miniatura da evidência fotográfica" />` : svgIcon("camera")}
+      </button>
+      <span><strong>${escapeHtml(record?.fileName || "Evidência fotográfica")}</strong><small>${statusText}</small></span>
+      ${state.auditEvidenceCollapsed?.[areaId]?.[questionId] ? `<button type="button" class="audit-evidence-edit" data-reopen-audit-evidence="${questionId}">Alterar foto</button>` : ""}
+    </div>`;
+}
+
 function checklistPage() {
   const area = areaById(state.selectedArea);
   const areaResponsibleName = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id)?.responsible_name || "Responsável não atribuído";
@@ -6247,6 +6353,7 @@ function checklistPage() {
     || blocks.find((block, index) => index !== currentBlockIndex && (block.questions || []).some((question) => !areaAnswers[question.id]));
   const allAnswered = answeredCount === questions.length && questions.length > 0;
   const missingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && !state.auditEvidence?.[area.id]?.[question.id]).length;
+  const pendingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && state.auditEvidence?.[area.id]?.[question.id] && !auditEvidenceIsSynced(area.id, question.id)).length;
 
   if (!blocks.length) {
     return `
@@ -6323,6 +6430,7 @@ function checklistPage() {
                         })
                         .join("")}
                     </div>
+                    ${isNC ? auditEvidenceThumbnail(area.id, question.id) : ""}
                     ${locked || state.auditEvidenceCollapsed?.[area.id]?.[question.id] ? "" : `<div class="nc-evidence">
                       <div class="evidence-title">${svgIcon("warning")} Evidência da não conformidade</div>
                       <div class="nc-risk-record" style="--risk-color:${risk.color}">
@@ -6365,7 +6473,7 @@ function checklistPage() {
         <section class="audit-footer surface" style="margin-top:12px">
           <button class="outline-btn" data-request-leave-audit><span class="desktop-action-label">Voltar para áreas</span><span class="mobile-action-label">Áreas</span></button>
           <span class="audit-total-summary"><b>${questions.length}</b> perguntas <i>•</i> <b>${blocks.length}</b> blocos</span>
-          <button class="primary-btn" data-finalize-audit ${allAnswered ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Abrir ${missingEvidenceCount} foto(s) pendente(s)` : "Finalizar auditoria"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `Falta ${missingEvidenceCount} foto` : "Finalizar"}</span> ${allAnswered ? svgIcon("arrow") : ""}</button>
+          <button class="primary-btn" data-finalize-audit ${allAnswered ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Anexar ${missingEvidenceCount} foto(s)` : pendingEvidenceCount ? `Sincronizar ${pendingEvidenceCount} foto(s)` : "Finalizar auditoria"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `Falta ${missingEvidenceCount} foto` : pendingEvidenceCount ? `${pendingEvidenceCount} pendente` : "Finalizar"}</span> ${allAnswered ? svgIcon("arrow") : ""}</button>
         </section>
       </div>
       ${showAllBlocks ? '<button class="mobile-blocks-backdrop" data-checklist-blocks type="button" aria-label="Fechar lista de blocos"></button>' : ""}
@@ -6421,6 +6529,7 @@ function checklistPage() {
           </section>
         </div>
       ` : ""}
+      ${auditEvidenceImagePreview ? `<div class="audit-evidence-viewer" role="dialog" aria-modal="true" aria-label="Visualização da evidência"><button type="button" data-close-audit-evidence-image aria-label="Fechar visualização">${icons.close}</button><img src="${escapeHtml(auditEvidenceImagePreview)}" alt="Evidência fotográfica ampliada" /></div>` : ""}
     </div>
   `;
 }
@@ -9134,6 +9243,32 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const openAuditEvidenceImage = event.target.closest("[data-open-audit-evidence-image]");
+  if (openAuditEvidenceImage) {
+    auditEvidenceImagePreview = openAuditEvidenceImage.dataset.openAuditEvidenceImage;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-close-audit-evidence-image]")) {
+    auditEvidenceImagePreview = "";
+    render();
+    return;
+  }
+
+  const reopenAuditEvidence = event.target.closest("[data-reopen-audit-evidence]");
+  if (reopenAuditEvidence) {
+    const areaId = state.selectedArea;
+    const questionId = reopenAuditEvidence.dataset.reopenAuditEvidence;
+    state.auditEvidenceCollapsed = {
+      ...state.auditEvidenceCollapsed,
+      [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: false }
+    };
+    saveState();
+    render();
+    return;
+  }
+
   const answer = event.target.closest("[data-answer]");
   if (answer) {
     const areaId = state.selectedArea;
@@ -9197,6 +9332,13 @@ document.addEventListener("click", async (event) => {
       requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(pendingQuestion.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
       return;
     }
+    const unsyncedEvidence = questions.filter((question) => answered[question.id] === "NC" && !auditEvidenceIsSynced(areaId, question.id));
+    if (unsyncedEvidence.length) {
+      setOfflineNotice({ phase: "pending", pending: unsyncedEvidence.length, message: "A auditoria será liberada quando todas as fotos forem confirmadas pelo servidor." });
+      window.HAE_OFFLINE?.syncPending().catch(() => {});
+      render();
+      return;
+    }
     state.auditFinalizeModal = true;
     render();
     return;
@@ -9215,6 +9357,9 @@ document.addEventListener("click", async (event) => {
     confirmFinalize.disabled = true;
     try {
       await waitForAuditWrites(areaId);
+      const area = areaById(areaId);
+      const unsyncedEvidence = questionsForArea(area).filter((question) => state.answers?.[areaId]?.[question.id] === "NC" && !auditEvidenceIsSynced(areaId, question.id));
+      if (unsyncedEvidence.length) throw new Error("Aguarde a sincronização das fotos antes de finalizar a auditoria.");
       // A foto precisa validar o aparelho ativo antes do upload; sem isso o servidor
       // rejeita a evidência como pertencente a outro dispositivo.
       const audit = await ensureLocalAudit(areaId, true);
@@ -9273,11 +9418,24 @@ function handleAuditEvidenceFileInput(evidence) {
     evidence.value = "";
     return;
   }
+  const previousPreview = pendingAuditEvidencePreview.get(evidenceKey);
+  if (previousPreview?.startsWith("blob:")) URL.revokeObjectURL(previousPreview);
+  pendingAuditEvidencePreview.set(evidenceKey, URL.createObjectURL(file));
   pendingAuditEvidence.add(evidenceKey);
   state.auditEvidence = {
     ...state.auditEvidence,
     [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
   };
+  setAuditEvidenceRecord(areaId, questionId, {
+    status: "pending",
+    serverFileId: null,
+    localFileId: null,
+    fileName: file.name || "Evidência fotográfica",
+    mimeType: file.type || "image/jpeg",
+    fileSizeBytes: file.size,
+    errorMessage: null,
+    updatedAt: new Date().toISOString()
+  });
   saveState();
   render();
   const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
@@ -9291,7 +9449,7 @@ function handleAuditEvidenceFileInput(evidence) {
       }
       if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
       if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
-      await window.HAE_OFFLINE.queueFileUpload(file, {
+      const fileMetadata = {
         localAuditId: audit.localAuditId,
         auditId: audit.remoteAuditId || null,
         questionId: backendQuestionId,
@@ -9299,8 +9457,34 @@ function handleAuditEvidenceFileInput(evidence) {
         fileType: "audit_photo",
         caption: state.auditNotes?.[areaId]?.[questionId] || null,
         captureMethod: evidence.dataset.captureMethod || "gallery"
+      };
+      let queued;
+      if (navigator.onLine !== false && window.HAE_OFFLINE.uploadFileNow) {
+        try {
+          queued = await window.HAE_OFFLINE.uploadFileNow(file, fileMetadata);
+        } catch {
+          queued = await window.HAE_OFFLINE.queueFileUpload(file, fileMetadata);
+        }
+      } else {
+        queued = await window.HAE_OFFLINE.queueFileUpload(file, fileMetadata);
+      }
+      setAuditEvidenceRecord(areaId, questionId, {
+        status: "pending",
+        localFileId: queued.file.localFileId,
+        serverFileId: queued.file.serverId || null,
+        updatedAt: new Date().toISOString()
       });
-      window.HAE_OFFLINE.syncPending().catch(() => {});
+      saveState();
+      if (navigator.onLine !== false) await window.HAE_OFFLINE.syncPending();
+      const stored = await window.HAE_OFFLINE.getFile(queued.file.localFileId);
+      if (stored?.status === "synced") {
+        setAuditEvidenceRecord(areaId, questionId, {
+          status: "synced",
+          serverFileId: stored.serverId || null,
+          errorMessage: null,
+          updatedAt: new Date().toISOString()
+        });
+      }
       pendingAuditEvidence.delete(evidenceKey);
       saveState();
       render();
@@ -9310,12 +9494,13 @@ function handleAuditEvidenceFileInput(evidence) {
   write
     .catch((error) => {
       pendingAuditEvidence.delete(evidenceKey);
-      state.auditEvidence = {
-        ...state.auditEvidence,
-        [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: false }
-      };
+      setAuditEvidenceRecord(areaId, questionId, {
+        status: "pending",
+        errorMessage: error.message,
+        updatedAt: new Date().toISOString()
+      });
       saveState();
-      setOfflineNotice({ phase: "error", message: error.message });
+      setOfflineNotice({ phase: navigator.onLine === false ? "offline" : "pending", pending: 1, message: "A foto continua visível e aguardará uma nova tentativa de envio." });
       render();
     })
     .finally(() => {
@@ -9386,6 +9571,11 @@ document.addEventListener("change", (event) => {
 }, true);
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && auditEvidenceImagePreview) {
+    auditEvidenceImagePreview = "";
+    render();
+    return;
+  }
   if (event.key === "Escape" && state.actionPlanImagePreview) {
     state.actionPlanImagePreview = "";
     render();
