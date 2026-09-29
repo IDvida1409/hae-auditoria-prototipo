@@ -9132,15 +9132,23 @@ document.addEventListener("click", async (event) => {
   if (completeEvidence) {
     const areaId = state.selectedArea;
     const questionId = completeEvidence.dataset.completeAuditEvidence;
+    // The photo input is persisted asynchronously. Wait for that local write
+    // before allowing completion, otherwise a fast tap can report a missing photo.
+    await waitForAuditWrites(areaId);
+    if (!state.auditEvidence?.[areaId]?.[questionId]) {
+      setOfflineNotice({ phase: "error", message: "A foto ainda está sendo salva. Aguarde um instante e tente concluir novamente." });
+      render();
+      return;
+    }
     state.auditEvidenceCollapsed = {
       ...state.auditEvidenceCollapsed,
       [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: true }
     };
-    // Remove the open editor before navigating so the mobile card cannot remain
-    // visible during the render/scroll transition.
-    completeEvidence.closest(".nc-evidence")?.remove();
     saveState();
-    advanceAuditQuestion(questionId);
+    // Completing the evidence closes only its editor. The current question
+    // remains visible with its selected "Não Conforme" answer.
+    render();
+    requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
     return;
   }
 
