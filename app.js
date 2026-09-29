@@ -7728,6 +7728,12 @@ function render(options = {}) {
   `;
   const reportModal = app.querySelector(".report-library-backdrop");
   if (reportModal) document.body.appendChild(reportModal);
+  app.querySelectorAll("[data-evidence-file]").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      event.stopPropagation();
+      handleAuditEvidenceFileInput(input);
+    });
+  });
   if (!options.skipSave) saveState();
 }
 
@@ -9255,6 +9261,65 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+function handleAuditEvidenceFileInput(evidence) {
+  if (!evidence?.files?.[0]) return;
+  const file = evidence.files[0];
+  const areaId = state.selectedArea;
+  const questionId = evidence.dataset.evidenceFile;
+  const evidenceKey = `${areaId}:${questionId}`;
+  if (file.size > 50 * 1024 * 1024) {
+    setOfflineNotice({ phase: "error", message: "A foto deve ter no máximo 50 MB." });
+    evidence.value = "";
+    return;
+  }
+  pendingAuditEvidence.add(evidenceKey);
+  state.auditEvidence = {
+    ...state.auditEvidence,
+    [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
+  };
+  saveState();
+  render();
+  const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
+  const write = previous.catch(() => {}).then(async () => {
+      const audit = await ensureLocalAudit(areaId);
+      let backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+      if (!backendQuestionId) {
+        await loadOfflineBootstrap();
+        backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+      }
+      if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
+      if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
+      await window.HAE_OFFLINE.queueFileUpload(file, {
+        localAuditId: audit.localAuditId,
+        auditId: audit.remoteAuditId || null,
+        questionId: backendQuestionId,
+        entityType: "audit_answer",
+        fileType: "audit_photo",
+        caption: state.auditNotes?.[areaId]?.[questionId] || null,
+        captureMethod: evidence.dataset.captureMethod || "gallery"
+      });
+      pendingAuditEvidence.delete(evidenceKey);
+      saveState();
+      render();
+      requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    });
+  pendingAuditWrites.set(areaId, write);
+  write
+    .catch((error) => {
+      pendingAuditEvidence.delete(evidenceKey);
+      state.auditEvidence = {
+        ...state.auditEvidence,
+        [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: false }
+      };
+      saveState();
+      setOfflineNotice({ phase: "error", message: error.message });
+      render();
+    })
+    .finally(() => {
+      if (pendingAuditWrites.get(areaId) === write) pendingAuditWrites.delete(areaId);
+    });
+}
+
 document.addEventListener("change", (event) => {
   const consent = event.target.closest("[data-responsible-consent-check]");
   if (consent) {
@@ -9313,69 +9378,7 @@ document.addEventListener("change", (event) => {
   }
 
   const evidence = event.target.closest("[data-evidence-file]");
-  if (evidence?.files?.[0]) {
-    const file = evidence.files[0];
-    const areaId = state.selectedArea;
-    const questionId = evidence.dataset.evidenceFile;
-    const evidenceKey = `${areaId}:${questionId}`;
-    if (file.size > 50 * 1024 * 1024) {
-      setOfflineNotice({ phase: "error", message: "A foto deve ter no máximo 50 MB." });
-      evidence.value = "";
-      return;
-    }
-    pendingAuditEvidence.add(evidenceKey);
-    state.auditEvidence = {
-      ...state.auditEvidence,
-      [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
-    };
-    saveState();
-    render();
-    const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
-    const write = previous.catch(() => {}).then(async () => {
-        const audit = await ensureLocalAudit(areaId);
-        let backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
-        if (!backendQuestionId) {
-          // Refresh the server checklist before rejecting a valid Room Service
-          // question whose cached bootstrap is incomplete or stale.
-          await loadOfflineBootstrap();
-          backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
-        }
-        if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
-        if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
-        await window.HAE_OFFLINE.queueFileUpload(file, {
-          localAuditId: audit.localAuditId,
-          auditId: audit.remoteAuditId || null,
-          questionId: backendQuestionId,
-          entityType: "audit_answer",
-          fileType: "audit_photo",
-          caption: state.auditNotes?.[areaId]?.[questionId] || null,
-          captureMethod: evidence.dataset.captureMethod || "gallery"
-        });
-        state.auditEvidence = {
-          ...state.auditEvidence,
-          [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
-        };
-        pendingAuditEvidence.delete(evidenceKey);
-        saveState();
-        render();
-        requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
-      });
-    pendingAuditWrites.set(areaId, write);
-    write
-      .catch((error) => {
-        pendingAuditEvidence.delete(evidenceKey);
-        state.auditEvidence = {
-          ...state.auditEvidence,
-          [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: false }
-        };
-        saveState();
-        setOfflineNotice({ phase: "error", message: error.message });
-        render();
-      })
-      .finally(() => {
-        if (pendingAuditWrites.get(areaId) === write) pendingAuditWrites.delete(areaId);
-      });
-  }
+  if (evidence?.files?.[0]) handleAuditEvidenceFileInput(evidence);
 
 }, true);
 
