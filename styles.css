@@ -7633,17 +7633,31 @@ h3 {
 
 .audit-evidence-viewer > button {
   position: fixed;
-  top: 18px;
-  right: 18px;
-  width: 38px;
-  height: 38px;
+  top: max(16px, calc(env(safe-area-inset-top) + 10px));
+  right: max(16px, calc(env(safe-area-inset-right) + 10px));
+  z-index: 2;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255,255,255,.65);
+  padding: 0;
+  border: 2px solid #fff;
   border-radius: 50%;
-  background: #fff;
-  color: var(--ink-950);
+  background: #12365f;
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.38);
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.audit-evidence-viewer > button svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .audit-evidence-viewer img {
@@ -7852,6 +7866,11 @@ h3 {
 
   .audit-evidence-viewer {
     padding: 14px;
+  }
+
+  .audit-evidence-viewer > button {
+    width: 52px;
+    height: 52px;
   }
 
   .audit-question-list .question-plan-alert-grid,

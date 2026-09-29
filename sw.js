@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v76-evidence-preview";
+const CACHE_NAME = "idauditor-v77-evidence-close";
 const APP_SHELL = [
   "/",
   "/index.html",
