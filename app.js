@@ -212,6 +212,7 @@ const pendingActionPlanEvidence = new Map();
 const pendingActionPlanEvidencePreview = new Map();
 const pendingAuditStarts = new Map();
 const pendingAuditWrites = new Map();
+const pendingAuditEvidence = new Set();
 const REPORT_LAYOUT_VERSION = "approved-layout-v5-jspdf";
 
 const accessRoleLabels = {
@@ -6334,7 +6335,7 @@ function checklistPage() {
                         <div class="note-field"><label>Responsável</label><input value="${escapeHtml(areaResponsibleName)}" readonly /></div>
                         <div class="note-field"><label>Prazo</label><input type="date" /></div>
                       </div>
-                      <button class="primary-btn audit-evidence-complete" data-complete-audit-evidence="${question.id}" type="button" ${state.auditEvidence?.[area.id]?.[question.id] ? "" : "disabled"}>${svgIcon("check")} Concluir evidência e avançar</button>
+                      <button class="primary-btn audit-evidence-complete" data-complete-audit-evidence="${question.id}" type="button" ${state.auditEvidence?.[area.id]?.[question.id] || pendingAuditEvidence.has(`${area.id}:${question.id}`) ? "" : "disabled"}>${svgIcon("check")} Concluir evidência e avançar</button>
                     </div>`}
                   </section>
                 `;
@@ -9132,11 +9133,9 @@ document.addEventListener("click", async (event) => {
   if (completeEvidence) {
     const areaId = state.selectedArea;
     const questionId = completeEvidence.dataset.completeAuditEvidence;
-    // The photo input is persisted asynchronously. Wait for that local write
-    // before allowing completion, otherwise a fast tap can report a missing photo.
-    await waitForAuditWrites(areaId);
-    if (!state.auditEvidence?.[areaId]?.[questionId]) {
-      setOfflineNotice({ phase: "error", message: "A foto ainda está sendo salva. Aguarde um instante e tente concluir novamente." });
+    const evidenceKey = `${areaId}:${questionId}`;
+    if (!state.auditEvidence?.[areaId]?.[questionId] && !pendingAuditEvidence.has(evidenceKey)) {
+      setOfflineNotice({ phase: "error", message: "Anexe uma foto antes de concluir a evidência." });
       render();
       return;
     }
@@ -9310,11 +9309,14 @@ document.addEventListener("change", (event) => {
     const file = evidence.files[0];
     const areaId = state.selectedArea;
     const questionId = evidence.dataset.evidenceFile;
+    const evidenceKey = `${areaId}:${questionId}`;
     if (file.size > 50 * 1024 * 1024) {
       setOfflineNotice({ phase: "error", message: "A foto deve ter no máximo 50 MB." });
       evidence.value = "";
       return;
     }
+    pendingAuditEvidence.add(evidenceKey);
+    render();
     const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
     const write = previous.catch(() => {}).then(async () => {
         const audit = await ensureLocalAudit(areaId);
@@ -9334,13 +9336,18 @@ document.addEventListener("change", (event) => {
           ...state.auditEvidence,
           [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
         };
+        pendingAuditEvidence.delete(evidenceKey);
         saveState();
         render();
         requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
       });
     pendingAuditWrites.set(areaId, write);
     write
-      .catch((error) => setOfflineNotice({ phase: "error", message: error.message }))
+      .catch((error) => {
+        pendingAuditEvidence.delete(evidenceKey);
+        setOfflineNotice({ phase: "error", message: error.message });
+        render();
+      })
       .finally(() => {
         if (pendingAuditWrites.get(areaId) === write) pendingAuditWrites.delete(areaId);
       });
