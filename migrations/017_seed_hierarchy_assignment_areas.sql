@@ -23,7 +23,7 @@ cross join (values
   ('Higiene de Caixas', 'higiene-caixas', 145),
   ('DML 1º Andar', 'dml-1-andar', 146),
   ('DML 2º Andar', 'dml-2-andar', 147)
-) as v(name, slug, display_order) on true
+) as v(name, slug, display_order)
 where u.code = 'einstein-morumbi'
 on conflict (unit_id, slug) do update set
   name = excluded.name,
