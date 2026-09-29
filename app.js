@@ -189,6 +189,8 @@ let currentAccessUser = null;
 let accessNotice = null;
 let accessNotifications = [];
 let notificationsOpen = false;
+let calendarOpen = false;
+let calendarScheduleOpen = false;
 let planningNoticeTimer = null;
 let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
 let offlineNoticeTimer = null;
@@ -504,6 +506,66 @@ function notificationsPanel() {
         }).join("") : '<div class="notifications-empty">Nenhuma notificação por enquanto.</div>'}
       </div>
     </section>`;
+}
+
+function calendarMonthLabel(monthIndex, year = new Date().getFullYear()) {
+  return new Intl.DateTimeFormat("pt-BR", { month: "short" })
+    .format(new Date(year, monthIndex, 1))
+    .replace(".", "");
+}
+
+function auditScheduleRows() {
+  return Array.isArray(state.auditSchedules) ? state.auditSchedules : [];
+}
+
+function calendarPanel() {
+  if (!calendarOpen) return "";
+  const year = new Date().getFullYear();
+  const schedules = auditScheduleRows();
+  return `
+    <section class="calendar-popover" aria-label="Calendário e períodos de auditoria">
+      <header class="calendar-popover-head">
+        <div><strong>Calendário de auditorias</strong><span>${year}</span></div>
+        <button type="button" class="calendar-close" data-calendar-close aria-label="Fechar calendário">${icons.close}</button>
+      </header>
+      <div class="calendar-months">
+        ${monthIds.map((monthId, index) => `
+          <div class="calendar-month ${index === new Date().getMonth() ? "is-current" : ""}">
+            <strong>${calendarMonthLabel(index, year)}</strong>
+            <small>${index === new Date().getMonth() ? "Mês atual" : ""}</small>
+          </div>
+        `).join("")}
+      </div>
+      <div class="calendar-divider"></div>
+      <div class="calendar-schedule-head">
+        <div><strong>Períodos programados</strong><span>${schedules.length ? `${schedules.length} cadastrado${schedules.length === 1 ? "" : "s"}` : "Nenhum período cadastrado"}</span></div>
+        <button type="button" class="calendar-schedule-toggle" data-calendar-schedule-toggle>${icons.clock}<span>${calendarScheduleOpen ? "Fechar" : "Programar auditoria"}</span></button>
+      </div>
+      ${calendarScheduleOpen ? `
+        <form class="calendar-schedule-form" data-calendar-schedule-form>
+          <label><span>Início</span><input type="date" name="start" required /></label>
+          <label><span>Término</span><input type="date" name="end" required /></label>
+          <label class="calendar-schedule-label"><span>Identificação <em>(opcional)</em></span><input type="text" name="label" maxlength="80" placeholder="Ex.: Auditoria mensal" /></label>
+          <button type="submit" class="calendar-save-button">Cadastrar período</button>
+        </form>
+      ` : ""}
+      <div class="calendar-schedule-list">
+        ${schedules.length ? schedules.map((schedule) => `
+          <div class="calendar-schedule-item">
+            <span class="calendar-schedule-icon">${icons.clock}</span>
+            <div><strong>${escapeHtml(schedule.label || "Auditoria programada")}</strong><small>${formatScheduleDate(schedule.start)} a ${formatScheduleDate(schedule.end)}</small></div>
+            <button type="button" data-calendar-schedule-remove="${escapeHtml(schedule.id)}" aria-label="Remover período">${icons.close}</button>
+          </div>
+        `).join("") : `<p class="calendar-empty">Cadastre um período para organizar a próxima auditoria.</p>`}
+      </div>
+    </section>
+  `;
+}
+
+function formatScheduleDate(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 const offlineNoticeContent = {
@@ -885,6 +947,7 @@ function defaultState() {
     actionPlanResponses: {},
     actionPlanConsentId: "",
     feedbackExpanded: false,
+    auditSchedules: [],
     settingsMenuExpanded: false,
     reportFolderArea: null,
     reportFolderParentArea: "",
@@ -935,6 +998,7 @@ function persistableState(source = state) {
     planningPlanOverrides: source.planningPlanOverrides,
     actionPlanAcknowledgements: source.actionPlanAcknowledgements,
     actionPlanResponses: source.actionPlanResponses,
+    auditSchedules: source.auditSchedules,
     settingsMenuExpanded: source.settingsMenuExpanded
   };
 }
@@ -997,6 +1061,7 @@ function normalizeSavedState(saved = {}) {
     planningPlanOverrides: planningDataIsCurrent && merged.planningPlanOverrides && typeof merged.planningPlanOverrides === "object" ? merged.planningPlanOverrides : {},
     actionPlanAcknowledgements: merged.actionPlanAcknowledgements && typeof merged.actionPlanAcknowledgements === "object" ? merged.actionPlanAcknowledgements : {},
     actionPlanResponses: merged.actionPlanResponses && typeof merged.actionPlanResponses === "object" ? merged.actionPlanResponses : {},
+    auditSchedules: Array.isArray(merged.auditSchedules) ? merged.auditSchedules.filter((item) => item && item.start && item.end).slice(0, 50) : [],
     actionPlanConsentId: "",
     planningNotice: "",
     planningDecisionModal: false,
@@ -2565,7 +2630,10 @@ function dashboardHome() {
           <h1>Olá, ${escapeHtml((currentAccessUser?.full_name || "João").split(" ")[0])}</h1>
           <p>${visibleParent ? `Resumo operacional de ${escapeHtml(visibleParent.name)} e suas subáreas.` : "Resumo operacional. Veja as notas das áreas auditadas no último fechamento."}</p>
         </div>
-        <div class="date-line"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>${formatCurrentDate()}</span></div>
+        <div class="calendar-anchor">
+          <button class="date-line" type="button" data-calendar-toggle aria-expanded="${calendarOpen}" aria-label="Abrir calendário de auditorias"><img src="assets/fichario-icons/calendar.png?v=fichario-shell-1" alt="" aria-hidden="true" /><span>${formatCurrentDate()}</span></button>
+          ${calendarPanel()}
+        </div>
       </div>
       ${dashboardLegend()}
       <div class="fichario-main-layout">
@@ -7691,6 +7759,20 @@ function enterAudit(areaId) {
 }
 
 document.addEventListener("click", async (event) => {
+  const calendarToggleAtStart = event.target.closest("[data-calendar-toggle]");
+  if (calendarToggleAtStart) {
+    calendarOpen = !calendarOpen;
+    calendarScheduleOpen = false;
+    notificationsOpen = false;
+    render();
+    return;
+  }
+  if (event.target.closest("[data-calendar-close]")) {
+    calendarOpen = false;
+    calendarScheduleOpen = false;
+    render();
+    return;
+  }
   if (event.target.closest("[data-cancel-audit-transfer]")) {
     state.pendingAuditTransfer = null;
     state.auditStartError = "";
@@ -7804,6 +7886,12 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  if (event.target.closest("[data-calendar-schedule-toggle]")) {
+    calendarScheduleOpen = !calendarScheduleOpen;
+    render();
+    return;
+  }
+
   const notificationItem = event.target.closest("[data-notification-id]");
   if (notificationItem) {
     const id = notificationItem.dataset.notificationId;
@@ -7849,6 +7937,13 @@ document.addEventListener("click", async (event) => {
 
   if (notificationsOpen && !event.target.closest(".notifications-popover")) {
     notificationsOpen = false;
+    render();
+    return;
+  }
+
+  if (calendarOpen && !event.target.closest(".calendar-anchor")) {
+    calendarOpen = false;
+    calendarScheduleOpen = false;
     render();
     return;
   }
@@ -9283,6 +9378,29 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  const calendarForm = event.target.closest("[data-calendar-schedule-form]");
+  if (calendarForm) {
+    event.preventDefault();
+    const formData = new FormData(calendarForm);
+    const start = String(formData.get("start") || "");
+    const end = String(formData.get("end") || "");
+    if (!start || !end || end < start) {
+      accessNotice = { type: "error", text: "Informe um período válido, com o término igual ou posterior ao início." };
+      render();
+      return;
+    }
+    state.auditSchedules = [...auditScheduleRows(), {
+      id: `schedule-${Date.now()}`,
+      start,
+      end,
+      label: String(formData.get("label") || "").trim()
+    }].sort((a, b) => a.start.localeCompare(b.start));
+    saveState();
+    calendarScheduleOpen = false;
+    accessNotice = { type: "success", text: "Período de auditoria cadastrado." };
+    render();
+    return;
+  }
   const areaForm = event.target.closest("[data-local-area-form]");
   if (areaForm) {
     event.preventDefault();

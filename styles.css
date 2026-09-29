@@ -12252,6 +12252,45 @@ h3 {
 .notification-unread { align-self: center; width: 7px; height: 7px; border-radius: 50%; background: #20a64a; }
 .notifications-empty { padding: 28px 18px; color: var(--ink-500); text-align: center; font-size: 12px; }
 
+.calendar-anchor { position: relative; flex: 0 0 auto; }
+.fichario-home .date-line { border: 0; padding: 3px 0; background: transparent; cursor: pointer; text-align: left; }
+.fichario-home .date-line:hover { color: var(--blue-700); }
+.calendar-popover { position: absolute; z-index: 80; top: calc(100% + 10px); right: 0; width: min(430px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--line); border-radius: 10px; color: var(--ink-950); background: #fff; box-shadow: 0 20px 48px rgba(7,26,61,.22); }
+.calendar-popover-head, .calendar-schedule-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; }
+.calendar-popover-head { min-height: 58px; border-bottom: 1px solid var(--line); }
+.calendar-popover-head div, .calendar-schedule-head div { display: grid; gap: 2px; }
+.calendar-popover-head strong, .calendar-schedule-head strong { font-size: 14px; }
+.calendar-popover-head span, .calendar-schedule-head span { color: var(--ink-500); font-size: 11px; }
+.calendar-close, .calendar-schedule-item > button { display: grid; place-items: center; width: 28px; height: 28px; padding: 4px; border: 0; color: var(--ink-500); background: transparent; cursor: pointer; }
+.calendar-close:hover, .calendar-schedule-item > button:hover { color: var(--blue-700); }
+.calendar-close svg, .calendar-schedule-item > button svg { width: 17px; height: 17px; }
+.calendar-months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; padding: 13px 16px 15px; }
+.calendar-month { display: grid; gap: 2px; min-height: 50px; padding: 8px 9px; border: 1px solid #e1e8f1; border-radius: 8px; background: #f9fbfd; }
+.calendar-month strong { color: var(--ink-700); font-size: 11px; text-transform: capitalize; }
+.calendar-month small { min-height: 12px; color: var(--ink-500); font-size: 9px; }
+.calendar-month.is-current { border-color: #8db9ee; background: #eef6ff; box-shadow: inset 3px 0 0 var(--blue-700); }
+.calendar-month.is-current strong { color: var(--blue-700); }
+.calendar-divider { height: 1px; background: var(--line); }
+.calendar-schedule-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid #c7d8ec; border-radius: 7px; color: var(--blue-700); background: #f5f9ff; font-size: 10.5px; font-weight: 650; cursor: pointer; }
+.calendar-schedule-toggle:hover { background: #eaf3ff; }
+.calendar-schedule-toggle svg { width: 16px; height: 16px; }
+.calendar-schedule-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; padding: 0 16px 13px; }
+.calendar-schedule-form label { display: grid; gap: 4px; }
+.calendar-schedule-form label span { color: var(--ink-600); font-size: 10.5px; font-weight: 650; }
+.calendar-schedule-form label em { color: var(--ink-500); font-style: normal; font-weight: 400; }
+.calendar-schedule-form input { width: 100%; min-height: 34px; padding: 7px 8px; border: 1px solid #cfdae7; border-radius: 7px; color: var(--ink-800); background: #fff; font: inherit; font-size: 11px; }
+.calendar-schedule-label, .calendar-save-button { grid-column: 1 / -1; }
+.calendar-save-button { min-height: 34px; padding: 7px 10px; border: 0; border-radius: 7px; color: #fff; background: var(--blue-700); font-size: 11px; font-weight: 700; cursor: pointer; }
+.calendar-schedule-list { display: grid; max-height: min(220px, 28vh); overflow-y: auto; border-top: 1px solid var(--line); }
+.calendar-schedule-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; gap: 9px; padding: 10px 16px; border-bottom: 1px solid #edf1f5; }
+.calendar-schedule-item:last-child { border-bottom: 0; }
+.calendar-schedule-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--blue-700); background: #eaf3ff; }
+.calendar-schedule-icon svg { width: 16px; height: 16px; }
+.calendar-schedule-item div { display: grid; gap: 2px; min-width: 0; }
+.calendar-schedule-item strong { overflow: hidden; color: var(--ink-800); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-schedule-item small { color: var(--ink-500); font-size: 10.5px; }
+.calendar-empty { margin: 0; padding: 17px 16px; color: var(--ink-500); font-size: 11.5px; text-align: center; }
+
 .data-empty-state {
   width: 100%;
   min-height: 88px;
@@ -12971,6 +13010,10 @@ h3 {
 }
 
 @media (max-width: 720px) {
+  .calendar-popover { position: fixed; top: 70px; right: 12px; left: 12px; width: auto; max-height: calc(100vh - 86px); overflow-y: auto; }
+  .calendar-months { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .calendar-schedule-list { max-height: none; }
+
   .report-library-modal {
     padding: 16px 14px 22px;
   }
