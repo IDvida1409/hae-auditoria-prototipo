@@ -13494,8 +13494,8 @@ h3 {
 .fichario-sub-action { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-950); background: #fff; font-size: 12.5px; font-weight: 560; }
 .fichario-sub-action.is-primary { color: #fff; border-color: var(--blue-700); background: var(--blue-700); }
 .fichario-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
-.fichario-form-grid label { display: grid; align-self: start; gap: 7px; color: var(--ink-600); font-size: 12px; font-weight: 540; }
-.fichario-form-grid input, .fichario-form-grid select { width: 100%; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-800); background: #fff; font-size: 13px; }
+.fichario-form-grid label { display: grid; align-self: start; height: max-content; gap: 7px; color: var(--ink-600); font-size: 12px; font-weight: 540; }
+.fichario-form-grid input, .fichario-form-grid select { width: 100%; height: 40px; min-height: 40px; max-height: 40px; align-self: start; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-800); background: #fff; font-size: 13px; }
 .username-suggestions { display: grid; gap: 7px; }
 .username-suggestions[hidden] { display: none; }
 .username-suggestions > span { color: var(--ink-500); font-size: 11px; }
