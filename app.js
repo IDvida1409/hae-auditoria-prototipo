@@ -1245,12 +1245,19 @@ function emptyDataState(message) {
 
 function buildBackendQuestionMap(payload) {
   const mapping = new Map();
+  const normalizeBlockTitle = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
   for (const backendArea of payload?.areas || []) {
     const uiArea = checklistData[backendArea.slug];
     const backendChecklist = backendArea.checklist || (payload.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea.id));
     const backendBlocks = backendChecklist?.blocks || [];
+    const backendBlocksByTitle = new Map(backendBlocks.map((block) => [normalizeBlockTitle(block.title), block]));
     (uiArea?.blocks || []).forEach((uiBlock, blockIndex) => {
-      const backendBlock = backendBlocks[blockIndex];
+      const backendBlock = backendBlocksByTitle.get(normalizeBlockTitle(uiBlock.title)) || backendBlocks[blockIndex];
       if (!backendBlock) return;
       const questionsByNumber = new Map((backendBlock.questions || []).map((question) => [Number(question.question_number), question.id]));
       for (const question of uiBlock.questions || []) {
@@ -9320,7 +9327,13 @@ document.addEventListener("change", (event) => {
     const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
     const write = previous.catch(() => {}).then(async () => {
         const audit = await ensureLocalAudit(areaId);
-        const backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+        let backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+        if (!backendQuestionId) {
+          // Refresh the server checklist before rejecting a valid Room Service
+          // question whose cached bootstrap is incomplete or stale.
+          await loadOfflineBootstrap();
+          backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
+        }
         if (!backendQuestionId) throw new Error("Pergunta não vinculada ao checklist do banco de dados.");
         if (!state.answers?.[areaId]?.[questionId]) throw new Error("Marque a resposta antes de anexar a foto.");
         await window.HAE_OFFLINE.queueFileUpload(file, {
