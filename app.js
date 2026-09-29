@@ -7735,19 +7735,6 @@ function render(options = {}) {
   `;
   const reportModal = app.querySelector(".report-library-backdrop");
   if (reportModal) document.body.appendChild(reportModal);
-  app.querySelectorAll("[data-evidence-file]").forEach((input) => {
-    input.addEventListener("change", (event) => {
-      event.stopPropagation();
-      handleAuditEvidenceFileInput(input);
-    });
-  });
-  app.querySelectorAll("[data-complete-audit-evidence]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      completeAuditEvidenceButton(button);
-    });
-  });
   if (!options.skipSave) saveState();
 }
 
