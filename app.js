@@ -615,10 +615,11 @@ const offlineNoticeContent = {
 function offlineStatusNotice() {
   if (!offlineNotice || !offlineNoticeContent[offlineNotice.phase]) return "";
   const [title, description] = offlineNoticeContent[offlineNotice.phase];
+  const detail = offlineNotice.phase === "error" && offlineNotice.message ? ` ${offlineNotice.message}` : "";
   const pending = Number(offlineNotice.pending || 0);
   return `<aside class="offline-status is-${offlineNotice.phase}" role="status" aria-live="polite">
     <i class="offline-status-dot" aria-hidden="true"></i>
-    <span><strong>${title}</strong><small>${description}${pending ? ` ${pending} ${pending === 1 ? "item pendente" : "itens pendentes"}.` : ""}</small></span>
+    <span><strong>${title}</strong><small>${description}${detail}${pending ? ` ${pending} ${pending === 1 ? "item pendente" : "itens pendentes"}.` : ""}</small></span>
   </aside>`;
 }
 
@@ -632,7 +633,7 @@ function setOfflineNotice(detail) {
   // Sync retries continue in the background; a transient server error must not hide the saved audit.
   if (phase === "error") {
     clearTimeout(offlineNoticeTimer);
-    offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0 } : null;
+    offlineNotice = navigator.onLine === false ? { phase: "offline", pending: detail.pending || 0, message: detail.message } : { ...detail, phase: "error" };
     paintOfflineStatus();
     return;
   }
@@ -7734,7 +7735,33 @@ function render(options = {}) {
       handleAuditEvidenceFileInput(input);
     });
   });
+  app.querySelectorAll("[data-complete-audit-evidence]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      completeAuditEvidenceButton(button);
+    });
+  });
   if (!options.skipSave) saveState();
+}
+
+function completeAuditEvidenceButton(button) {
+  const areaId = state.selectedArea;
+  const questionId = button?.dataset.completeAuditEvidence;
+  const evidenceKey = `${areaId}:${questionId}`;
+  if (!questionId || (!state.auditEvidence?.[areaId]?.[questionId] && !pendingAuditEvidence.has(evidenceKey))) {
+    setOfflineNotice({ phase: "error", message: "Anexe uma foto antes de concluir a evidência." });
+    render();
+    return;
+  }
+  state.auditEvidenceCollapsed = {
+    ...state.auditEvidenceCollapsed,
+    [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: true }
+  };
+  saveState();
+  button.closest(".nc-evidence")?.remove();
+  render();
+  requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
 }
 
 function enterChartPresentationMode() {
@@ -9144,24 +9171,7 @@ document.addEventListener("click", async (event) => {
 
   const completeEvidence = event.target.closest("[data-complete-audit-evidence]");
   if (completeEvidence) {
-    const areaId = state.selectedArea;
-    const questionId = completeEvidence.dataset.completeAuditEvidence;
-    const evidenceKey = `${areaId}:${questionId}`;
-    if (!state.auditEvidence?.[areaId]?.[questionId] && !pendingAuditEvidence.has(evidenceKey)) {
-      setOfflineNotice({ phase: "error", message: "Anexe uma foto antes de concluir a evidência." });
-      render();
-      return;
-    }
-    state.auditEvidenceCollapsed = {
-      ...state.auditEvidenceCollapsed,
-      [areaId]: { ...(state.auditEvidenceCollapsed?.[areaId] || {}), [questionId]: true }
-    };
-    saveState();
-    // Completing the evidence closes only its editor. The current question
-    // remains visible with its selected "Não Conforme" answer.
-    completeEvidence.closest(".nc-evidence")?.remove();
-    render();
-    requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    completeAuditEvidenceButton(completeEvidence);
     return;
   }
 
