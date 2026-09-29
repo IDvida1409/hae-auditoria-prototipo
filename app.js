@@ -6835,9 +6835,10 @@ function newAreaFormMarkup() {
   return `<form class="new-area-form" data-local-area-form><p class="new-area-form-note">O nome final deve ser exclusivo. Você pode usar uma área já cadastrada como base.</p><div class="new-area-form-grid"><label class="settings-modal-field"><span>Nome da área</span><input name="areaName" required maxlength="120" placeholder="Ex.: Conforto Médico - Bloco B" /></label><div class="settings-modal-field"><span>Área existente como base <small>(opcional)</small></span>${customSettingsSelect("existingArea", areaOptions)}</div></div><div class="new-area-subareas"><div class="new-area-subareas-head"><div><strong>Subáreas</strong><span>Informe quantas deseja cadastrar. Em cada linha, escolha uma existente ou digite uma nova. Subáreas podem ter o mesmo nome e serão vinculadas à nova área.</span></div><label class="settings-modal-field settings-count-field"><span>Quantidade</span><input type="number" name="subareaCount" data-subarea-count min="0" max="20" value="0" /></label></div><div class="settings-subarea-rows" data-subarea-rows>${newAreaSubareaRows(0, subareaOptions)}</div></div><div class="settings-modal-actions"><button class="settings-soft-btn" data-cancel-local-area type="button">Cancelar</button><button class="settings-soft-btn settings-primary" type="submit">Salvar área</button></div></form>`;
 }
 
-function customSettingsSelect(name, options, selected = "") {
+function customSettingsSelect(name, options, selected = "", settings = {}) {
   const current = options.find((option) => String(option.value) === String(selected)) || options[0];
-  return `<div class="settings-custom-select" data-custom-select><button class="settings-custom-select-trigger" type="button" data-custom-select-trigger aria-expanded="false">${escapeHtml(current?.label || "Selecionar")}${icons.chevron}</button><div class="settings-custom-select-menu hidden" data-custom-select-menu>${options.map((option) => `<button type="button" data-custom-select-option="${escapeHtml(option.value)}" data-custom-select-label="${escapeHtml(option.label)}" data-area-count="${option.areaCount || 0}">${escapeHtml(option.label)}</button>`).join("")}</div><select name="${escapeHtml(name)}" data-user-area-select hidden>${options.map((option) => `<option value="${escapeHtml(option.value)}" data-area-count="${option.areaCount || 0}" ${String(option.value) === String(selected) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select></div>`;
+  const searchable = Boolean(settings.searchable);
+  return `<div class="settings-custom-select" data-custom-select><button class="settings-custom-select-trigger" type="button" data-custom-select-trigger aria-expanded="false">${escapeHtml(current?.label || "Selecionar")}${icons.chevron}</button><div class="settings-custom-select-menu hidden" data-custom-select-menu>${searchable ? `<label class="settings-custom-select-search"><span class="sr-only">Buscar opção</span><input type="search" data-custom-select-filter placeholder="Buscar área ou subárea" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" data-custom-select-option="${escapeHtml(option.value)}" data-custom-select-label="${escapeHtml(option.label)}" data-area-count="${option.areaCount || 0}">${escapeHtml(option.label)}</button>`).join("")}</div><select name="${escapeHtml(name)}" data-user-area-select hidden>${options.map((option) => `<option value="${escapeHtml(option.value)}" data-area-count="${option.areaCount || 0}" ${String(option.value) === String(selected) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select></div>`;
 }
 
 function allNewAreaSubareaOptions() {
@@ -6861,10 +6862,10 @@ function ficharioUserEditor(user = null) {
       <div class="fichario-form-grid">
         <label><span>Nome completo</span><input name="fullName" value="${escapeHtml(user?.full_name || "")}" required maxlength="250" /></label>
         <label><span>E-mail</span><input name="email" type="email" value="${escapeHtml(user?.email || "")}" required maxlength="250" /></label>
-        <label><span>Login de acesso</span><input name="username" value="${escapeHtml(user?.username || "")}" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /></label>
+        <label><span>Login de acesso</span><input name="username" value="${escapeHtml(user?.username || "")}" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /><div class="username-suggestions" data-username-suggestions hidden></div></label>
         <label><span>Perfil</span><select name="role" required>${Object.entries(accessRoleLabels).map(([id, label]) => `<option value="${id}" ${user?.role === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       </div>
-      <div class="fichario-user-area-field"><label><span>Área vinculada</span>${customSettingsSelect("areaGroupIds", [{ value: "", label: "Selecionar área", areaCount: 0 }, ...areaChoices], selectedArea)}</label><small class="fichario-area-assignment-hint" data-area-assignment-hint>Selecione uma área para ver a regra de atribuição.</small></div>
+      <div class="fichario-user-area-field"><label><span>Área vinculada</span>${customSettingsSelect("areaGroupIds", [{ value: "", label: "Selecionar área", areaCount: 0 }, ...areaChoices], selectedArea, { searchable: true })}</label><small class="fichario-area-assignment-hint" data-area-assignment-hint>Selecione uma área para ver a regra de atribuição.</small></div>
     </form>
   </div>`;
 }
@@ -8091,6 +8092,7 @@ document.addEventListener("click", async (event) => {
       trigger.innerHTML = `${escapeHtml(customOption.dataset.customSelectLabel || customOption.textContent.trim())}${icons.chevron}`;
       trigger.setAttribute("aria-expanded", "false");
       root.querySelector("[data-custom-select-menu]")?.classList.add("hidden");
+      root.classList.remove("is-open-up");
       select.dispatchEvent(new Event("change", { bubbles: true }));
     }
     return;
@@ -8104,13 +8106,23 @@ document.addEventListener("click", async (event) => {
     document.querySelectorAll("[data-custom-select-menu]").forEach((other) => {
       if (other !== menu) other.classList.add("hidden");
     });
+    if (root) {
+      const roomBelow = window.innerHeight - customTrigger.getBoundingClientRect().bottom;
+      const roomAbove = customTrigger.getBoundingClientRect().top;
+      root.classList.toggle("is-open-up", open && roomBelow < Math.min(300, roomAbove) && roomAbove > 190);
+      if (open) root.querySelector("[data-custom-select-filter]")?.focus();
+    }
     customTrigger.setAttribute("aria-expanded", String(open));
     return;
   }
 
+  const customFilter = event.target.closest("[data-custom-select-filter]");
+  if (customFilter) return;
+
   if (!event.target.closest("[data-custom-select]")) {
     document.querySelectorAll("[data-custom-select-menu]").forEach((menu) => menu.classList.add("hidden"));
     document.querySelectorAll("[data-custom-select-trigger]").forEach((trigger) => trigger.setAttribute("aria-expanded", "false"));
+    document.querySelectorAll("[data-custom-select]").forEach((select) => select.classList.remove("is-open-up"));
   }
 
   const nav = event.target.closest("[data-nav]");
@@ -9344,6 +9356,14 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  const customFilter = event.target.closest("[data-custom-select-filter]");
+  if (customFilter) {
+    const term = customFilter.value.trim().toLocaleLowerCase("pt-BR");
+    customFilter.closest("[data-custom-select-menu]")?.querySelectorAll("[data-custom-select-option]").forEach((option) => {
+      option.hidden = Boolean(term) && !option.textContent.toLocaleLowerCase("pt-BR").includes(term);
+    });
+    return;
+  }
   const areaSelect = event.target.closest("[data-user-area-select]");
   if (areaSelect) {
     const hint = areaSelect.closest(".fichario-user-area-field")?.querySelector("[data-area-assignment-hint]");
