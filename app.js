@@ -6154,9 +6154,6 @@ function startAuditPage() {
     const otherAuditor = onOtherDevice && String(remoteAudit.auditor_user_id) !== String(currentAccessUser?.id);
     const inProgress = remoteAudit?.status === "in_progress" || localAudit?.status === "in_progress";
     const label = finished ? "Auditoria finalizada" : transferredHere ? `Transferida para ${remoteAudit.auditor_name || "outro auditor"}` : pendingSync ? "Aguardando sincronização" : otherAuditor ? `Com ${remoteAudit.auditor_name || "outro auditor"} · Assumir` : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
-    const resetButton = currentAccessUser?.role === "admin" && (remoteAudit || localAudit)
-      ? `<button class="audit-reset-btn" data-delete-audit="${escapeHtml(remoteAudit?.id || localAudit?.remoteAuditId || "")}" type="button">Excluir auditoria de teste</button>`
-      : "";
     return `
       <article class="start-tile">
         <div class="start-tile-main">
@@ -6166,7 +6163,6 @@ function startAuditPage() {
         ${finished
           ? '<p class="audit-finished-message" role="status">Esta área já possui uma auditoria concluída neste mês.</p>'
           : `<button class="outline-btn" ${pendingSync || transferredHere ? "disabled" : `data-start-area="${area.id}"`}>${escapeHtml(label)} ${pendingSync || transferredHere ? "" : svgIcon("arrow")}</button>`}
-        ${resetButton}
       </article>
     `;
   };
@@ -8225,37 +8221,6 @@ document.addEventListener("click", async (event) => {
     state.auditParentAreaId = "";
     state.auditContinueModal = false;
     render();
-    return;
-  }
-
-  const deleteAudit = event.target.closest("[data-delete-audit]");
-  if (deleteAudit) {
-    const auditId = deleteAudit.dataset.deleteAudit;
-    if (!auditId) {
-      setOfflineNotice({ phase: "error", message: "A auditoria local ainda não foi sincronizada e será limpa neste aparelho." });
-      return;
-    }
-    if (!window.confirm("Excluir esta auditoria de teste e todas as suas respostas, fotos, planos e relatórios?")) return;
-    deleteAudit.disabled = true;
-    try {
-      await operationalRequest(`audits/${auditId}`, { method: "DELETE" });
-      const areaId = areaData.find((area) => String(area.backendId) === String((operationalAudits || []).find((audit) => String(audit.id) === String(auditId))?.area_id))?.id;
-      if (areaId) {
-        delete state.offlineAudits[areaId];
-        delete state.answers[areaId];
-        delete state.auditNotes[areaId];
-        delete state.auditEvidence[areaId];
-        delete state.auditProgress[areaId];
-        saveState();
-      }
-      await loadOperationalData({ deferAuditDetails: true });
-      state.auditStartError = "Auditoria de teste excluída. A área está disponível para iniciar novamente.";
-      render();
-    } catch (error) {
-      deleteAudit.disabled = false;
-      state.auditStartError = error.message;
-      render();
-    }
     return;
   }
 
