@@ -191,6 +191,10 @@ let accessNotifications = [];
 let notificationsOpen = false;
 let calendarOpen = false;
 let calendarScheduleOpen = false;
+let calendarMonthCursor = new Date().getMonth();
+let calendarYearCursor = new Date().getFullYear();
+let calendarDraftStart = "";
+let calendarDraftEnd = "";
 let planningNoticeTimer = null;
 let offlineNotice = navigator.onLine === false ? { phase: "offline", pending: 0 } : null;
 let offlineNoticeTimer = null;
@@ -509,42 +513,67 @@ function notificationsPanel() {
 }
 
 function calendarMonthLabel(monthIndex, year = new Date().getFullYear()) {
-  return new Intl.DateTimeFormat("pt-BR", { month: "short" })
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" })
     .format(new Date(year, monthIndex, 1))
-    .replace(".", "");
+    .replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function auditScheduleRows() {
   return Array.isArray(state.auditSchedules) ? state.auditSchedules : [];
 }
 
+function calendarDateKey(year, monthIndex, day) {
+  return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function calendarDayIsScheduled(dateKey) {
+  return auditScheduleRows().some((schedule) => schedule.start <= dateKey && schedule.end >= dateKey);
+}
+
+function calendarDaysMarkup(monthIndex, year) {
+  const firstDay = new Date(year, monthIndex, 1).getDay();
+  const offset = (firstDay + 6) % 7;
+  const totalDays = new Date(year, monthIndex + 1, 0).getDate();
+  const todayKey = calendarDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  const cells = [];
+  for (let index = 0; index < offset; index += 1) cells.push('<span class="calendar-day is-empty" aria-hidden="true"></span>');
+  for (let day = 1; day <= totalDays; day += 1) {
+    const key = calendarDateKey(year, monthIndex, day);
+    const today = key === todayKey;
+    const scheduled = calendarDayIsScheduled(key);
+    cells.push(`<button type="button" class="calendar-day ${today ? "is-today" : ""} ${scheduled ? "is-scheduled" : ""}" data-calendar-day="${key}" aria-label="${day} de ${calendarMonthLabel(monthIndex, year)}">${day}</button>`);
+  }
+  return cells.join("");
+}
+
 function calendarPanel() {
   if (!calendarOpen) return "";
-  const year = new Date().getFullYear();
+  const monthIndex = calendarMonthCursor;
+  const year = calendarYearCursor;
   const schedules = auditScheduleRows();
   return `
     <section class="calendar-popover" aria-label="Calendário e períodos de auditoria">
       <header class="calendar-popover-head">
-        <div><strong>Calendário de auditorias</strong><span>${year}</span></div>
+        <div><strong>Calendário de auditorias</strong><span>Selecione um período para organizar a próxima auditoria.</span></div>
         <button type="button" class="calendar-close" data-calendar-close aria-label="Fechar calendário">${icons.close}</button>
       </header>
-      <div class="calendar-months">
-        ${monthIds.map((monthId, index) => `
-          <div class="calendar-month ${index === new Date().getMonth() ? "is-current" : ""}">
-            <strong>${calendarMonthLabel(index, year)}</strong>
-            <small>${index === new Date().getMonth() ? "Mês atual" : ""}</small>
-          </div>
-        `).join("")}
+      <div class="calendar-view-head">
+        <button type="button" class="calendar-nav-button" data-calendar-prev aria-label="Mês anterior">${icons.chevron}</button>
+        <strong>${calendarMonthLabel(monthIndex, year)}</strong>
+        <button type="button" class="calendar-nav-button is-next" data-calendar-next aria-label="Próximo mês">${icons.chevron}</button>
+      </div>
+      <div class="calendar-weekdays" aria-hidden="true"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div>
+      <div class="calendar-days">${calendarDaysMarkup(monthIndex, year)}
       </div>
       <div class="calendar-divider"></div>
       <div class="calendar-schedule-head">
         <div><strong>Períodos programados</strong><span>${schedules.length ? `${schedules.length} cadastrado${schedules.length === 1 ? "" : "s"}` : "Nenhum período cadastrado"}</span></div>
-        <button type="button" class="calendar-schedule-toggle" data-calendar-schedule-toggle>${icons.clock}<span>${calendarScheduleOpen ? "Fechar" : "Programar auditoria"}</span></button>
+        <button type="button" class="calendar-schedule-toggle" data-calendar-schedule-toggle>${icons.clock}<span>${calendarScheduleOpen ? "Fechar" : "Programar"}</span></button>
       </div>
       ${calendarScheduleOpen ? `
         <form class="calendar-schedule-form" data-calendar-schedule-form>
-          <label><span>Início</span><input type="date" name="start" required /></label>
-          <label><span>Término</span><input type="date" name="end" required /></label>
+          <label><span>Início</span><input type="date" name="start" value="${escapeHtml(calendarDraftStart)}" required /></label>
+          <label><span>Término</span><input type="date" name="end" value="${escapeHtml(calendarDraftEnd)}" required /></label>
           <label class="calendar-schedule-label"><span>Identificação <em>(opcional)</em></span><input type="text" name="label" maxlength="80" placeholder="Ex.: Auditoria mensal" /></label>
           <button type="submit" class="calendar-save-button">Cadastrar período</button>
         </form>
@@ -7773,6 +7802,32 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
+  if (event.target.closest("[data-calendar-prev]")) {
+    calendarMonthCursor -= 1;
+    if (calendarMonthCursor < 0) { calendarMonthCursor = 11; calendarYearCursor -= 1; }
+    render();
+    return;
+  }
+  if (event.target.closest("[data-calendar-next]")) {
+    calendarMonthCursor += 1;
+    if (calendarMonthCursor > 11) { calendarMonthCursor = 0; calendarYearCursor += 1; }
+    render();
+    return;
+  }
+  const calendarDay = event.target.closest("[data-calendar-day]");
+  if (calendarDay) {
+    if (!calendarScheduleOpen) calendarScheduleOpen = true;
+    if (!calendarDraftStart || calendarDraftEnd) {
+      calendarDraftStart = calendarDay.dataset.calendarDay;
+      calendarDraftEnd = "";
+    } else if (calendarDay.dataset.calendarDay >= calendarDraftStart) {
+      calendarDraftEnd = calendarDay.dataset.calendarDay;
+    } else {
+      calendarDraftStart = calendarDay.dataset.calendarDay;
+    }
+    render();
+    return;
+  }
   if (event.target.closest("[data-cancel-audit-transfer]")) {
     state.pendingAuditTransfer = null;
     state.auditStartError = "";
@@ -9397,6 +9452,8 @@ document.addEventListener("submit", (event) => {
     }].sort((a, b) => a.start.localeCompare(b.start));
     saveState();
     calendarScheduleOpen = false;
+    calendarDraftStart = "";
+    calendarDraftEnd = "";
     accessNotice = { type: "success", text: "Período de auditoria cadastrado." };
     render();
     return;
