@@ -17546,6 +17546,26 @@ button.planning-kpi:hover {
 .top-search-results small,
 .top-search-empty { color: #60718a; font-size: 11px; }
 
+.audit-finished-message {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.audit-reset-btn {
+  border: 0;
+  background: transparent;
+  color: #b42318;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 0;
+  text-align: right;
+}
+
+.audit-reset-btn:hover { text-decoration: underline; }
+
 /* Keep audit card actions in normal flow on narrow screens. */
 @media (max-width: 760px) {
   .audit-start .start-grid {
