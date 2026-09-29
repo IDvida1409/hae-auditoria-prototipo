@@ -7925,7 +7925,7 @@ document.addEventListener("click", async (event) => {
 
   const usernameChoice = event.target.closest("[data-username-suggestion]");
   if (usernameChoice) {
-    const form = usernameChoice.closest("[data-access-user-form]");
+    const form = usernameChoice.closest("[data-access-user-edit-form]");
     form.elements.username.value = usernameChoice.dataset.usernameSuggestion;
     form.elements.username.focus();
     return;
@@ -9408,7 +9408,7 @@ document.addEventListener("input", (event) => {
     });
     return;
   }
-  if (event.target.matches('[data-access-user-form] [name="fullName"]')) {
+  if (event.target.matches('[data-access-user-edit-form] [name="fullName"]')) {
     refreshUsernameSuggestions(event.target.form);
     return;
   }
