@@ -234,6 +234,12 @@
     return payload;
   }
 
+  async function prepareFileBlob(file) {
+    if (!file || typeof file.arrayBuffer !== "function") throw new Error("Arquivo de foto inválido.");
+    const bytes = await file.arrayBuffer();
+    return new Blob([bytes], { type: file.type || "application/octet-stream" });
+  }
+
   async function saveFile(file, metadata = {}) {
     return putRecord(FILE_STORE, fileRecord(file, metadata));
   }
@@ -280,7 +286,13 @@
   }
 
   async function queueFileUpload(file, metadata = {}) {
-    const savedFile = fileRecord(file, metadata);
+    const prepared = await prepareFileBlob(file);
+    const savedFile = fileRecord(prepared, {
+      ...metadata,
+      fileName: metadata.fileName || file.name || "evidencia",
+      mimeType: metadata.mimeType || file.type || "application/octet-stream",
+      fileSizeBytes: file.size || prepared.size
+    });
     const operation = await saveOperation({
       localFileRecord: savedFile,
       entityType: "stored_file",

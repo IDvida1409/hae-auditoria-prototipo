@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v74-no-audit-delete-ui";
+const CACHE_NAME = "idauditor-v75-blob-upload";
 const APP_SHELL = [
   "/",
   "/index.html",
