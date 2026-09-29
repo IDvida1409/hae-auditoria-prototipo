@@ -312,8 +312,7 @@ async function main() {
     const areaReport = reports.reports.find((item) => item.area_id === area.id && item.report_type === "monthly" && item.scope_type === "area");
     const organizationReport = reports.reports.find((item) => item.report_type === "general" && item.scope_type === "organization_area");
     assert.ok(areaReport);
-    assert.ok(organizationReport);
-    assert.match(organizationReport.file_name, /^hae-consolidado-area-.+-approved-layout-v5-jspdf\.pdf$/);
+    assert.equal(organizationReport, undefined, "Consolidado parcial não deve ser gerado");
     assert.match(areaReport.file_name, /approved-layout-v5-jspdf\.pdf$/);
     const reportFile = await pool.query("select * from stored_files where id=$1", [areaReport.pdf_file_id]);
     assert.equal(reportFile.rows[0].storage_provider, "render_disk");

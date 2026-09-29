@@ -335,7 +335,29 @@
       await setMeta("backendUrl", url.href.replace(/\/$/, ""));
     }
     syncOptions = { ...syncOptions, ...options };
-    scheduleSync();
+    if (!syncOptions.paused) scheduleSync();
+  }
+
+  async function applyOperationalReset(resetAt) {
+    if (!resetAt || await getMeta(scopedKey("operationalResetAt")) === resetAt) return false;
+    clearTimeout(retryTimer);
+    if (activeSync) await activeSync.catch(() => {});
+    const db = await openDb();
+    const transaction = db.transaction([OPERATION_STORE, FILE_STORE, ENTITY_STORE, META_STORE], "readwrite");
+    const done = committed(transaction);
+    for (const name of [OPERATION_STORE, FILE_STORE, ENTITY_STORE, META_STORE]) {
+      const store = transaction.objectStore(name);
+      const cursor = store.openCursor();
+      cursor.onsuccess = () => {
+        const row = cursor.result;
+        if (!row) return;
+        if (row.value.userScope === userScope() || String(row.value.key || "").startsWith(userScope() + ":")) row.delete();
+        row.continue();
+      };
+    }
+    try { await done; } finally { db.close(); }
+    await setMeta(scopedKey("operationalResetAt"), resetAt);
+    return true;
   }
 
   async function localEntity(key) {
@@ -501,6 +523,7 @@
   }
 
   function syncPending(options = {}) {
+    if (syncOptions.paused) return Promise.resolve({ sent: 0, paused: true });
     if (activeSync) return activeSync;
     activeSync = runSync({ ...syncOptions, ...options }).catch(async (error) => {
       emitSync("error", { message: error.message, pending: (await listSyncableOperations()).length });
@@ -565,6 +588,7 @@
     queueFileUpload,
     syncPending,
     configure,
+    applyOperationalReset,
     resolveConflict,
     getAuditSnapshot,
     localEntity,

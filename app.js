@@ -1166,6 +1166,12 @@ async function loadOfflineBootstrap() {
       const response = await fetch(apiUrl("/api/offline-bootstrap"), { cache: "no-store", credentials: apiCredentials });
       if (response.ok) {
         payload = await response.json();
+        if (await window.HAE_OFFLINE.applyOperationalReset(payload.operationalResetAt)) {
+          for (const key of ["answers", "auditNotes", "auditEvidence", "auditEvidenceCollapsed", "auditLockedQuestions", "offlineAudits", "auditProgress"]) state[key] = {};
+          state.auditQueue = [];
+          state.auditQueueIndex = 0;
+          saveState();
+        }
         await window.HAE_OFFLINE.cacheBootstrap(payload);
       }
     } catch {
@@ -4142,6 +4148,7 @@ function reportStoredPdfUrl(area, reportKind) {
 const localApprovedPdfAreas = new Set(["cozinha-catering"]);
 
 function localApprovedPdfUrl(area, reportKind) {
+  if (!["localhost", "127.0.0.1"].includes(location.hostname) || new URLSearchParams(location.search).get("preview") !== "admin") return "";
   if (!localApprovedPdfAreas.has(area?.id)) return "";
   const kind = reportKind === "comparison" ? "comparativo-analitico" : "consolidado-mes";
   return `assets/reports/hae-${kind}-${area.id}-set-26.pdf?v=approved-pdf-catering-1`;
@@ -5557,7 +5564,7 @@ function reportsForOrganizationArea(parent) {
 }
 
 function organizationMonthlyReportItem(parent) {
-  const localUrl = parent?.id === "conforto-medico"
+  const localUrl = ["localhost", "127.0.0.1"].includes(location.hostname) && new URLSearchParams(location.search).get("preview") === "admin" && parent?.id === "conforto-medico"
     ? "/assets/reports/hae-consolidado-area-conforto-medico-set-26.pdf?v=approved-pdf-catering-2"
     : "";
   const storedReport = localUrl ? null : reportsForOrganizationArea(parent).find((item) => item?.file_url) || null;
@@ -9221,6 +9228,7 @@ function applyLocalPreviewActionPlans() {
       }
       if (window.HAE_OFFLINE) {
         await window.HAE_OFFLINE.configure({
+          paused: true,
           userScope: currentAccessUser.id,
           backendUrl: window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : location.origin
         });
@@ -9231,6 +9239,7 @@ function applyLocalPreviewActionPlans() {
         loadAccessNotifications(),
         loadOfflineBootstrap()
       ]);
+      if (window.HAE_OFFLINE) await window.HAE_OFFLINE.configure({ paused: false });
       updateStartupProgress(78, "Sincronizando checklists e notificações...");
       await loadOperationalData({ deferAuditDetails: !reportRequest });
       updateStartupProgress(94, "Preparando o painel...");

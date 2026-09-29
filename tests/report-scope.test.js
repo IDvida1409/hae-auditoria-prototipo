@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { enqueueOrganizationMonthlyReport } = require("../lib/report-service");
+const { enqueueOrganizationMonthlyReport, organizationMonthlyCompletion } = require("../lib/report-service");
+const hierarchy = require("../assets/area-hierarchy");
+const completedAreas = () => hierarchy.groupById("conforto-medico").subareaIds.map((slug) => ({ slug, active: true, finished: true }));
 
 function audit(areaId = "area-1") {
   return {
@@ -13,12 +15,13 @@ function audit(areaId = "area-1") {
   };
 }
 
-test("auditoria de subárea agenda consolidado da área-pai", async () => {
+test("todas as subáreas concluídas agendam consolidado da área-pai", async () => {
   const calls = [];
   const db = {
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.startsWith("select slug from audit_areas")) return { rows: [{ slug: "cozinha-catering" }] };
+      if (sql.startsWith("select ar.slug,ar.active")) return { rows: completedAreas() };
       if (sql.includes("from reports")) return { rows: [] };
       if (sql.includes("from report_generation_jobs")) return { rows: [] };
       if (sql.startsWith("insert into report_generation_jobs")) return { rows: [{ id: "job-1", status: "queued" }] };
@@ -49,6 +52,7 @@ test("auditoria concluída durante geração agenda um consolidado sucessor", as
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.startsWith("select slug from audit_areas")) return { rows: [{ slug: "cozinha-catering" }] };
+      if (sql.startsWith("select ar.slug,ar.active")) return { rows: completedAreas() };
       if (sql.includes("from reports")) return { rows: [] };
       if (sql.includes("from report_generation_jobs")) return { rows: [{ id: "job-processing", status: "processing" }] };
       if (sql.startsWith("insert into report_generation_jobs")) return { rows: [{ id: "job-successor", status: "queued" }] };
@@ -66,6 +70,7 @@ test("job consolidado ainda na fila recebe a auditoria mais recente", async () =
     async query(sql, params) {
       calls.push({ sql, params });
       if (sql.startsWith("select slug from audit_areas")) return { rows: [{ slug: "cozinha-catering" }] };
+      if (sql.startsWith("select ar.slug,ar.active")) return { rows: completedAreas() };
       if (sql.includes("from reports")) return { rows: [] };
       if (sql.includes("from report_generation_jobs")) return { rows: [{ id: "job-queued", status: "queued" }] };
       if (sql.startsWith("update report_generation_jobs")) return { rows: [{ id: "job-queued", status: "queued" }] };
@@ -77,4 +82,24 @@ test("job consolidado ainda na fila recebe a auditoria mais recente", async () =
   const update = calls.find((call) => call.sql.startsWith("update report_generation_jobs"));
   assert.equal(update.params[1], "area-1");
   assert.equal(JSON.parse(update.params[3]).scopeKey, "conforto-medico");
+});
+
+test("subárea pendente impede consolidado sem consultar ou criar jobs", async () => {
+  const db = { async query(sql) {
+    if (sql.startsWith("select slug from audit_areas")) return { rows: [{ slug: "cozinha-catering" }] };
+    if (sql.startsWith("select ar.slug,ar.active")) return { rows: completedAreas().map((row, index) => ({ ...row, finished: index !== 1 })) };
+    throw new Error("Não deve agendar relatório parcial");
+  } };
+  assert.equal(await enqueueOrganizationMonthlyReport(db, audit(), "user-1"), null);
+});
+
+test("subárea ausente não é tratada como concluída", async () => {
+  const result = await organizationMonthlyCompletion({ query: async () => ({ rows: completedAreas().slice(1) }) }, "unit-1", "cycle-1", hierarchy.groupById("conforto-medico"));
+  assert.equal(result.ready, false);
+});
+
+test("subárea arquivada não bloqueia as subáreas ativas", async () => {
+  const result = await organizationMonthlyCompletion({ query: async () => ({ rows: completedAreas().map((row, index) => index ? row : { ...row, active: false, finished: false }) }) }, "unit-1", "cycle-1", hierarchy.groupById("conforto-medico"));
+  assert.equal(result.ready, true);
+  assert.equal(result.areaSlugs.length, 7);
 });
