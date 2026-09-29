@@ -9215,7 +9215,9 @@ document.addEventListener("click", async (event) => {
     confirmFinalize.disabled = true;
     try {
       await waitForAuditWrites(areaId);
-      const audit = await ensureLocalAudit(areaId);
+      // A foto precisa validar o aparelho ativo antes do upload; sem isso o servidor
+      // rejeita a evidência como pertencente a outro dispositivo.
+      const audit = await ensureLocalAudit(areaId, true);
       await window.HAE_OFFLINE.queueAuditFinalize({
         localAuditId: audit.localAuditId,
         auditId: audit.remoteAuditId || null,
@@ -9280,7 +9282,8 @@ function handleAuditEvidenceFileInput(evidence) {
   render();
   const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
   const write = previous.catch(() => {}).then(async () => {
-      const audit = await ensureLocalAudit(areaId);
+      // Revalida o aparelho ativo antes de enviar a foto para evitar rejeição por dispositivo antigo.
+      const audit = await ensureLocalAudit(areaId, true);
       let backendQuestionId = backendQuestionIds.get(`${areaId}:${questionId}`);
       if (!backendQuestionId) {
         await loadOfflineBootstrap();
@@ -9297,6 +9300,7 @@ function handleAuditEvidenceFileInput(evidence) {
         caption: state.auditNotes?.[areaId]?.[questionId] || null,
         captureMethod: evidence.dataset.captureMethod || "gallery"
       });
+      window.HAE_OFFLINE.syncPending().catch(() => {});
       pendingAuditEvidence.delete(evidenceKey);
       saveState();
       render();
