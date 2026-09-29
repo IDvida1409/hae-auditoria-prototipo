@@ -530,6 +530,10 @@ function calendarDayIsScheduled(dateKey) {
   return auditScheduleRows().some((schedule) => schedule.start <= dateKey && schedule.end >= dateKey);
 }
 
+function calendarClockIcon() {
+  return '<svg class="calendar-clock-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"></circle><path d="M12 7.5v4.8l3.1 1.8"></path></svg>';
+}
+
 function calendarDaysMarkup(monthIndex, year) {
   const firstDay = new Date(year, monthIndex, 1).getDay();
   const offset = (firstDay + 6) % 7;
@@ -554,7 +558,7 @@ function calendarPanel() {
   return `
     <section class="calendar-popover" aria-label="Calendário e períodos de auditoria">
       <header class="calendar-popover-head">
-        <div><strong>Calendário de auditorias</strong><span>Selecione um período para organizar a próxima auditoria.</span></div>
+        <div><strong>Calendário</strong><span>Selecione um período para organizar as próximas auditorias.</span></div>
         <button type="button" class="calendar-close" data-calendar-close aria-label="Fechar calendário">${icons.close}</button>
       </header>
       <div class="calendar-view-head">
@@ -567,8 +571,8 @@ function calendarPanel() {
       </div>
       <div class="calendar-divider"></div>
       <div class="calendar-schedule-head">
-        <div><strong>Períodos programados</strong><span>${schedules.length ? `${schedules.length} cadastrado${schedules.length === 1 ? "" : "s"}` : "Nenhum período cadastrado"}</span></div>
-        <button type="button" class="calendar-schedule-toggle" data-calendar-schedule-toggle>${icons.clock}<span>${calendarScheduleOpen ? "Fechar" : "Programar"}</span></button>
+        <div><strong>Períodos programados</strong><span>${schedules.length ? `${schedules.length} cadastrado${schedules.length === 1 ? "" : "s"}` : "Nenhum período programado"}</span></div>
+        <button type="button" class="calendar-schedule-toggle" data-calendar-schedule-toggle>${calendarClockIcon()}<span>${calendarScheduleOpen ? "Fechar" : "Programar"}</span></button>
       </div>
       ${calendarScheduleOpen ? `
         <form class="calendar-schedule-form" data-calendar-schedule-form>
@@ -585,7 +589,7 @@ function calendarPanel() {
             <div><strong>${escapeHtml(schedule.label || "Auditoria programada")}</strong><small>${formatScheduleDate(schedule.start)} a ${formatScheduleDate(schedule.end)}</small></div>
             <button type="button" data-calendar-schedule-remove="${escapeHtml(schedule.id)}" aria-label="Remover período">${icons.close}</button>
           </div>
-        `).join("") : `<p class="calendar-empty">Cadastre um período para organizar a próxima auditoria.</p>`}
+        `).join("") : `<p class="calendar-empty">Cadastre um período para organizar as próximas auditorias.</p>`}
       </div>
     </section>
   `;
