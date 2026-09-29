@@ -9153,6 +9153,7 @@ document.addEventListener("click", async (event) => {
     saveState();
     // Completing the evidence closes only its editor. The current question
     // remains visible with its selected "Não Conforme" answer.
+    completeEvidence.closest(".nc-evidence")?.remove();
     render();
     requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
     return;
@@ -9323,6 +9324,11 @@ document.addEventListener("change", (event) => {
       return;
     }
     pendingAuditEvidence.add(evidenceKey);
+    state.auditEvidence = {
+      ...state.auditEvidence,
+      [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: true }
+    };
+    saveState();
     render();
     const previous = pendingAuditWrites.get(areaId) || Promise.resolve();
     const write = previous.catch(() => {}).then(async () => {
@@ -9358,6 +9364,11 @@ document.addEventListener("change", (event) => {
     write
       .catch((error) => {
         pendingAuditEvidence.delete(evidenceKey);
+        state.auditEvidence = {
+          ...state.auditEvidence,
+          [areaId]: { ...(state.auditEvidence?.[areaId] || {}), [questionId]: false }
+        };
+        saveState();
         setOfflineNotice({ phase: "error", message: error.message });
         render();
       })
