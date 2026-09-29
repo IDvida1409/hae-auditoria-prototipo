@@ -177,9 +177,9 @@ const navItems = [
 ];
 
 const settingsSections = [
-  { id: "users", label: "Usuários", icon: "settings", description: "Cadastro, perfis e permissões." },
   { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." },
-  { id: "areas", label: "Configuração de áreas", icon: "grid", description: "Áreas, subáreas, nomes e status para próximas auditorias." }
+  { id: "areas", label: "Configurações de áreas", icon: "grid", description: "Áreas, subáreas, nomes e status para próximas auditorias." },
+  { id: "new-area", label: "Nova área", icon: "grid", description: "Crie uma área e vincule subáreas existentes ou novas." }
 ];
 
 let settingsUsers = [];
@@ -374,6 +374,7 @@ function normalizeAccessUser(user) {
     name: user.full_name,
     profile: accessRoleLabels[user.role] || user.role,
     area: user.area_name || (["admin", "quality"].includes(user.role) ? "Todas as áreas" : "Área a definir"),
+    assignedAreaIds: Array.isArray(user.assigned_area_ids) ? user.assigned_area_ids : [],
     status: user.active ? (user.reset_pending ? "Reset solicitado" : user.must_change_password ? "Primeiro acesso" : "Ativo") : "Inativo"
   };
 }
@@ -860,11 +861,13 @@ function defaultState() {
     auditInstructionsOpen: false,
     actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
-    settingsSection: "users",
+    settingsSection: "rules",
     settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
+    settingsEditingUserId: "",
     settingsExpandedArea: "",
+    settingsNewAreaOpen: false,
     areaConfigOverrides: {},
     customOrganizationAreas: [],
     planningView: "overview",
@@ -919,8 +922,10 @@ function persistableState(source = state) {
     settingsUserView: source.settingsUserView,
     settingsRulesView: source.settingsRulesView,
     settingsUsersExpanded: source.settingsUsersExpanded,
+    settingsEditingUserId: "",
     reportFolderParentArea: source.reportFolderParentArea,
     settingsExpandedArea: source.settingsExpandedArea,
+    settingsNewAreaOpen: false,
     areaConfigOverrides: source.areaConfigOverrides,
     customOrganizationAreas: source.customOrganizationAreas,
     planningView: source.planningView,
@@ -976,7 +981,7 @@ function normalizeSavedState(saved = {}) {
     reportFolderParentArea: "",
     reportPdfSource: false,
     auditInstructionsOpen: false,
-    settingsSection: validSettingsSections.has(merged.settingsSection) ? merged.settingsSection : base.settingsSection,
+    settingsSection: validSettingsSections.has(merged.settingsSection) && merged.settingsSection !== "users" ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
     settingsRulesView: validSettingsRulesViews.has(merged.settingsRulesView) ? merged.settingsRulesView : base.settingsRulesView,
     settingsUsersExpanded: Boolean(merged.settingsUsersExpanded),
@@ -6636,11 +6641,11 @@ function settingsAreasPanel() {
   const areas = configuredOrganizationAreas();
   const expandedArea = state.settingsExpandedArea || "";
   return `
-    <div class="settings-panel">
+    <div class="settings-panel settings-area-content">
       <div class="settings-panel-head">
         <div>
-          <h2>Configuração de áreas</h2>
-          <p>Organize áreas e subáreas para as próximas auditorias. Responsáveis continuam sendo definidos em Usuários.</p>
+          <h2>Áreas cadastradas</h2>
+          <p>Organize áreas e subáreas para as próximas auditorias.</p>
         </div>
         <button class="settings-soft-btn settings-primary" data-local-add-area type="button">Nova área</button>
       </div>
@@ -6685,25 +6690,91 @@ function settingsActivePanel() {
   return (panels[state.settingsSection] || settingsUsersPanel)();
 }
 
+function settingsAreaChoices(selectedIds = []) {
+  const selected = new Set(selectedIds.map(String));
+  const used = new Set();
+  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.map((area) => ({ id: area.id, name: area.name, slug: area.id }));
+  const bySlug = new Map(source.map((area) => [String(area.slug || "").toLowerCase(), area]));
+  const groups = organizationAreas.map((group) => {
+    const items = group.subareas.map(([id, name]) => bySlug.get(id) || bySlug.get(`area-${id}`)).filter(Boolean);
+    items.forEach((item) => used.add(item.id));
+    return items.length ? `<fieldset class="fichario-area-choice-group"><legend>${escapeHtml(group.name)} <small>${items.length} subáreas</small></legend>${items.map((item) => `<label><input type="checkbox" name="areaIds" value="${escapeHtml(item.id)}" ${selected.has(String(item.id)) ? "checked" : ""} /><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.slug || "")}</small></span></label>`).join("")}</fieldset>` : "";
+  }).join("");
+  const standalone = source.filter((area) => !used.has(area.id));
+  return `${groups}${standalone.length ? `<fieldset class="fichario-area-choice-group"><legend>Áreas independentes <small>sem subárea</small></legend>${standalone.map((item) => `<label><input type="checkbox" name="areaIds" value="${escapeHtml(item.id)}" ${selected.has(String(item.id)) ? "checked" : ""} /><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.slug || "")}</small></span></label>`).join("")}</fieldset>` : ""}`;
+}
+
+function settingsAreaAssignmentOptions(selectedIds = []) {
+  return settingsAreaAssignmentChoices(selectedIds).map((option) => `<option value="${escapeHtml(option.value)}" data-area-count="${option.areaCount || 0}" ${option.selected ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("");
+}
+
+function settingsAreaAssignmentChoices(selectedIds = []) {
+  const selected = new Set(selectedIds.map(String));
+  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.map((area) => ({ id: area.id, name: area.name, slug: area.id }));
+  const bySlug = new Map(source.map((area) => [String(area.slug || "").toLowerCase(), area]));
+  const used = new Set();
+  const choices = [];
+  const groups = organizationAreas.map((group) => {
+    const items = group.subareas.map(([id]) => bySlug.get(id) || bySlug.get(`area-${id}`)).filter(Boolean);
+    if (!items.length) return "";
+    items.forEach((item) => used.add(item.id));
+    const ids = items.map((item) => item.id);
+    choices.push({ value: ids.join(","), label: group.name, areaCount: items.length, selected: ids.every((id) => selected.has(String(id))) });
+    return "";
+  }).join("");
+  const standalone = source.filter((area) => !used.has(area.id));
+  standalone.forEach((area) => choices.push({ value: area.id, label: area.name, areaCount: 0, selected: selected.has(String(area.id)) }));
+  return choices;
+}
+
+function newAreaFormMarkup() {
+  const subareaOptions = organizationAreas.flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
+  const existingAreaChoices = [...configuredOrganizationAreas(), ...areaData.filter((area) => ["dml-produto-quimico", "area-residuos", "documentacao"].includes(area.id))];
+  const areaOptions = [{ value: "", label: "Criar uma área nova" }, ...existingAreaChoices.map((area) => ({ value: area.id, label: area.name }))];
+  return `<form class="new-area-form" data-local-area-form><p class="new-area-form-note">O nome final deve ser exclusivo. Você pode usar uma área já cadastrada como base.</p><div class="new-area-form-grid"><label class="settings-modal-field"><span>Nome da área</span><input name="areaName" required maxlength="120" placeholder="Ex.: Conforto Médico - Bloco B" /></label><div class="settings-modal-field"><span>Área existente como base <small>(opcional)</small></span>${customSettingsSelect("existingArea", areaOptions)}</div></div><div class="new-area-subareas"><div class="new-area-subareas-head"><div><strong>Subáreas</strong><span>Informe quantas deseja cadastrar. Em cada linha, escolha uma existente ou digite uma nova. Subáreas podem ter o mesmo nome e serão vinculadas à nova área.</span></div><label class="settings-modal-field settings-count-field"><span>Quantidade</span><input type="number" name="subareaCount" data-subarea-count min="0" max="20" value="0" /></label></div><div class="settings-subarea-rows" data-subarea-rows>${newAreaSubareaRows(0, subareaOptions)}</div></div><div class="settings-modal-actions"><button class="settings-soft-btn" data-cancel-local-area type="button">Cancelar</button><button class="settings-soft-btn settings-primary" type="submit">Salvar área</button></div></form>`;
+}
+
+function customSettingsSelect(name, options, selected = "") {
+  const current = options.find((option) => String(option.value) === String(selected)) || options[0];
+  return `<div class="settings-custom-select" data-custom-select><button class="settings-custom-select-trigger" type="button" data-custom-select-trigger aria-expanded="false">${escapeHtml(current?.label || "Selecionar")}${icons.chevron}</button><div class="settings-custom-select-menu hidden" data-custom-select-menu>${options.map((option) => `<button type="button" data-custom-select-option="${escapeHtml(option.value)}" data-custom-select-label="${escapeHtml(option.label)}" data-area-count="${option.areaCount || 0}">${escapeHtml(option.label)}</button>`).join("")}</div><select name="${escapeHtml(name)}" data-user-area-select hidden>${options.map((option) => `<option value="${escapeHtml(option.value)}" data-area-count="${option.areaCount || 0}" ${String(option.value) === String(selected) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select></div>`;
+}
+
+function allNewAreaSubareaOptions() {
+  return organizationAreas.flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
+}
+
+function newAreaSubareaRows(count, options) {
+  const entries = Array.isArray(options) ? options : [];
+  return Array.from({ length: Math.max(0, Math.min(20, Number(count) || 0)) }, (_, index) => `<div class="settings-subarea-row"><span>${index + 1}</span>${customSettingsSelect("existingSubareas", [{ value: "", label: "Selecionar subárea existente" }, ...entries])}<input name="newSubareaNames" placeholder="Ou digite uma nova subárea" maxlength="120" /></div>`).join("");
+}
+
+function ficharioUserEditor(user = null) {
+  const editing = Boolean(user);
+  const selected = user?.assignedAreaIds || [];
+  const areaChoices = settingsAreaAssignmentChoices(selected);
+  const selectedArea = areaChoices.find((option) => option.selected)?.value || "";
+  return `<div class="fichario-sub-panel">
+    <form data-access-user-edit-form data-user-id="${editing ? escapeHtml(user.id) : ""}">
+      <div class="fichario-sub-head"><div><h2>${editing ? "Editar cadastro e áreas" : "Cadastrar usuário"}</h2><p>${editing ? "Atualize o cadastro e selecione as áreas ou subáreas que este usuário poderá acessar." : "O código de primeiro acesso será gerado automaticamente."}</p></div><div class="fichario-line-actions"><button class="fichario-sub-action" data-cancel-user-edit type="button">Cancelar</button><button class="fichario-sub-action is-primary" type="submit">${editing ? "Salvar alterações" : "Salvar usuário"}</button></div></div>
+      ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
+      <div class="fichario-form-grid">
+        <label><span>Nome completo</span><input name="fullName" value="${escapeHtml(user?.full_name || "")}" required maxlength="250" /></label>
+        <label><span>E-mail</span><input name="email" type="email" value="${escapeHtml(user?.email || "")}" required maxlength="250" /></label>
+        <label><span>Login de acesso</span><input name="username" value="${escapeHtml(user?.username || "")}" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /></label>
+        <label><span>Perfil</span><select name="role" required>${Object.entries(accessRoleLabels).map(([id, label]) => `<option value="${id}" ${user?.role === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      </div>
+      <div class="fichario-user-area-field"><label><span>Área vinculada</span>${customSettingsSelect("areaGroupIds", [{ value: "", label: "Selecionar área", areaCount: 0 }, ...areaChoices], selectedArea)}</label><small class="fichario-area-assignment-hint" data-area-assignment-hint>Selecione uma área para ver a regra de atribuição.</small></div>
+    </form>
+  </div>`;
+}
+
 function ficharioUsersContent() {
   if (state.settingsUserView === "new") {
-    return `
-      <div class="fichario-sub-panel">
-        <form data-access-user-form>
-          <div class="fichario-sub-head"><div><h2>Cadastrar usuário</h2><p>O administrador informa os dados e o sistema gera um código de primeiro acesso. A senha definitiva será criada pelo próprio usuário.</p></div><button class="fichario-sub-action is-primary" type="submit">Salvar usuário</button></div>
-          ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
-          <div class="fichario-form-grid">
-            <label><span>Nome completo</span><input name="fullName" autocomplete="off" placeholder="Nome e sobrenome" required maxlength="250" /></label>
-            <label><span>Login de acesso</span><input name="username" autocomplete="off" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /><div class="username-suggestions" data-username-suggestions hidden></div></label>
-            <label><span>E-mail de contato (opcional)</span><input name="email" type="email" autocomplete="email" placeholder="usuario@hospital.com.br" maxlength="250" /></label>
-            <label><span>Perfil</span><select name="role" required><option value="auditor">Auditor</option><option value="area_responsible">Responsável da área</option><option value="viewer">Visualizador</option><option value="quality">Qualidade</option><option value="admin">Administrador</option></select></label>
-            <label><span>Área vinculada</span><select name="areaId"><option value="">Todas / definir depois</option>${settingsAccessAreas.map((area) => `<option value="${escapeHtml(area.id)}">${escapeHtml(area.name)}</option>`).join("")}</select></label>
-            <div class="fichario-hint">Não há campo de senha. O código temporário será gerado automaticamente e exigirá troca no primeiro login.</div>
-          </div>
-        </form>
-      </div>
-    `;
+    return ficharioUserEditor();
   }
+
+  const editingUser = settingsUsers.concat(settingsInactiveUsers).find((item) => item.id === state.settingsEditingUserId);
+  if (editingUser) return ficharioUserEditor(editingUser);
 
   const users = state.settingsUserView === "inactive" ? settingsInactiveUsers : settingsUsers;
   const inactive = state.settingsUserView === "inactive";
@@ -6712,7 +6783,7 @@ function ficharioUsersContent() {
       <div class="fichario-sub-head"><div><h2>${inactive ? "Usuários inativos" : "Logins cadastrados"}</h2><p>${inactive ? "Histórico de acessos bloqueados, com possibilidade de reativação quando autorizado." : "Cadastros reais desta unidade, incluindo primeiro acesso e solicitações de redefinição."}</p></div><button class="fichario-sub-action${inactive ? "" : " is-primary"}" data-open-new-user type="button">${inactive ? "Ver cadastros" : "Novo usuário"}</button></div>
       ${accessNotice ? `<div class="access-admin-notice ${accessNotice.type === "error" ? "is-error" : ""}">${escapeHtml(accessNotice.text)}${accessNotice.code ? `<strong>${escapeHtml(accessNotice.code)}</strong><small>Copie agora. Este código não será exibido novamente.</small>` : ""}</div>` : ""}
       <div class="fichario-search-line"><label><span>${icons.search}</span><input placeholder="Pesquisar usuário ou login..." /></label><button class="fichario-sub-action" data-toggle-users-list type="button">${state.settingsUsersExpanded ? "Ocultar lista" : "Expandir lista"}</button></div>
-      <div class="fichario-user-accordion"><div class="fichario-accordion-title"><strong>${inactive ? "Usuários inativos" : "Usuários ativos"}</strong><small>${users.length} registros</small></div>${state.settingsUsersExpanded ? `<div class="fichario-user-list">${users.map((user) => `<div class="fichario-user-line"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.username)} · ${escapeHtml(user.email)}</small></div><span>${escapeHtml(user.profile)}</span><span>${escapeHtml(user.area)}</span><span class="fichario-status-pill ${inactive ? "is-inactive" : user.reset_pending ? "is-reset" : ""}">${escapeHtml(user.status)}</span><div class="fichario-line-actions">${!inactive ? `<button type="button" data-reset-user="${escapeHtml(user.id)}">Redefinir senha</button>` : ""}<button type="button" data-user-status="${escapeHtml(user.id)}" data-active="${inactive}">${inactive ? "Reativar" : "Inativar"}</button></div></div>`).join("") || '<div class="fichario-collapsed-copy">Nenhum usuário nesta lista.</div>'}</div>` : `<div class="fichario-collapsed-copy">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>`}</div>
+      <div class="fichario-user-accordion"><div class="fichario-accordion-title"><strong>${inactive ? "Usuários inativos" : "Usuários ativos"}</strong><small>${users.length} registros</small></div>${state.settingsUsersExpanded ? `<div class="fichario-user-list">${users.map((user) => `<div class="fichario-user-line"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.username)} · ${escapeHtml(user.email)}</small></div><span>${escapeHtml(user.profile)}</span><span>${escapeHtml(user.area)}</span><span class="fichario-status-pill ${inactive ? "is-inactive" : user.reset_pending ? "is-reset" : ""}">${escapeHtml(user.status)}</span><div class="fichario-line-actions"><button type="button" data-edit-user="${escapeHtml(user.id)}">Editar</button>${!inactive ? `<button type="button" data-reset-user="${escapeHtml(user.id)}">Redefinir senha</button>` : ""}<button type="button" data-user-status="${escapeHtml(user.id)}" data-active="${inactive}">${inactive ? "Reativar" : "Inativar"}</button></div></div>`).join("") || '<div class="fichario-collapsed-copy">Nenhum usuário nesta lista.</div>'}</div>` : `<div class="fichario-collapsed-copy">Lista recolhida. Use a lupa para localizar um usuário ou expanda a lista para visualizar os registros.</div>`}</div>
     </div>
   `;
 }
@@ -6758,10 +6829,8 @@ function ficharioSettingsContent() {
 
 function settingsPage() {
   const sectionTabs = `<div class="fichario-sub-tabs settings-section-tabs" role="tablist">${settingsSections.map((section) => `<button class="fichario-sub-tab ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}" type="button">${escapeHtml(section.label)}</button>`).join("")}</div>`;
-  if (state.settingsSection === "users") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Usuários, regras e estrutura das áreas desta unidade.</p></div>${sectionTabs}${ficharioUsersContent()}</section>`;
-  if (state.settingsSection === "areas") {
-    return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Configuração de áreas</h1><p class="panel-subtitle">Cadastre e organize áreas e subáreas para as próximas auditorias. O histórico já emitido permanece inalterado.</p></div>${sectionTabs}${settingsAreasPanel()}</section>`;
-  }
+  if (state.settingsSection === "new-area") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Nova área</h1><p class="panel-subtitle">Crie uma área ou use uma área existente como base.</p></div>${sectionTabs}<div class="fichario-sub-panel new-area-panel">${newAreaFormMarkup()}</div></section>`;
+  if (state.settingsSection === "areas") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Configuração de áreas</h1><p class="panel-subtitle">Cadastre e organize áreas e subáreas para as próximas auditorias.</p></div>${sectionTabs}${settingsAreasPanel()}</section>`;
   return `
     <section class="fichario-module">
       <div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Aqui ficam regras de meta, pontuação, documentação obrigatória, tabelas técnicas e ajustes visuais usados nos painéis e relatórios.</p></div>
@@ -7799,7 +7868,25 @@ document.addEventListener("click", async (event) => {
   const newUser = event.target.closest("[data-open-new-user]");
   if (newUser) {
     accessNotice = null;
+    state.settingsEditingUserId = "";
     state.settingsUserView = newUser.textContent.includes("cadastros") ? "active" : "new";
+    render();
+    return;
+  }
+
+  const editUser = event.target.closest("[data-edit-user]");
+  if (editUser) {
+    state.settingsUserView = "active";
+    state.settingsEditingUserId = editUser.dataset.editUser;
+    accessNotice = null;
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-cancel-user-edit]")) {
+    state.settingsEditingUserId = "";
+    state.settingsUserView = "active";
+    accessNotice = null;
     render();
     return;
   }
@@ -7838,6 +7925,38 @@ document.addEventListener("click", async (event) => {
     const isOpen = panel ? panel.classList.toggle("hidden") === false : false;
     userTrigger.setAttribute("aria-expanded", String(isOpen));
     return;
+  }
+
+  const customOption = event.target.closest("[data-custom-select-option]");
+  if (customOption) {
+    const root = customOption.closest("[data-custom-select]");
+    const select = root?.querySelector("select");
+    const trigger = root?.querySelector("[data-custom-select-trigger]");
+    if (select && trigger) {
+      select.value = customOption.dataset.customSelectOption || "";
+      trigger.innerHTML = `${escapeHtml(customOption.dataset.customSelectLabel || customOption.textContent.trim())}${icons.chevron}`;
+      trigger.setAttribute("aria-expanded", "false");
+      root.querySelector("[data-custom-select-menu]")?.classList.add("hidden");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return;
+  }
+
+  const customTrigger = event.target.closest("[data-custom-select-trigger]");
+  if (customTrigger) {
+    const root = customTrigger.closest("[data-custom-select]");
+    const menu = root?.querySelector("[data-custom-select-menu]");
+    const open = menu ? menu.classList.toggle("hidden") === false : false;
+    document.querySelectorAll("[data-custom-select-menu]").forEach((other) => {
+      if (other !== menu) other.classList.add("hidden");
+    });
+    customTrigger.setAttribute("aria-expanded", String(open));
+    return;
+  }
+
+  if (!event.target.closest("[data-custom-select]")) {
+    document.querySelectorAll("[data-custom-select-menu]").forEach((menu) => menu.classList.add("hidden"));
+    document.querySelectorAll("[data-custom-select-trigger]").forEach((trigger) => trigger.setAttribute("aria-expanded", "false"));
   }
 
   const nav = event.target.closest("[data-nav]");
@@ -8081,6 +8200,7 @@ document.addEventListener("click", async (event) => {
       state.settingsExpandedArea = "";
     }
     state.settingsSection = nextSection;
+    state.settingsNewAreaOpen = nextSection === "new-area";
     state.settingsMenuExpanded = true;
     state.view = "settings";
     syncHashWithView("settings");
@@ -8092,6 +8212,7 @@ document.addEventListener("click", async (event) => {
   if (settingsUserView) {
     state.settingsSection = "users";
     state.settingsUserView = settingsUserView.dataset.settingsUserView;
+    state.settingsEditingUserId = "";
     state.settingsUsersExpanded = false;
     render();
     return;
@@ -8105,12 +8226,42 @@ document.addEventListener("click", async (event) => {
 
   const addLocalArea = event.target.closest("[data-local-add-area]");
   if (addLocalArea) {
-    const name = window.prompt("Nome da nova área:");
-    if (!name?.trim()) return;
-    const id = `local-area-${Date.now()}`;
-    state.customOrganizationAreas = [...(state.customOrganizationAreas || []), { id, name: name.trim(), icon: "area-despensa.png", subareas: [], subareaIds: [] }];
+    state.settingsNewAreaOpen = true;
+    state.settingsSection = "new-area";
+    render();
+    return;
+  }
+
+  const addLocalSubarea = event.target.closest("[data-add-local-subarea]");
+  if (addLocalSubarea) {
+    const form = addLocalSubarea.closest("[data-local-area-form]");
+    const select = form?.querySelector("[data-existing-subarea-select]");
+    const input = form?.querySelector("[data-new-subarea-input]");
+    const value = input?.value.trim() || select?.value;
+    const label = input?.value.trim() || select?.selectedOptions?.[0]?.textContent?.split(" · ")[0];
+    if (!value || !label) return;
+    const list = form.querySelector("[data-added-subareas]");
+    list.querySelector(".fichario-collapsed-copy")?.remove();
+    const row = document.createElement("span");
+    row.className = "fichario-added-subarea";
+    row.innerHTML = `${escapeHtml(label)}<button type="button" data-remove-local-subarea aria-label="Remover ${escapeHtml(label)}">×</button><input type="hidden" name="existingSubareas" value="${escapeHtml(value)}" />`;
+    list.appendChild(row);
+    if (input) input.value = "";
+    if (select) select.value = "";
+    return;
+  }
+
+  const removeLocalSubarea = event.target.closest("[data-remove-local-subarea]");
+  if (removeLocalSubarea) {
+    removeLocalSubarea.closest(".fichario-added-subarea")?.remove();
+    const list = document.querySelector("[data-added-subareas]");
+    if (list && !list.children.length) list.innerHTML = '<span class="fichario-collapsed-copy">Nenhuma subárea adicionada.</span>';
+    return;
+  }
+
+  if (event.target.closest("[data-cancel-local-area]")) {
+    state.settingsNewAreaOpen = false;
     state.settingsSection = "areas";
-    saveState();
     render();
     return;
   }
@@ -9039,6 +9190,40 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  const areaSelect = event.target.closest("[data-user-area-select]");
+  if (areaSelect) {
+    const hint = areaSelect.closest(".fichario-user-area-field")?.querySelector("[data-area-assignment-hint]");
+    const count = Number(areaSelect.selectedOptions[0]?.dataset.areaCount || 0);
+    if (hint) hint.textContent = count ? `Essa área possui ${count} subáreas. Todas as subáreas serão atribuídas ao mesmo responsável.` : areaSelect.value ? "Essa área não possui subáreas. O usuário será vinculado somente a ela." : "Selecione uma área para ver a regra de atribuição.";
+    return;
+  }
+  const subareaCount = event.target.closest("[data-subarea-count]");
+  if (subareaCount) {
+    const form = subareaCount.closest("[data-local-area-form]");
+    const rows = form?.querySelector("[data-subarea-rows]");
+    if (rows) rows.innerHTML = newAreaSubareaRows(subareaCount.value, allNewAreaSubareaOptions());
+    return;
+  }
+  const areaFilter = event.target.closest("[data-area-choice-filter]");
+  if (areaFilter) {
+    const term = areaFilter.value.trim().toLocaleLowerCase("pt-BR");
+    areaFilter.closest(".fichario-area-picker")?.querySelectorAll(".fichario-area-choice-group").forEach((group) => {
+      let visible = 0;
+      group.querySelectorAll("label").forEach((label) => {
+        const match = !term || label.textContent.toLocaleLowerCase("pt-BR").includes(term);
+        label.hidden = !match;
+        if (match) visible += 1;
+      });
+      group.hidden = visible === 0;
+    });
+    return;
+  }
+  const localSubareaFilter = event.target.closest("[data-local-subarea-filter]");
+  if (localSubareaFilter) {
+    const term = localSubareaFilter.value.trim().toLocaleLowerCase("pt-BR");
+    localSubareaFilter.closest(".fichario-new-area-panel")?.querySelectorAll("[data-existing-subarea]").forEach((label) => { label.hidden = Boolean(term) && !label.textContent.toLocaleLowerCase("pt-BR").includes(term); });
+    return;
+  }
   if (event.target.matches(".top-search input")) {
     globalSearchQuery = event.target.value;
     render({ skipSave: true });
@@ -9075,17 +9260,72 @@ document.addEventListener("input", (event) => {
   if (submit) submit.disabled = !complete;
 });
 
+document.addEventListener("change", (event) => {
+  const baseArea = event.target.closest('[data-local-area-form] select[name="existingArea"]');
+  if (baseArea) {
+    const form = baseArea.form;
+    const base = configuredOrganizationAreas().find((area) => area.id === baseArea.value);
+    const name = form?.elements.areaName;
+    if (base && name && !name.value.trim()) name.value = base.name;
+    const count = form?.elements.subareaCount;
+    if (base && count) {
+      count.value = String(base.subareas.length);
+      const rows = form.querySelector("[data-subarea-rows]");
+      if (rows) rows.innerHTML = newAreaSubareaRows(count.value, allNewAreaSubareaOptions());
+    }
+  }
+  const areaSelect = event.target.closest("[data-user-area-select]");
+  if (areaSelect) {
+    const hint = areaSelect.closest(".fichario-user-area-field")?.querySelector("[data-area-assignment-hint]");
+    const count = Number(areaSelect.selectedOptions[0]?.dataset.areaCount || 0);
+    if (hint) hint.textContent = count ? `Essa área possui ${count} subáreas. Todas as subáreas serão atribuídas ao mesmo responsável.` : areaSelect.value ? "Essa área não possui subáreas. O usuário será vinculado somente a ela." : "Selecione uma área para ver a regra de atribuição.";
+  }
+});
+
 document.addEventListener("submit", (event) => {
-  const form = event.target.closest("[data-access-user-form]");
+  const areaForm = event.target.closest("[data-local-area-form]");
+  if (areaForm) {
+    event.preventDefault();
+    const data = new FormData(areaForm);
+    const name = String(data.get("areaName") || "").trim();
+    if (!name) return;
+    if (configuredOrganizationAreas().some((area) => area.name.trim().toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) {
+      setPlanningNotice("Já existe uma área com esse nome. Escolha outro nome para continuar.");
+      render();
+      return;
+    }
+    const chosen = data.getAll("existingSubareas").filter(Boolean);
+    const known = organizationAreas.flatMap((group) => group.subareas.map(([id, label, subtitle, icon]) => ({ id, label, subtitle, icon })));
+    const custom = data.getAll("newSubareaNames").map((value) => String(value).trim()).filter(Boolean).map((label, index) => ({ id: `local-subarea-${Date.now()}-${index}`, label, subtitle: "Subárea cadastrada", icon: "subarea-recebimento.png" }));
+    const selected = known.filter((item) => chosen.includes(item.id)).concat(custom);
+    const id = `local-area-${Date.now()}`;
+    state.customOrganizationAreas = [...(state.customOrganizationAreas || []), { id, name, icon: "area-despensa.png", subareas: selected.map((item) => [item.id, item.label, item.subtitle, item.icon]), subareaIds: selected.map((item) => item.id) }];
+    state.settingsNewAreaOpen = false;
+    state.settingsSection = "areas";
+    state.settingsExpandedArea = id;
+    saveState();
+    setPlanningNotice("Área criada para as próximas auditorias. O histórico anterior não foi alterado.");
+    render();
+    return;
+  }
+  const form = event.target.closest("[data-access-user-edit-form]");
   if (!form) return;
   event.preventDefault();
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
-  const body = Object.fromEntries(new FormData(form));
-  accessRequest("users", { method: "POST", body: JSON.stringify(body) })
+  const formData = new FormData(form);
+  const body = Object.fromEntries(formData);
+  body.areaIds = String(formData.get("areaGroupIds") || "").split(",").filter(Boolean);
+  const editing = Boolean(form.dataset.userId);
+  const path = editing ? `users/${form.dataset.userId}` : "users";
+  accessRequest(path, { method: editing ? "PATCH" : "POST", body: JSON.stringify(body) })
     .then(async (data) => {
-      accessNotice = { type: "success", text: `Usuário ${data.user.username} criado. Código de primeiro acesso:`, code: data.temporaryCode };
+      accessNotice = editing
+        ? { type: "success", text: `Cadastro de ${data.user.full_name} atualizado.` }
+        : { type: "success", text: `Usuário ${data.user.username} criado. Código de primeiro acesso:`, code: data.temporaryCode };
       await loadAccessUsers();
+      state.settingsEditingUserId = "";
+      state.settingsUserView = editing ? "active" : "new";
       form.reset();
       render();
     })
