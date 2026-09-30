@@ -327,7 +327,8 @@
         localAuditId: metadata.localAuditId || null,
         auditId: metadata.auditId || null,
         questionId: metadata.questionId || null,
-        caption: metadata.caption || null
+        caption: metadata.caption || null,
+        replaceExistingEvidence: Boolean(metadata.replaceExistingEvidence)
       }
     });
     return { file: savedFile, operation };
@@ -381,7 +382,8 @@
         localAuditId: metadata.localAuditId || null,
         auditId: metadata.auditId || null,
         questionId: metadata.questionId || null,
-        caption: metadata.caption || null
+        caption: metadata.caption || null,
+        replaceExistingEvidence: Boolean(metadata.replaceExistingEvidence)
       }
     });
     return { file: savedFile, operation, direct: true };

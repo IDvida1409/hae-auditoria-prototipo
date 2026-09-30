@@ -9321,9 +9321,9 @@ document.addEventListener("click", async (event) => {
       [area.id]: {
         ...(state.auditActionDrafts?.[area.id] || {}),
         [questionId]: {
-          correction: plan.observation === "Sem observação registrada." ? "" : plan.observation,
-          action: plan.correction || plan.action || "",
-          deadline: plan.dueAt ? String(plan.dueAt).slice(0, 10) : ""
+          ...(state.auditActionDrafts?.[area.id]?.[questionId] || {}),
+          correction: plan.correction || "",
+          action: plan.action || ""
         }
       }
     };
@@ -9528,6 +9528,7 @@ function handleAuditEvidenceFileInput(evidence) {
     fileName: file.name || "Evidência fotográfica",
     mimeType: file.type || "image/jpeg",
     fileSizeBytes: file.size,
+    replaceExistingEvidence: true,
     errorMessage: null,
     updatedAt: new Date().toISOString()
   });
@@ -9551,7 +9552,8 @@ function handleAuditEvidenceFileInput(evidence) {
         entityType: "audit_answer",
         fileType: "audit_photo",
         caption: state.auditNotes?.[areaId]?.[questionId] || null,
-        captureMethod: evidence.dataset.captureMethod || "gallery"
+        captureMethod: evidence.dataset.captureMethod || "gallery",
+        replaceExistingEvidence: true
       };
       let queued;
       if (navigator.onLine !== false && window.HAE_OFFLINE.uploadFileNow) {

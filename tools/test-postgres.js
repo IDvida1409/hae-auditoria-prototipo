@@ -200,7 +200,7 @@ async function main() {
     const file = (await upload.json()).file;
     const secondUpload = await fetch(base + "/api/offline-files", { method: "POST", headers, body: bytes });
     assert.equal((await secondUpload.json()).file.id, file.id);
-    const photoOp = { clientOperationId: "photo-" + localAuditId, clientSequence: 3, entityType: "stored_file", operation: "upload", dependsOn: [answer.clientOperationId], payload: { localAuditId, localFileId: "photo-1", entityType: "audit_answer", questionId: question.id } };
+    const photoOp = { clientOperationId: "photo-" + localAuditId, clientSequence: 3, entityType: "stored_file", operation: "upload", dependsOn: [answer.clientOperationId], payload: { localAuditId, localFileId: "photo-1", entityType: "audit_answer", questionId: question.id, replaceExistingEvidence: true } };
     await json("/api/sync-queue", { deviceUid, operations: [photoOp] }, "POST", token);
     const download = await fetch(base + "/api/files/" + file.id + "/content", { headers: { cookie: authenticatedCookie } });
     assert.equal(download.headers.get("content-type"), "image/jpeg");
@@ -211,7 +211,17 @@ async function main() {
     assert.equal(normalizedMetadata.height, 2);
     const updated = await json("/api/audits/" + auditId, null, "GET", token);
     assert.equal(updated.files.length, 1);
-    const conflict = { ...answer, clientOperationId: "conflict-" + localAuditId, clientSequence: 4, payload: { ...answer.payload, answer: "C", expectedRevision: 0 } };
+    const replacementBytes = await require("sharp")({ create: { width: 3, height: 3, channels: 3, background: "#c62828" } }).png().toBuffer();
+    const replacementHeaders = { ...headers, "x-local-file-id": "photo-2", "x-file-name": "photo-replacement.png" };
+    const replacementUpload = await fetch(base + "/api/offline-files", { method: "POST", headers: replacementHeaders, body: replacementBytes });
+    assert.ok(replacementUpload.ok);
+    const replacementFile = (await replacementUpload.json()).file;
+    const replacementPhotoOp = { clientOperationId: "photo-replacement-" + localAuditId, clientSequence: 4, entityType: "stored_file", operation: "upload", dependsOn: [photoOp.clientOperationId], payload: { localAuditId, localFileId: "photo-2", entityType: "audit_answer", questionId: question.id, replaceExistingEvidence: true } };
+    await json("/api/sync-queue", { deviceUid, operations: [replacementPhotoOp] }, "POST", token);
+    const replaced = await json("/api/audits/" + auditId, null, "GET", token);
+    assert.equal(replaced.files.length, 1);
+    assert.equal(replaced.files[0].id, replacementFile.id);
+    const conflict = { ...answer, clientOperationId: "conflict-" + localAuditId, clientSequence: 5, payload: { ...answer.payload, answer: "C", expectedRevision: 0 } };
     const conflictResult = await json("/api/sync-queue", { deviceUid, operations: [conflict] }, "POST", token);
     assert.equal(conflictResult.complete, false);
     assert.equal(conflictResult.operations[0].status, "error");
@@ -224,13 +234,13 @@ async function main() {
       .filter((item) => item.id !== question.id)
       .map((item, index) => ({
         clientOperationId: `answer-${localAuditId}-${index}`,
-        clientSequence: 5 + index,
+        clientSequence: 6 + index,
         entityType: "audit_answer",
         operation: "upsert",
         payload: { localAuditId, questionId: item.id, answer: "C" }
       }));
     await json("/api/sync-queue", { deviceUid, operations: remainingAreaAnswers }, "POST", token);
-    const finalization = { clientOperationId: "finish-" + localAuditId, clientSequence: 5 + remainingAreaAnswers.length, entityType: "audit", operation: "finalize", dependsOn: [photoOp.clientOperationId, ...remainingAreaAnswers.map((item) => item.clientOperationId)], payload: { localAuditId } };
+    const finalization = { clientOperationId: "finish-" + localAuditId, clientSequence: 6 + remainingAreaAnswers.length, entityType: "audit", operation: "finalize", dependsOn: [replacementPhotoOp.clientOperationId, ...remainingAreaAnswers.map((item) => item.clientOperationId)], payload: { localAuditId } };
     const finished = await json("/api/sync-queue", { deviceUid, operations: [finalization] }, "POST", token);
     assert.equal(finished.complete, true);
     assert.equal(finished.operations[0].result_payload.audit.status, "finished");

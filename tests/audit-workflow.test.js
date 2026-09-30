@@ -25,6 +25,20 @@ test("planos só são perguntados quando existem não conformidades", () => {
   assert.match(source, /await finalizeAudit\(areaId, "automatic"\)/);
 });
 
+test("reutilização de plano não reaproveita prazo antigo", () => {
+  assert.match(source, /correction: plan\.correction \|\| ""/);
+  assert.match(source, /action: plan\.action \|\| ""/);
+  assert.doesNotMatch(source, /deadline: plan\.dueAt/);
+});
+
+test("nova foto substitui a evidência oficial somente após sincronizar", () => {
+  const offlineSource = fs.readFileSync(path.join(__dirname, "..", "offline-store.js"), "utf8");
+  const syncSource = fs.readFileSync(path.join(__dirname, "..", "lib", "sync-service.js"), "utf8");
+  assert.match(source, /replaceExistingEvidence: true/);
+  assert.match(offlineSource, /replaceExistingEvidence: Boolean\(metadata\.replaceExistingEvidence\)/);
+  assert.match(syncSource, /delete from file_links where entity_type='audit_answer' and entity_id=\$1 and file_id<>\$2/);
+});
+
 test("a limpeza de campo apaga somente dados operacionais", () => {
   assert.match(resetMigration, /audit_cycles/);
   assert.match(resetMigration, /stored_files/);
