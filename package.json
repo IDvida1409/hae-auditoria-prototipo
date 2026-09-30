@@ -5,7 +5,7 @@
   "description": "Protótipo publicável do dashboard de auditoria HAE.",
   "main": "server.js",
   "scripts": {
-    "test": "npm run check && node --test tests/backend-infrastructure.test.js tests/access-api.test.js tests/area-hierarchy.test.js tests/report-scope.test.js tests/audit-transfer.test.js",
+    "test": "npm run check && node --test tests/backend-infrastructure.test.js tests/access-api.test.js tests/area-hierarchy.test.js tests/report-scope.test.js tests/audit-transfer.test.js tests/audit-workflow.test.js",
     "postinstall": "node tools/install-report-browser.js",
     "start": "node server.js",
     "dev": "node server.js",

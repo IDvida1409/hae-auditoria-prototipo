@@ -82,7 +82,7 @@
   const groupById = (id) => normalizedGroups.find((group) => group.id === id) || null;
   const groupForSubarea = (id) => normalizedGroups.find((group) => group.subareaIds.includes(id)) || null;
   const allSubareaIds = () => normalizedGroups.flatMap((group) => group.subareaIds);
-  const standaloneIds = ["dml-produto-quimico", "area-residuos", "documentacao"];
+  const standaloneIds = ["area-residuos", "documentacao"];
   const classifyArea = (id) => {
     const group = groupById(id);
     if (group) return { kind: "group", group };

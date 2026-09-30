@@ -202,6 +202,29 @@ test("acknowledgement is committed in the same transaction as audit finalization
   assert.ok(finalization < ack && ack < commit);
 });
 
+test("reviewing a complete checklist keeps the audit editable and does not generate a score or report", async () => {
+  const calls = [];
+  const db = { async query(sql) {
+    calls.push(sql);
+    if (sql.startsWith("select a.*,u.full_name as auditor_name from audits")) return { rows: [{
+      id: "audit-1", unit_id: "unit-1", area_id: "area-1", checklist_id: "checklist-1",
+      auditor_user_id: "user-1", active_device_id: "device-1", status: "in_progress"
+    }] };
+    if (sql.includes("as expected") && sql.includes("as answered")) return { rows: [{ expected: 2, answered: 2, nc_without_evidence: 0 }] };
+    if (sql.startsWith("update audits set status='draft'")) return { rows: [{ id: "audit-1", status: "draft" }] };
+    return { rows: [] };
+  } };
+  const result = await applyOperation(db, {
+    entity_type: "audit", operation: "review", user_id: "user-1", device_id: "device-1",
+    payload: { auditId: "audit-1", localAuditId: "local-1" }
+  });
+  assert.equal(result.audit.status, "draft");
+  assert.equal(result.reviewPending, true);
+  assert.ok(calls.some((sql) => sql.startsWith("update audits set status='draft'")));
+  assert.ok(!calls.some((sql) => sql.startsWith("update audits set status='finished'")));
+  assert.ok(!calls.some((sql) => sql.includes("report_generation_jobs")));
+});
+
 test("failed migration rolls back and releases the cross-process lock", async () => {
   const calls = [];
   let released = false;

@@ -290,6 +290,14 @@
     return saveOperation({ entityType: "audit", operation: "finalize", payload, dependsOn: outstanding });
   }
 
+  async function queueAuditReview(payload) {
+    if (activeSync) await activeSync.catch(() => {});
+    const outstanding = (await listSyncableOperations())
+      .filter((operation) => operation.payload?.localAuditId === payload.localAuditId)
+      .map((operation) => operation.clientOperationId);
+    return saveOperation({ entityType: "audit", operation: "review", payload, dependsOn: outstanding });
+  }
+
   async function queueActionPlanFeedback(payload) {
     return saveOperation({ entityType: "action_plan_feedback", operation: "create", payload });
   }
@@ -675,6 +683,7 @@
     localEntity,
     cacheBootstrap,
     getCachedBootstrap: () => getMeta(scopedKey("bootstrap")),
+    queueAuditReview,
     queueAuditFinalize
   };
 

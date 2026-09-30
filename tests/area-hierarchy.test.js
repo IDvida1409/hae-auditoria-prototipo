@@ -8,9 +8,15 @@ test("cada subárea pertence a uma única área", () => {
 });
 
 test("áreas isoladas não são classificadas como subáreas", () => {
-  for (const id of ["documentacao", "area-residuos", "dml-produto-quimico"]) {
+  for (const id of ["documentacao", "area-residuos"]) {
     assert.deepEqual(hierarchy.classifyArea(id), { kind: "standalone", group: null });
   }
+});
+
+test("DML autônomo foi retirado sem remover os DMLs da Limpeza ASG", () => {
+  assert.deepEqual(hierarchy.classifyArea("dml-produto-quimico"), { kind: "unknown", group: null });
+  assert.equal(hierarchy.classifyArea("dml-1-andar").group.id, "limpeza-asg");
+  assert.equal(hierarchy.classifyArea("dml-2-andar").group.id, "limpeza-asg");
 });
 
 test("Catering pertence somente a Conforto Médico", () => {

@@ -81,3 +81,26 @@ test("same auditor can continue on another device without changing ownership", a
   assert.ok(calls.some((sql) => sql.includes("insert into audit_transfer_revoked_devices")));
   assert.ok(calls.includes("commit"));
 });
+
+test("same auditor keeps review answers editable when changing devices", async () => {
+  const calls = [];
+  const previous = { id: "audit-1", area_id: "area-1", cycle_id: "cycle-1", month_start: session.monthStart(), status: "draft",
+    auditor_user_id: "editor-1", active_device_id: "device-1", device_id: "device-1" };
+  const client = { async query(sql) {
+    calls.push(sql);
+    if (sql.startsWith("insert into mobile_devices")) return { rows: [{ id: "device-2", user_id: "editor-1" }] };
+    if (sql.startsWith("select a.*,c.month_start from audits")) return { rows: [previous] };
+    if (sql.startsWith("select * from audits where id=$1 for update")) return { rows: [previous] };
+    if (sql.startsWith("select count(*)::int as count")) return { rows: [{ count: 0 }] };
+    if (sql.startsWith("update audits set auditor_user_id")) return { rows: [{ ...previous, active_device_id: "device-2" }] };
+    if (sql.startsWith("select full_name from app_users")) return { rows: [{ full_name: "Editor 1" }] };
+    return { rows: [] };
+  }, release() {} };
+  const result = await session.transfer({ connect: async () => client }, {
+    auditId: "audit-1", unitId: "unit-1", user: { id: "editor-1" }, deviceUid: "device-uid-2",
+    allowedAreaIds: [], allAreas: true
+  });
+  assert.equal(result.audit.status, "draft");
+  assert.ok(!calls.some((sql) => sql.includes("insert into audit_transfer_answer_locks")));
+  assert.ok(calls.some((sql) => sql.includes("insert into audit_transfer_revoked_devices")));
+});

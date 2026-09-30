@@ -492,13 +492,17 @@ async function handleApi(request, response, url) {
         const selected = await pool.query("select a.*,u.full_name as auditor_name from audits a left join app_users u on u.id=a.auditor_user_id where a.id=$1 and a.unit_id=$2", [auditId, unitId]);
         const audit = selected.rows[0];
         if (!audit || String(audit.auditor_user_id) !== String(user.id) ||
-            String(audit.active_device_id || audit.device_id) !== String(device.id) || audit.status !== "in_progress") {
+            String(audit.active_device_id || audit.device_id) !== String(device.id)) {
           const sameAuditor = audit && String(audit.auditor_user_id) === String(user.id);
           sendJson(response, 409, { error: sameAuditor
             ? "Você continuou esta auditoria em outro aparelho. Esta cópia será descartada."
             : `Auditoria transferida para ${audit?.auditor_name || "outro auditor"}. Esta cópia será descartada.`,
             code: "AUDIT_TRANSFERRED", auditId: audit?.id || auditId, areaId: audit?.area_id || null,
             newAuditorName: audit?.auditor_name || "outro auditor", newAuditorUserId: audit?.auditor_user_id || null });
+          return true;
+        }
+        if (!["draft", "in_progress", "sync_pending", "sync_error"].includes(audit.status)) {
+          sendJson(response, 409, { error: "Auditoria encerrada; a foto não pode ser alterada.", code: "AUDIT_CLOSED", auditId: audit.id, areaId: audit.area_id });
           return true;
         }
       }

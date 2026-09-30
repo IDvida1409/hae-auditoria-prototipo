@@ -103,7 +103,10 @@ async function main() {
     assert.equal(initialAccessLogin.response.status, 200);
     authenticatedCookie = initialAccessLogin.cookie;
     const bootstrap = await json("/api/offline-bootstrap");
-    assert.equal(bootstrap.areas.length, 12);
+    const hierarchy = require("../assets/area-hierarchy");
+    const expectedAreaSlugs = [...hierarchy.allSubareaIds(), ...hierarchy.standaloneIds].sort();
+    assert.deepEqual(bootstrap.areas.map((item) => item.slug).sort(), expectedAreaSlugs);
+    assert.ok(!bootstrap.areas.some((item) => item.slug === "dml-produto-quimico"));
     const checklist = bootstrap.checklists[0];
     const area = bootstrap.areas.find((item) => item.id === checklist.area_id);
     const question = checklist.blocks.flatMap((block) => block.questions)[0];
@@ -164,11 +167,18 @@ async function main() {
     const legacyDownload = await fetch(base + `/api/files/${legacyFile.rows[0].id}/content`, { headers: { cookie: authenticatedCookie } });
     assert.deepEqual(Buffer.from(await legacyDownload.arrayBuffer()), legacyPdf);
     const offlineBootstrap = await json("/api/offline-bootstrap");
-    assert.equal(offlineBootstrap.areas.length, 12);
-    assert.ok(offlineBootstrap.areas.every((item) => offlineBootstrap.checklists.some((checklistItem) => checklistItem.area_id === item.id && checklistItem.blocks.length)));
+    assert.deepEqual(offlineBootstrap.areas.map((item) => item.slug).sort(), expectedAreaSlugs);
+    assert.ok(!offlineBootstrap.areas.some((item) => item.slug === "dml-produto-quimico"));
+    assert.ok(offlineBootstrap.areas.some((item) => item.slug === "dml-1-andar"));
+    assert.ok(offlineBootstrap.areas.some((item) => item.slug === "dml-2-andar"));
+    assert.ok(offlineBootstrap.areas.some((item) => item.slug === "area-residuos"));
+    assert.ok(offlineBootstrap.areas.some((item) => item.slug === "documentacao"));
+    assert.ok(offlineBootstrap.checklists.every((checklistItem) =>
+      offlineBootstrap.areas.some((item) => item.id === checklistItem.area_id) && checklistItem.blocks.length
+    ));
     assert.equal(
       offlineBootstrap.checklists.reduce((total, checklistItem) => total + checklistItem.blocks.reduce((areaTotal, block) => areaTotal + block.questions.length, 0), 0),
-      437
+      424
     );
     const token = "";
     const deviceUid = crypto.randomUUID();
@@ -341,7 +351,7 @@ async function main() {
     ));
     assert.ok(concurrent.every((response) => response.ok));
     console.log("PASS: 40 concurrent authenticated reads completed without errors and the audit trail contains every critical workflow event.");
-    console.log("PASS: real PostgreSQL migrations, 437 checklist questions, user/session APIs, offline audit/answer application, retransmission, actual photo upload/link/download, conflict resolution, finalization, configuration/document APIs, real PDF generation, report history and automatic notification.");
+    console.log("PASS: real PostgreSQL migrations, 424 active checklist questions, user/session APIs, offline audit/answer application, retransmission, actual photo upload/link/download, conflict resolution, finalization, configuration/document APIs, real PDF generation, report history and automatic notification.");
   } finally {
     if (api && api.exitCode == null) {
       const stopped = new Promise((resolve) => api.once("exit", resolve));
