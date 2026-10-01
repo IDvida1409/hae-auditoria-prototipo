@@ -17887,7 +17887,7 @@ button.planning-kpi:hover {
 }
 
 .executive-stage:fullscreen .executive-stage-head { min-height: 72px; padding: 13px 28px; }
-.executive-stage:fullscreen .executive-heading h1 { font-size: 31px; }
+.executive-stage:fullscreen .executive-heading h1 { font-size: 24px; }
 .executive-stage:fullscreen .executive-heading p { font-size: 13px; }
 .executive-stage:fullscreen .executive-head-actions { display: none; }
 .executive-stage:fullscreen .executive-slide-nav { padding: 0 28px; }
@@ -17946,7 +17946,7 @@ button.planning-kpi:hover {
 .executive-heading h1 {
   margin: 0;
   color: #14223a;
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 740;
   line-height: 1.08;
   letter-spacing: 0;
@@ -18398,7 +18398,7 @@ button.planning-kpi:hover {
   padding: 0 2px;
 }
 
-.executive-area-focus-head h2 { margin: 0; color: #17263c; font-size: 21px; line-height: 1.05; }
+.executive-area-focus-head h2 { margin: 0; color: #17263c; font-size: 17px; line-height: 1.1; }
 .executive-area-focus-head p { margin: 4px 0 0; color: #6b7b8e; font-size: 10px; }
 .executive-focus-score { display: grid; grid-template-columns: auto auto; align-items: center; gap: 2px 8px; min-width: 130px; }
 .executive-focus-score span { grid-column: 1; color: #6b7b8e; font-size: 10px; }
@@ -18685,7 +18685,7 @@ button.planning-kpi:hover {
   .executive-dashboard-preview { padding: 7px; border-radius: 0 14px 14px 14px; }
   .executive-stage { min-height: 0; border-radius: 8px; }
   .executive-stage-head { min-height: 0; padding: 13px 12px; }
-  .executive-heading h1 { font-size: 19px; }
+  .executive-heading h1 { font-size: 17px; }
   .executive-heading p { font-size: 9.5px; }
   .executive-head-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; }
   .executive-head-actions select { min-width: 0; font-size: 9px; }
