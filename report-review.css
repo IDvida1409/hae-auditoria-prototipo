@@ -133,6 +133,24 @@ body.report-review-body .stored-report-view.report-review-preview .report-doc-pa
 [data-review-editable]:focus { box-shadow: 0 0 0 2px rgba(10, 108, 255, .13); }
 [data-review-editable][contenteditable="true"] { min-width: 12px; }
 
+/* O modelo aprovado usa spans para a numeração das seções. O texto editável não pode herdar o círculo da numeração. */
+body.report-review-body .report-review-preview .report-doc-section h2 > [data-review-editable] {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  display: inline;
+  flex: 1 1 auto;
+  padding: 2px 4px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
 @media (max-width: 760px) {
   .report-review-header { grid-template-columns: 1fr; gap: 10px; min-width: 0; padding: 14px 16px; }
   .report-review-status { width: 100%; }
