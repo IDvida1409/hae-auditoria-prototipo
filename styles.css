@@ -18163,6 +18163,27 @@ button.planning-kpi:hover {
   white-space: nowrap;
 }
 
+.executive-empty-state {
+  display: grid;
+  place-content: center;
+  gap: 5px;
+  min-height: 92px;
+  padding: 18px;
+  color: #718196;
+  text-align: center;
+}
+
+.executive-empty-state strong {
+  color: #344860;
+  font-size: 12px;
+}
+
+.executive-empty-state span {
+  max-width: 430px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .executive-overview-grid {
   display: grid;
   grid-template-columns: 1.55fr 1fr;

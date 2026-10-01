@@ -8005,11 +8005,6 @@ const executivePreviewScopes = [
   ["limpeza-asg", "Limpeza ASG"]
 ];
 
-const executivePreviewData = {
-  all: { title: "Visão geral", score: "88,6", approval: 76, rejection: 24, overdue: 18, recurrence: 12, conform: 1842, nonConform: 173, notEvaluated: 46, audits: 38 },
-  area: { title: "Conforto Médico", score: "91,4", approval: 82, rejection: 18, overdue: 11, recurrence: 9, conform: 423, nonConform: 39, notEvaluated: 12, audits: 8 }
-};
-
 function executiveMetric(label, value, detail, tone = "neutral") {
   const explanations = {
     "Nota média": "Média das notas das áreas concluídas no período selecionado.",
@@ -8027,94 +8022,75 @@ function executiveMetric(label, value, detail, tone = "neutral") {
   return `<article class="executive-metric is-${tone}" data-executive-help="${escapeHtml(help)}" tabindex="0"><span>${label}</span><strong>${value}</strong><small>${detail}</small></article>`;
 }
 
-function executiveOverviewSlide(data) {
-  const total = data.conform + data.nonConform + data.notEvaluated;
-  const conformWidth = (data.conform / total * 100).toFixed(1);
-  const nonConformWidth = (data.nonConform / total * 100).toFixed(1);
-  const notEvaluatedWidth = (data.notEvaluated / total * 100).toFixed(1);
+function executiveEmptyState(title = "Sem dados no período", detail = "Os resultados aparecerão após a conclusão das auditorias.") {
+  return `<div class="executive-empty-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span></div>`;
+}
+
+function executiveScopeLabel() {
+  return executivePreviewScopes.find(([id]) => id === executivePreviewScope)?.[1] || "Todas as áreas";
+}
+
+function executiveOverviewSlide() {
   return `
     <div class="executive-kpis">
-      ${executiveMetric("Nota média", data.score, "+2,8 pontos no período", "score")}
-      ${executiveMetric("Devolutivas aprovadas", `${data.approval}%`, "41 de 54 devolutivas", "positive")}
-      ${executiveMetric("Devolutivas reprovadas", `${data.rejection}%`, "13 exigem nova evidência", "critical")}
-      ${executiveMetric("Planos fora do prazo", `${data.overdue}%`, "10 planos", "warning")}
-      ${executiveMetric("Itens recorrentes", `${data.recurrence}%`, "7 itens no período", "neutral")}
+      ${executiveMetric("Nota média", "—", "Sem auditorias concluídas", "score")}
+      ${executiveMetric("Devolutivas aprovadas", "—", "Sem devolutivas analisadas", "positive")}
+      ${executiveMetric("Devolutivas reprovadas", "—", "Sem devolutivas analisadas", "critical")}
+      ${executiveMetric("Planos fora do prazo", "—", "Sem planos no período", "warning")}
+      ${executiveMetric("Itens recorrentes", "—", "Sem histórico comparável", "neutral")}
     </div>
     <div class="executive-overview-grid">
       <section class="executive-card executive-result-card">
         <header data-executive-help="Distribuição de todas as respostas das auditorias concluídas no período selecionado."><div><span>Resultado do período</span><h3>Total de respostas analisadas</h3></div></header>
         <div class="executive-result-summary">
-          <div class="executive-total-responses" data-executive-help="Soma de todas as respostas registradas nas auditorias concluídas do período." tabindex="0"><span>Total de respostas</span><strong>${total.toLocaleString("pt-BR")}</strong><small>${data.audits} auditorias concluídas</small></div>
+          <div class="executive-total-responses" data-executive-help="Soma de todas as respostas registradas nas auditorias concluídas do período." tabindex="0"><span>Total de respostas</span><strong>0</strong><small>Nenhuma auditoria concluída</small></div>
           <div class="executive-result-breakdown">
             <div class="executive-distribution" aria-label="Distribuição das respostas">
-              <i class="is-conform" style="width:${conformWidth}%"></i>
-              <i class="is-nonconform" style="width:${nonConformWidth}%"></i>
-              <i class="is-na" style="width:${notEvaluatedWidth}%"></i>
+              <i class="is-conform" style="width:0%"></i>
+              <i class="is-nonconform" style="width:0%"></i>
+              <i class="is-na" style="width:0%"></i>
             </div>
             <div class="executive-distribution-legend">
-              <span data-executive-help="Respostas que atenderam ao requisito avaliado." tabindex="0"><i class="is-conform"></i><b>${data.conform.toLocaleString("pt-BR")}</b> Conformes <em>${conformWidth}%</em></span>
-              <span data-executive-help="Respostas que geraram não conformidade e podem originar plano de ação." tabindex="0"><i class="is-nonconform"></i><b>${data.nonConform}</b> Não conformes <em>${nonConformWidth}%</em></span>
-              <span data-executive-help="Perguntas não aplicáveis ou que não receberam avaliação no período." tabindex="0"><i class="is-na"></i><b>${data.notEvaluated}</b> Não avaliadas <em>${notEvaluatedWidth}%</em></span>
+              <span data-executive-help="Respostas que atenderam ao requisito avaliado." tabindex="0"><i class="is-conform"></i><b>0</b> Conformes <em>—</em></span>
+              <span data-executive-help="Respostas que geraram não conformidade e podem originar plano de ação." tabindex="0"><i class="is-nonconform"></i><b>0</b> Não conformes <em>—</em></span>
+              <span data-executive-help="Perguntas não aplicáveis ou que não receberam avaliação no período." tabindex="0"><i class="is-na"></i><b>0</b> Não avaliadas <em>—</em></span>
             </div>
           </div>
         </div>
       </section>
       <section class="executive-card executive-reading-card">
         <header data-executive-help="Até três fatos do período que merecem atenção da gestão."><div><span>Destaques do período</span><h3>Ocorrências relevantes</h3></div></header>
-        <ol>
-          <li data-executive-help="Item com maior concentração de não conformidades recorrentes no período."><b>Higienização das mãos</b><span>Concentra 31% das não conformidades recorrentes.</span></li>
-          <li data-executive-help="Planos que aguardam atendimento ou fornecimento fora da área auditada."><b>Dependências externas</b><span>6 planos aguardam manutenção ou compras.</span></li>
-          <li data-executive-help="Tempo médio entre o envio do plano e a devolutiva da área responsável."><b>Resposta das áreas</b><span>Prazo médio caiu de 18 para 11 dias.</span></li>
-        </ol>
+        ${executiveEmptyState("Nenhuma ocorrência disponível", "Os destaques serão calculados quando houver resultados no período.")}
       </section>
     </div>
     <section class="executive-card executive-area-table">
       <header data-executive-help="Compara nota, variação, não conformidades e planos atrasados de cada área."><div><span>Comparativo</span><h3>Desempenho das áreas</h3></div></header>
       <div class="executive-area-table-head"><span>Área</span><span>Nota</span><span>Tendência</span><span>NCs</span><span>Planos em atraso</span></div>
-      ${[
-        ["Conforto Médico", "91,4", "+3,2", 39, 2, 91],
-        ["Refeitório", "89,8", "+1,6", 31, 1, 89],
-        ["Cozinha de Pacientes", "88,1", "+0,8", 42, 3, 87],
-        ["Despensa", "86,7", "-1,1", 21, 2, 84],
-        ["MDA", "84,9", "+2,1", 18, 1, 81],
-        ["Limpeza ASG", "82,5", "-2,4", 22, 1, 77]
-      ].map(([name, score, trend, ncs, late, width]) => `<div class="executive-area-row" data-executive-help="${name}: nota ${score}, variação ${trend}, ${ncs} não conformidades e ${late} planos em atraso."><span><b>${name}</b><i style="--area-progress:${width}%"></i></span><strong>${score}</strong><em class="${String(trend).startsWith("-") ? "is-down" : "is-up"}">${trend}</em><span>${ncs}</span><span>${late}</span></div>`).join("")}
+      ${executiveEmptyState("Nenhum resultado por área", "As áreas serão exibidas após a primeira auditoria concluída.")}
     </section>`;
 }
 
 function executiveAreaSlide() {
+  const scopeLabel = executiveScopeLabel();
   return `
     <div class="executive-area-focus-head">
-      <div data-executive-help="Todos os componentes abaixo apresentam somente os resultados de Conforto Médico no período selecionado."><span>ÁREA SELECIONADA</span><h2>Conforto Médico</h2><p>8 operações avaliadas · 474 respostas · Jan–Set/2026</p></div>
-      <div class="executive-focus-score" data-executive-help="Última nota consolidada da área e sua variação no período."><span>Nota atual</span><strong>91,4</strong><em>+3,2 no período</em></div>
+      <div data-executive-help="Todos os componentes abaixo apresentarão somente os resultados do escopo selecionado."><span>ESCOPO SELECIONADO</span><h2>${escapeHtml(scopeLabel)}</h2><p>Nenhuma operação avaliada no período</p></div>
+      <div class="executive-focus-score" data-executive-help="Última nota consolidada da área e sua variação no período."><span>Nota atual</span><strong>—</strong><em>Sem dados no período</em></div>
     </div>
     <div class="executive-area-analysis">
       <section class="executive-card executive-trend-card">
         <header data-executive-help="Mostra a evolução mensal da nota da área e sua posição em relação à meta 90."><div><span>Evolução do resultado</span><h3>Nota consolidada da área</h3></div><b>Meta 90</b></header>
-        <div class="executive-trend-chart">
-          ${[["JAN",82],["FEV",84],["MAR",86],["ABR",85],["MAI",88],["JUN",89],["JUL",90],["AGO",90],["SET",91]].map(([month, value]) => `<span data-executive-help="${month}: nota consolidada ${value}."><i style="--trend-height:${(value - 70) * 3}%"><b>${value}</b></i><small>${month}</small></span>`).join("")}
-          <em class="executive-target-line" aria-hidden="true"></em>
-        </div>
+        ${executiveEmptyState("Sem evolução disponível", "O gráfico será preenchido após auditorias concluídas em períodos comparáveis.")}
       </section>
       <section class="executive-card executive-block-card">
         <header data-executive-help="Categorias ordenadas pela quantidade de não conformidades registradas na área."><div><span>Impacto na nota</span><h3>Fatores com maior impacto no resultado</h3></div></header>
-        ${[
-          ["Edificação e Instalação", 41, "16 NCs"],
-          ["Equipamentos e Utensílios", 28, "11 NCs"],
-          ["Processos e Manipulação", 18, "7 NCs"],
-          ["Documentação", 13, "5 NCs"]
-        ].map(([name, value, count], index) => `<div class="executive-block-row" data-executive-help="${name}: ${count} no período selecionado."><span>${index + 1}</span><div><b>${name}</b><i style="--block-width:${value}%"></i></div><em>${count}</em></div>`).join("")}
+        ${executiveEmptyState("Sem fatores identificados", "Os fatores de impacto aparecerão quando houver não conformidades registradas.")}
       </section>
       <section class="executive-card executive-contributors-card">
         <header data-executive-help="Distribui as não conformidades da área entre suas subáreas ou operações."><div><span>Origem dos impactos</span><h3>Quais operações mais influenciam o resultado</h3></div></header>
-        <div class="executive-contributor-grid">
-          <span data-executive-help="Cozinha Catering concentra 34% das não conformidades, principalmente em pia e utensílios."><b>Cozinha Catering</b><em>34% das NCs</em><small>Pia e utensílios</small></span>
-          <span data-executive-help="Room Service concentra 22% das não conformidades, principalmente em temperatura e transporte."><b>Room Service</b><em>22% das NCs</em><small>Temperatura e transporte</small></span>
-          <span data-executive-help="Centro Cirúrgico G1 concentra 18% das não conformidades, principalmente em armazenamento."><b>Centro Cirúrgico G1</b><em>18% das NCs</em><small>Armazenamento</small></span>
-          <span data-executive-help="As demais subáreas somadas representam 26% das não conformidades."><b>Demais subáreas</b><em>26% das NCs</em><small>Impacto distribuído</small></span>
-        </div>
+        ${executiveEmptyState("Sem operações para comparar", "A participação das subáreas aparecerá após a conclusão das auditorias.")}
       </section>
-      <aside class="executive-decision-note"><b>Análise do período</b><p>A área superou a meta, mas o ganho ainda depende de duas correções estruturais. Priorizar manutenção da pia da Cozinha Catering e troca de equipamentos com reincidência.</p></aside>
+      <aside class="executive-decision-note"><b>Análise do período</b><p>A análise será gerada quando houver resultados suficientes no escopo e período selecionados.</p></aside>
     </div>`;
 }
 
@@ -8122,89 +8098,78 @@ function executivePlansSlide() {
   return `
     <div class="executive-plan-layout">
       <section class="executive-card executive-plan-flow-card">
-        <header data-executive-help="Acompanha os mesmos planos desde a criação até o resultado da análise da devolutiva."><div><span>Fluxo do período</span><h3>Do plano gerado à decisão do auditor</h3></div><small>Jan–Set/2026</small></header>
+        <header data-executive-help="Acompanha os mesmos planos desde a criação até o resultado da análise da devolutiva."><div><span>Fluxo do período</span><h3>Do plano gerado à decisão do auditor</h3></div><small>Sem dados</small></header>
         <div class="executive-plan-flow">
           <article class="executive-plan-stage is-created" data-executive-help="Total de planos de ação gerados pelas não conformidades no período." tabindex="0">
-            <span>Planos gerados</span><strong>57</strong><small>100% do período</small>
+            <span>Planos gerados</span><strong>0</strong><small>Nenhum plano no período</small>
           </article>
           <i class="executive-flow-arrow" aria-hidden="true">${icons.arrow}</i>
           <article class="executive-plan-stage is-received" data-executive-help="Planos para os quais a área responsável já enviou resposta e evidências." tabindex="0">
-            <span>Devolutivas recebidas</span><strong>54</strong><small>54 de 57 · 94,7%</small>
+            <span>Devolutivas recebidas</span><strong>0</strong><small>Nenhuma devolutiva recebida</small>
           </article>
           <i class="executive-flow-arrow" aria-hidden="true">${icons.arrow}</i>
-          <article class="executive-plan-stage is-decision" data-executive-help="Resultado das 54 devolutivas já analisadas pelo auditor." tabindex="0">
+          <article class="executive-plan-stage is-decision" data-executive-help="Resultado das devolutivas já analisadas pelo auditor." tabindex="0">
             <span>Resultado da análise</span>
-            <div><b class="is-approved"><strong>41</strong><small>Aprovadas · 75,9%</small></b><b class="is-rejected"><strong>13</strong><small>Reprovadas · 24,1%</small></b></div>
+            <div><b class="is-approved"><strong>0</strong><small>Aprovadas · —</small></b><b class="is-rejected"><strong>0</strong><small>Reprovadas · —</small></b></div>
           </article>
         </div>
         <div class="executive-plan-flags">
-          <span data-executive-help="Planos enviados que ainda não receberam a primeira devolutiva da área responsável." tabindex="0"><b>3</b><small>Aguardam devolutiva da área</small></span>
+          <span data-executive-help="Planos enviados que ainda não receberam a primeira devolutiva da área responsável." tabindex="0"><b>0</b><small>Aguardam devolutiva da área</small></span>
           <span data-executive-help="Devolutivas recebidas que ainda não foram analisadas pelo auditor." tabindex="0"><b>0</b><small>Aguardam análise do auditor</small></span>
-          <span class="is-overdue" data-executive-help="Planos que ultrapassaram o prazo definido e ainda exigem conclusão." tabindex="0"><b>10</b><small>Fora do prazo · 10 de 57</small></span>
+          <span class="is-overdue" data-executive-help="Planos que ultrapassaram o prazo definido e ainda exigem conclusão." tabindex="0"><b>0</b><small>Fora do prazo</small></span>
         </div>
       </section>
 
       <div class="executive-plan-detail-grid">
         <section class="executive-card executive-overdue-area-card">
-          <header data-executive-help="Compara o número e a taxa de planos fora do prazo em cada área."><div><span>Concentração dos atrasos</span><h3>Planos fora do prazo por área</h3></div><small>10 planos</small></header>
+          <header data-executive-help="Compara o número e a taxa de planos fora do prazo em cada área."><div><span>Concentração dos atrasos</span><h3>Planos fora do prazo por área</h3></div><small>0 planos</small></header>
           <div class="executive-overdue-area-head"><span>Área</span><span>Planos</span><span>Fora do prazo</span><span>Taxa</span></div>
-          ${[
-            ["Conforto Médico", 12, 4, "33%"],
-            ["Refeitório", 15, 3, "20%"],
-            ["Limpeza ASG", 20, 2, "10%"],
-            ["Cozinha de Pacientes", 10, 1, "10%"]
-          ].map(([area, plans, overdue, rate], index) => `<div class="executive-overdue-area-row ${index === 0 ? "is-priority" : ""}" data-executive-help="${area}: ${overdue} de ${plans} planos estão fora do prazo." tabindex="0"><b>${area}</b><span>${plans}</span><strong>${overdue}</strong><em>${rate}</em></div>`).join("")}
+          ${executiveEmptyState("Nenhum plano fora do prazo", "As áreas aparecerão aqui quando houver planos vencidos no período.")}
         </section>
 
         <section class="executive-card executive-next-action-card">
-          <header data-executive-help="Identifica quem precisa agir para que cada plano avance à próxima etapa."><div><span>Pendências atuais</span><h3>Quem precisa realizar a próxima ação</h3></div><small>16 planos</small></header>
+          <header data-executive-help="Identifica quem precisa agir para que cada plano avance à próxima etapa."><div><span>Pendências atuais</span><h3>Quem precisa realizar a próxima ação</h3></div><small>0 planos</small></header>
           <div class="executive-next-action-list">
-            <div class="is-area" data-executive-help="Planos que aguardam a primeira devolutiva ou uma nova correção da área responsável."><span><b>Área responsável</b><small>3 sem devolutiva e 13 devolvidos para correção</small></span><strong>16</strong></div>
+            <div class="is-area" data-executive-help="Planos que aguardam a primeira devolutiva ou uma nova correção da área responsável."><span><b>Área responsável</b><small>Nenhuma ação pendente</small></span><strong>0</strong></div>
             <div class="is-auditor" data-executive-help="Devolutivas já enviadas pela área que ainda aguardam decisão do auditor."><span><b>Auditor</b><small>Nenhuma devolutiva aguardando análise</small></span><strong>0</strong></div>
           </div>
-          <p><b>Leitura:</b> todas as pendências atuais dependem de resposta ou correção das áreas responsáveis.</p>
+          <p><b>Leitura:</b> não há pendências para analisar no período selecionado.</p>
         </section>
       </div>
 
-      <aside class="executive-decision-note"><b>Leitura do período</b><p>54 dos 57 planos receberam devolutiva. Conforto Médico concentra 4 dos 10 atrasos e apresenta a maior taxa: 33%.</p></aside>
+      <aside class="executive-decision-note"><b>Leitura do período</b><p>A leitura dos planos será exibida quando houver movimentações no período selecionado.</p></aside>
     </div>`;
 }
 
 function executiveRecurrenceSlide() {
+  const scopeLabel = executiveScopeLabel();
   return `
     <div class="executive-recurrence-layout">
       <section class="executive-card executive-recurrence-card">
-        <header data-executive-help="Acompanha o resultado da mesma pergunta entre ciclos e mostra em qual área e subárea ela foi avaliada."><div><span>Histórico</span><h3>Histórico de recorrências</h3></div><b>7 itens recorrentes</b></header>
-        <p class="executive-card-description">Área selecionada: <b>Conforto Médico</b>. Cada linha identifica a subárea e o item acompanhado entre os ciclos.</p>
-        <div class="executive-recurrence-timeline">
-          <div class="executive-timeline-labels"><b>Subárea e item</b><span>JAN</span><span>MAR</span><span>MAI</span><span>JUL</span><span>SET</span></div>
-          <div class="executive-timeline-row" data-executive-help="Cozinha Catering: a pia ficou conforme e voltou a apresentar não conformidade no ciclo seguinte."><div class="executive-timeline-item"><span>Cozinha Catering</span><b>Higienização da pia</b></div><span class="is-bad">NC</span><i></i><span class="is-good">C</span><i></i><span class="is-bad">NC</span><em>Recorrente</em></div>
-          <div class="executive-timeline-row" data-executive-help="Room Service: a temperatura do transporte permaneceu conforme depois da correção."><div class="executive-timeline-item"><span>Room Service</span><b>Temperatura do transporte</b></div><span class="is-bad">NC</span><i></i><span class="is-good">C</span><i></i><span class="is-good">C</span><em class="is-stable">Estável</em></div>
-          <div class="executive-timeline-row" data-executive-help="Centro Cirúrgico G1: a integridade dos utensílios permaneceu não conforme em ciclos sucessivos."><div class="executive-timeline-item"><span>Centro Cirúrgico G1</span><b>Integridade de utensílios</b></div><span class="is-good">C</span><i></i><span class="is-bad">NC</span><i></i><span class="is-bad">NC</span><em>Persistente</em></div>
-          <div class="executive-timeline-row" data-executive-help="Saladas: o registro de controle permaneceu conforme depois da correção."><div class="executive-timeline-item"><span>Saladas</span><b>Registro de controle</b></div><span class="is-bad">NC</span><i></i><span class="is-good">C</span><i></i><span class="is-good">C</span><em class="is-stable">Resolvido</em></div>
-        </div>
+        <header data-executive-help="Acompanha o resultado da mesma pergunta entre ciclos e mostra em qual área e subárea ela foi avaliada."><div><span>Histórico</span><h3>Histórico de recorrências</h3></div><b>0 itens recorrentes</b></header>
+        <p class="executive-card-description">Escopo selecionado: <b>${escapeHtml(scopeLabel)}</b>.</p>
+        ${executiveEmptyState("Sem histórico de recorrências", "São necessários ciclos concluídos para comparar o mesmo item ao longo do tempo.")}
       </section>
       <section class="executive-card executive-origin-card">
         <header data-executive-help="Classificação demonstrativa dos motivos associados à não execução ou ao atraso dos planos. As perguntas-base serão estruturadas depois da aprovação do conceito."><div><span>Classificação</span><h3>Origem dos atrasos e falhas de execução</h3></div></header>
         <div class="executive-origin-chart">
-          <div class="is-internal" data-executive-help="Falha na execução, acompanhamento ou conclusão do plano dentro do processo da área responsável."><span><b>Processo interno</b><em>48%</em></span><i><strong style="width:48%"></strong></i></div>
-          <div class="is-external" data-executive-help="Atraso relacionado a chamado para outra área, compra, fornecedor ou terceiro."><span><b>Fatores externos</b><em>32%</em></span><i><strong style="width:32%"></strong></i></div>
-          <div class="is-shared" data-executive-help="O atraso envolveu falhas ou demora de mais de uma das partes participantes do processo."><span><b>Processo compartilhado</b><em>20%</em></span><i><strong style="width:20%"></strong></i></div>
+          <div class="is-internal" data-executive-help="Falha na execução, acompanhamento ou conclusão do plano dentro do processo da área responsável."><span><b>Processo interno</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
+          <div class="is-external" data-executive-help="Atraso relacionado a chamado para outra área, compra, fornecedor ou terceiro."><span><b>Fatores externos</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
+          <div class="is-shared" data-executive-help="O atraso envolveu falhas ou demora de mais de uma das partes participantes do processo."><span><b>Processo compartilhado</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
         </div>
-        <p>Classificação demonstrativa. As perguntas-base serão definidas após a aprovação desta estrutura.</p>
+        <p>Sem classificações registradas no período.</p>
       </section>
       <section class="executive-card executive-priority-card">
         <header data-executive-help="Prioridades derivadas dos itens recorrentes, persistentes e ainda pendentes no período."><div><span>Prioridades</span><h3>Três decisões para o próximo ciclo</h3></div></header>
-        <ol><li data-executive-help="Prioridade vinculada à recorrência identificada em Cozinha Catering."><b>01</b><span><strong>Eliminar recorrência da pia</strong><small>Manutenção · prazo recomendado: 15 dias</small></span></li><li data-executive-help="Prioridade vinculada às devolutivas reprovadas por evidência insuficiente."><b>02</b><span><strong>Padronizar evidência das devolutivas</strong><small>Qualidade · reduzir reprovação por foto</small></span></li><li data-executive-help="Prioridade vinculada às não conformidades persistentes de utensílios."><b>03</b><span><strong>Revisar estoque de utensílios</strong><small>Compras · 4 áreas impactadas</small></span></li></ol>
+        ${executiveEmptyState("Nenhuma prioridade calculada", "As prioridades aparecerão a partir dos resultados e recorrências do período.")}
       </section>
-      <aside class="executive-decision-note is-wide"><b>Conclusão do período</b><p>O resultado evoluiu, mas ainda não é sustentável em dois processos. A prioridade não é ampliar auditorias: é remover dependências externas e impedir que os mesmos itens voltem a falhar.</p></aside>
+      <aside class="executive-decision-note is-wide"><b>Conclusão do período</b><p>A conclusão será gerada quando houver auditorias e planos suficientes para análise.</p></aside>
     </div>`;
 }
 
 function executiveDashboardSlides() {
-  const scoped = executivePreviewScope === "all" ? executivePreviewData.all : executivePreviewData.area;
   return [
-    ["Resumo do período", "Resumo do período", () => executiveOverviewSlide(scoped), "Síntese dos resultados, devolutivas, atrasos e recorrências do período selecionado."],
+    ["Resumo do período", "Resumo do período", executiveOverviewSlide, "Síntese dos resultados, devolutivas, atrasos e recorrências do período selecionado."],
     ["Desempenho das áreas", "Desempenho das áreas", executiveAreaSlide, "Evolução da nota e concentração das não conformidades na área selecionada."],
     ["Planos e pendências", "Planos e pendências", executivePlansSlide, "Fluxo das devolutivas, resultados da análise e planos fora do prazo."],
     ["Recorrências e causas", "Recorrências e causas", executiveRecurrenceSlide, "Histórico dos itens entre ciclos e classificação demonstrativa dos processos associados."]
