@@ -47,6 +47,7 @@ input[type=checkbox]{width:14px;height:14px;margin:0;accent-color:#009345}
 .changing .product-logo-frame{margin-bottom:20px}
 .changing .product-logo{width:150px}
 .changing .product-logo.is-unit-logo{width:190px}
+.access-modal.changing{max-height:calc(100svh - 48px);overflow-y:auto}
 @media(max-width:620px){
  .access-main{padding:16px 10px}
  .access-modal{width:min(94vw,420px);min-height:0;aspect-ratio:1376/852;grid-template-columns:40.33% 59.67%;border-radius:12px}
@@ -66,7 +67,7 @@ input[type=checkbox]{width:14px;height:14px;margin:0;accent-color:#009345}
  .login-options{font-size:8px}
  .text-button{font-size:9px}
  .access-status{font-size:9px;margin-top:6px}
- .access-modal.changing{min-height:390px;aspect-ratio:auto;grid-template-columns:27% 73%}
+ .access-modal.changing{min-height:390px;aspect-ratio:auto;grid-template-columns:27% 73%;max-height:calc(100svh - 32px);overflow-y:auto}
  .changing .access-content{width:84%;padding:22px 8px}
 }
 @media(max-width:350px){

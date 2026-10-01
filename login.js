@@ -138,6 +138,9 @@
         passwordResetVerified = true;
         passwordResetUser.hidden = false;
         passwordResetUser.textContent = `Usuário encontrado: ${data.user.username}`;
+        forms.passwordReset.elements.username.readOnly = true;
+        forms.passwordReset.elements.code.closest(".field").hidden = true;
+        passwordResetUser.hidden = true;
         forms.passwordReset.querySelectorAll(".password-reset-password").forEach((field) => { field.hidden = false; field.querySelector("input").required = true; });
         forms.passwordReset.querySelector(".primary-button span").textContent = "Criar senha e entrar";
         forms.passwordReset.elements.password.focus();
