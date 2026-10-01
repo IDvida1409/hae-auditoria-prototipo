@@ -1,175 +1,125 @@
 const reviewToken = new URLSearchParams(window.location.search).get("token") || "nutricao-2026";
-
-const modelDefinitions = {
-  monthly: {
-    label: "Relatório individual mensal",
-    code: "INDIVIDUAL / MENSAL",
-    title: "Relatório individual mensal de auditoria",
-    subtitle: "Acompanhamento dos resultados da auditoria realizada na área selecionada.",
-    sections: [
-      ["overviewTitle", "Resumo do período", "overviewText", "Este relatório reúne o resultado da auditoria mensal, as evidências registradas e os pontos que merecem acompanhamento pela área responsável."],
-      ["findingsTitle", "Principais resultados", "findingsText", "A área apresentou evolução nos itens avaliados. Os registros detalhados, os indicadores e as evidências permanecem calculados pelo sistema."],
-      ["closingTitle", "Considerações finais", "closingText", "Use este espaço para orientar a leitura do relatório e destacar o próximo passo da área."]
-    ]
-  },
-  comparison: {
-    label: "Relatório analítico comparativo",
-    code: "ANALÍTICO / COMPARATIVO",
-    title: "Relatório analítico comparativo",
-    subtitle: "Leitura consolidada da evolução das áreas ao longo do período selecionado.",
-    sections: [
-      ["overviewTitle", "Leitura geral", "overviewText", "Este relatório compara os resultados dos períodos selecionados e organiza os principais movimentos observados nas áreas avaliadas."],
-      ["trendTitle", "Evolução dos resultados", "trendText", "A evolução deve ser interpretada em conjunto com os indicadores, os registros das auditorias e os planos de ação armazenados no sistema."],
-      ["attentionTitle", "Pontos de atenção", "attentionText", "Registre aqui a mensagem que deve acompanhar a leitura dos pontos de atenção, sem alterar os números ou os gráficos protegidos."],
-      ["closingTitle", "Conclusão analítica", "closingText", "Use este espaço para concluir a análise do período comparado."]
-    ]
-  },
-  "organization-monthly": {
-    label: "Relatório consolidado da área",
-    code: "CONSOLIDADO / ÁREA",
-    title: "Relatório consolidado da área",
-    subtitle: "Visão conjunta dos resultados e das subáreas vinculadas à área selecionada.",
-    sections: [
-      ["overviewTitle", "Desempenho da área", "overviewText", "Este relatório consolida os resultados das subáreas e apresenta uma visão única para apoiar a tomada de decisão da área."],
-      ["areaTitle", "Resultados consolidados", "areaText", "A leitura consolidada considera as auditorias concluídas, as respostas registradas e os planos de ação relacionados à área."],
-      ["actionsTitle", "Planos de ação", "actionsText", "Os planos de ação, as devolutivas, os prazos e as evidências são apresentados pelo sistema sem alteração manual dos indicadores."],
-      ["closingTitle", "Encerramento", "closingText", "Use este espaço para a mensagem final do relatório consolidado."]
-    ]
-  }
-};
-
-const state = { active: "monthly", saved: {}, loaded: false, saving: false };
-const sheet = document.querySelector("[data-report-sheet]");
-const status = document.querySelector("[data-review-status]");
-const modelLabel = document.querySelector("[data-model-label]");
+const reviewStatus = document.querySelector("[data-review-status]");
 const saveButton = document.querySelector("[data-save-review]");
+const reviewState = { active: "monthly", saved: {}, saving: false, ready: false };
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function setReviewStatus(text, type = "") {
+  reviewStatus.textContent = text;
+  reviewStatus.className = `report-review-status${type ? ` is-${type}` : ""}`;
 }
 
-function setStatus(text, type = "") {
-  status.textContent = text;
-  status.className = `review-status${type ? ` is-${type}` : ""}`;
+function reviewKey(kind) { return `idauditor-approved-review:${reviewToken}:${kind}`; }
+
+function reviewEditableNodes() {
+  const root = document.querySelector(".report-review-preview .technical-report");
+  if (!root) return [];
+  return [...root.querySelectorAll(".report-doc-body > h1, .report-doc-lead, .report-doc-text, .report-doc-section > h2, .report-doc-section > h3, .report-note-box > strong, .report-note-box > p, .report-footnote")]
+    .filter((node) => !node.closest("table, figure, svg, .report-signatures"));
 }
 
-function field(key, value, className = "") {
-  return `<textarea class="editable-field ${className}" data-edit-key="${escapeHtml(key)}" aria-label="Texto editável">${escapeHtml(value)}</textarea>`;
-}
-
-function autoGrow(textarea) {
-  textarea.style.height = "auto";
-  textarea.style.height = `${Math.max(textarea.scrollHeight, textarea.classList.contains("field-title") ? 44 : 28)}px`;
-}
-
-function currentContent() {
-  return Object.fromEntries([...sheet.querySelectorAll("[data-edit-key]")].map((input) => [input.dataset.editKey, input.value]));
-}
-
-function localKey() { return `idauditor-review:${reviewToken}`; }
-
-function renderModel() {
-  const model = modelDefinitions[state.active];
-  const saved = state.saved[state.active] || {};
-  const value = (key, fallback) => Object.prototype.hasOwnProperty.call(saved, key) ? saved[key] : fallback;
-  modelLabel.textContent = model.label;
-  sheet.innerHTML = `
-    <div class="sheet-topline"><span>IDAuditor</span><span>${escapeHtml(model.code)}</span></div>
-    <div class="sheet-title">
-      ${field("title", value("title", model.title), "field-title")}
-      <div class="sheet-subtitle">${field("subtitle", value("subtitle", model.subtitle))}</div>
-    </div>
-    <p class="protected-label">Indicadores protegidos pelo sistema</p>
-    <div class="protected-grid" aria-label="Indicadores protegidos">
-      <div class="protected-card"><small>Nota consolidada</small><strong>—</strong><small>Calculada pelas auditorias</small></div>
-      <div class="protected-card is-green"><small>Conformidade</small><strong>—</strong><small>Calculada pelas respostas</small></div>
-      <div class="protected-card is-red"><small>Não conformidades</small><strong>—</strong><small>Calculadas pelas respostas</small></div>
-    </div>
-    ${model.sections.map(([titleKey, fallbackTitle, textKey, fallbackText], index) => `
-      <section class="sheet-section">
-        <h2>${field(titleKey, value(titleKey, fallbackTitle), "field-section")}</h2>
-        <p>${field(textKey, value(textKey, fallbackText))}</p>
-        ${index === 1 ? `<div class="protected-note">Indicadores, tabelas, gráficos e evidências desta seção são protegidos e serão preenchidos pelo sistema.</div>` : ""}
-      </section>
-    `).join("")}
-    <section class="sheet-section">
-      <h2>Conteúdo protegido</h2>
-      <div class="sheet-table-wrap">
-        <table class="protected-table"><thead><tr><th>Item</th><th>Resultado</th><th>Status</th></tr></thead><tbody><tr><td>Respostas auditadas</td><td>Calculado pelo sistema</td><td>Protegido</td></tr><tr><td>Planos de ação</td><td>Calculado pelo sistema</td><td>Protegido</td></tr></tbody></table>
-      </div>
-    </section>
-  `;
-  sheet.querySelectorAll("[data-edit-key]").forEach((input) => {
-    input.addEventListener("input", () => autoGrow(input));
-    autoGrow(input);
-  });
-}
-
-function applySavedReportData(reports) {
-  for (const [kind, report] of Object.entries(reports || {})) {
-    if (modelDefinitions[kind] && report?.content && typeof report.content === "object") state.saved[kind] = report.content;
+function markReviewFields() {
+  const saved = reviewState.saved[reviewState.active] || {};
+  let index = 0;
+  for (const node of reviewEditableNodes()) {
+    let editable = node;
+    if (node.matches("h2") && node.querySelector(":scope > span")) {
+      const existingEditable = node.querySelector(":scope > [data-review-editable]");
+      if (existingEditable) {
+        editable = existingEditable;
+      } else {
+      const number = node.querySelector(":scope > span");
+      const text = [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent).join("").trim();
+      [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).forEach((child) => child.remove());
+      editable = document.createElement("span");
+      editable.textContent = text;
+      node.append(editable);
+      if (number) number.contentEditable = "false";
+      }
+    }
+    editable.dataset.reviewEditable = String(index);
+    editable.contentEditable = "true";
+    editable.spellcheck = true;
+    editable.title = "Texto editável. Indicadores, gráficos, tabelas e fotos são protegidos.";
+    if (Object.prototype.hasOwnProperty.call(saved, String(index))) editable.textContent = saved[String(index)];
+    index += 1;
   }
-  state.loaded = true;
-  renderModel();
-  setStatus("Pronto para revisar");
 }
 
-async function loadReview() {
+function currentReviewContent() {
+  return Object.fromEntries([...document.querySelectorAll("[data-review-editable]")].map((node) => [node.dataset.reviewEditable, node.innerText.trim()]));
+}
+
+function saveReviewLocally() {
+  localStorage.setItem(reviewKey(reviewState.active), JSON.stringify(reviewState.saved[reviewState.active] || {}));
+}
+
+async function loadReviewContent() {
   try {
-    const local = JSON.parse(localStorage.getItem(localKey()) || "{}");
-    if (local && typeof local === "object") state.saved = local;
-  } catch { /* A cópia remota continua sendo a fonte principal. */ }
+    for (const kind of ["monthly", "comparison", "organization-monthly"]) {
+      const local = JSON.parse(localStorage.getItem(reviewKey(kind)) || "null");
+      if (local && typeof local === "object") reviewState.saved[kind] = local;
+    }
+  } catch { /* A cópia remota continua sendo usada quando disponível. */ }
   try {
     const response = await fetch(`/api/report-review?token=${encodeURIComponent(reviewToken)}`, { credentials: "same-origin" });
-    if (!response.ok) throw new Error("Não foi possível carregar a revisão.");
+    if (!response.ok) throw new Error("Falha ao carregar sugestões");
     const data = await response.json();
-    applySavedReportData(data.reports);
+    for (const [kind, report] of Object.entries(data.reports || {})) {
+      if (report?.content && typeof report.content === "object") reviewState.saved[kind] = report.content;
+    }
+    if (reviewState.ready) markReviewFields();
+    setReviewStatus("Modelo aprovado carregado");
   } catch {
-    state.loaded = true;
-    renderModel();
-    setStatus("Modo local: a conexão será tentada ao salvar", "error");
+    setReviewStatus("Modelo aprovado carregado; sugestões locais", "error");
   }
 }
 
 async function saveReview() {
-  if (state.saving) return;
-  state.saving = true;
+  if (reviewState.saving) return;
+  reviewState.saved[reviewState.active] = currentReviewContent();
+  saveReviewLocally();
+  reviewState.saving = true;
   saveButton.disabled = true;
-  state.saved[state.active] = currentContent();
-  localStorage.setItem(localKey(), JSON.stringify(state.saved));
-  setStatus("Salvando...");
+  setReviewStatus("Salvando sugestões...");
   try {
     const response = await fetch(`/api/report-review?token=${encodeURIComponent(reviewToken)}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: reviewToken, reportType: state.active, content: state.saved[state.active] })
+      body: JSON.stringify({ token: reviewToken, reportType: reviewState.active, content: reviewState.saved[reviewState.active] })
     });
-    if (!response.ok) throw new Error("Não foi possível salvar.");
-    setStatus("Sugestões salvas", "success");
+    if (!response.ok) throw new Error("Não foi possível salvar");
+    setReviewStatus("Sugestões salvas no banco", "success");
   } catch {
-    setStatus("Salvo neste aparelho; tente novamente com internet", "error");
+    setReviewStatus("Salvo neste aparelho; tente novamente", "error");
   } finally {
-    state.saving = false;
+    reviewState.saving = false;
     saveButton.disabled = false;
   }
 }
 
+function renderReviewModel(kind) {
+  reviewState.active = kind;
+  if (typeof window.renderExternalReportReview !== "function") return;
+  setReviewStatus("Abrindo modelo aprovado...");
+  window.renderExternalReportReview(kind);
+}
+
+function handleReviewReady(kind) {
+  reviewState.active = kind;
+  reviewState.ready = true;
+  markReviewFields();
+  setReviewStatus("Modelo aprovado carregado");
+}
+
+document.addEventListener("idauditor-review-ready", (event) => handleReviewReady(event.detail.kind));
+
 document.querySelectorAll("[data-model]").forEach((button) => button.addEventListener("click", () => {
-  if (state.active !== button.dataset.model) state.saved[state.active] = currentContent();
-  state.active = button.dataset.model;
-  document.querySelectorAll("[data-model]").forEach((item) => {
-    const active = item === button;
-    item.classList.toggle("is-active", active);
-    item.setAttribute("aria-selected", String(active));
-  });
-  renderModel();
-  setStatus(state.loaded ? "Pronto para revisar" : "Carregando modelos...");
+  const previous = document.querySelector("[data-review-editable]");
+  if (previous) { reviewState.saved[reviewState.active] = currentReviewContent(); saveReviewLocally(); }
+  document.querySelectorAll("[data-model]").forEach((item) => item.classList.toggle("is-active", item === button));
+  renderReviewModel(button.dataset.model);
 }));
 
 saveButton.addEventListener("click", saveReview);
-renderModel();
-loadReview();
+loadReviewContent();
+if (window.__IDAUDITOR_EXTERNAL_REPORT_KIND__) handleReviewReady(window.__IDAUDITOR_EXTERNAL_REPORT_KIND__);

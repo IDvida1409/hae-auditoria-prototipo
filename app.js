@@ -10444,7 +10444,32 @@ document.addEventListener("submit", (event) => {
     .catch((error) => { accessNotice = { type: "error", text: error.message }; render(); });
 });
 
+function externalReportReviewRequest() {
+  if (!location.pathname.toLowerCase().endsWith("/report-review.html")) return null;
+  const requestedKind = new URLSearchParams(location.search).get("model") || "monthly";
+  return { kind: ["monthly", "comparison", "organization-monthly"].includes(requestedKind) ? requestedKind : "monthly" };
+}
+
+function renderExternalReportReview(kind = "monthly") {
+  const area = kind === "organization-monthly" ? organizationAreaById("conforto-medico") : areaById("cozinha-catering");
+  if (!area) throw new Error("Modelo aprovado sem área de referência.");
+  document.body.classList.add("report-review-body", "report-document-body", "report-document-preview");
+  app.className = "app-shell is-report-document";
+  state.selectedArea = area.id;
+  state.reportKind = kind === "comparison" ? "comparison" : "monthly";
+  const markup = kind === "organization-monthly"
+    ? organizationMonthlyReportPage(area)
+    : approvedReportMarkup(area, kind);
+  app.innerHTML = `<main class="stored-report-view report-review-preview">${markup}</main>`;
+  document.title = `Revisão - ${kind}`;
+  window.__IDAUDITOR_EXTERNAL_REPORT_KIND__ = kind;
+  document.dispatchEvent(new CustomEvent("idauditor-review-ready", { detail: { kind } }));
+}
+
+window.renderExternalReportReview = renderExternalReportReview;
+
 const reportRequest = reportFileRequest();
+const externalReviewRequest = externalReportReviewRequest();
 
 function applyLocalPreviewScores() {
   const previewScores = [9.3, 8.8, 9.1, 8.9, 8.4, 9.0, 8.6, 9.2, 8.9, 9.4, 8.6, 9.0, 8.3, 8.8, 9.1, 8.7, 9.2, 8.9, 8.4, 9.0, 8.6, 9.3, 8.5, 8.8, 9.1, 8.7, 9.0];
@@ -10534,6 +10559,13 @@ function applyLocalPreviewActionPlans() {
 }
 
 (async function bootstrapAuthenticatedApp() {
+    if (externalReviewRequest) {
+      currentAccessUser = { id: "external-report-review", username: "nutricao-review", full_name: "Revisão da Nutrição", role: "admin", area_slugs: [] };
+      applyLocalPreviewScores();
+      applyLocalPreviewActionPlans();
+      renderExternalReportReview(externalReviewRequest.kind);
+      return;
+    }
     updateStartupProgress(15, "Validando o acesso...");
     const localPreviewRole = ["localhost", "127.0.0.1"].includes(location.hostname)
       ? new URLSearchParams(location.search).get("preview")

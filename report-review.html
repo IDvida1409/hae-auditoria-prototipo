@@ -3,46 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IDAuditor | Revisão de relatórios</title>
+    <title>IDAuditor | Revisão de relatório aprovado</title>
     <link rel="icon" href="assets/app-icon-reference.png" />
-    <link rel="stylesheet" href="report-review.css?v=20261001-1" />
+    <link rel="stylesheet" href="styles.css?v=20261001-report-review" />
+    <link rel="stylesheet" href="report-review.css?v=20261001-report-review" />
   </head>
-  <body>
-    <main class="review-app">
-      <header class="review-header">
-        <div class="review-brand"><img src="assets/app-icon-reference.png" alt="IDAuditor" /><span>IDAuditor</span></div>
-        <div class="review-header-copy">
-          <span class="review-eyebrow">Revisão externa</span>
-          <h1>Modelos de relatório da Nutrição</h1>
-          <p>Revise somente os títulos e textos. Os indicadores, gráficos, tabelas e evidências permanecem protegidos.</p>
-        </div>
-        <div class="review-status" data-review-status>Carregando modelos...</div>
-      </header>
-
-      <section class="review-toolbar" aria-label="Seleção do modelo">
-        <div class="review-model-tabs" role="tablist" aria-label="Modelos de relatório">
-          <button type="button" class="is-active" data-model="monthly" role="tab" aria-selected="true">Individual mensal</button>
-          <button type="button" data-model="comparison" role="tab" aria-selected="false">Analítico comparativo</button>
-          <button type="button" data-model="organization-monthly" role="tab" aria-selected="false">Consolidado da área</button>
-        </div>
-        <button class="review-save" type="button" data-save-review>Salvar sugestões</button>
-      </section>
-
-      <section class="review-notice" aria-label="Orientação">
-        <strong>Como revisar</strong>
-        <span>Os campos brancos com contorno azul são editáveis. Digite as sugestões e clique em “Salvar sugestões”.</span>
-      </section>
-
-      <section class="review-workspace">
-        <div class="review-model-meta">
-          <span data-model-label>Relatório individual mensal</span>
-          <small>Modelo para avaliação de linguagem</small>
-        </div>
-        <article class="report-sheet" data-report-sheet aria-live="polite"></article>
-      </section>
-
-      <footer class="review-footer">As sugestões salvas ficam registradas para avaliação e implementação no sistema.</footer>
-    </main>
-    <script src="report-review.js?v=20261001-1"></script>
+  <body class="report-review-body">
+    <header class="report-review-header">
+      <div class="report-review-brand"><img src="assets/idvida-logo.png" alt="IDVIDA" /><span>Revisão de relatório aprovado</span></div>
+      <div class="report-review-copy">
+        <strong>Modelos da Nutrição</strong>
+        <span>O documento abaixo é o modelo aprovado. Somente títulos e textos podem ser sugeridos.</span>
+      </div>
+      <div class="report-review-status" data-review-status>Carregando relatório...</div>
+    </header>
+    <nav class="report-review-tabs" aria-label="Modelos de relatório">
+      <button type="button" class="is-active" data-model="monthly">Individual mensal</button>
+      <button type="button" data-model="comparison">Analítico comparativo</button>
+      <button type="button" data-model="organization-monthly">Consolidado da área</button>
+      <button type="button" class="report-review-save" data-save-review>Salvar sugestões</button>
+    </nav>
+    <div class="report-review-help"><strong>Campos editáveis:</strong> passe o mouse sobre os títulos e textos com contorno azul. Gráficos, tabelas, fotos, números e evidências estão bloqueados.</div>
+    <div id="app" class="app-shell is-report-document"></div>
+    <script src="checklist-data.js?v=20260914-report-library-10"></script>
+    <script src="assets/area-hierarchy.js?v=20260927-report-scope-1"></script>
+    <script src="app.js?v=20261001-report-review"></script>
+    <script src="report-review.js?v=20261001-report-review"></script>
   </body>
 </html>
