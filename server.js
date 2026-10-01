@@ -383,7 +383,7 @@ function staticPathFor(urlPath) {
     ["vendor/jspdf.umd.min.js", path.join(root, "node_modules", "jspdf", "dist", "jspdf.umd.min.js")]
   ]);
   if (vendorFiles.has(relativePath)) return vendorFiles.get(relativePath);
-  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "icon-concepts-hierarchy.html", "idauditor-web.zip"]);
+  const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "icon-concepts-hierarchy.html", "idauditor-web.zip", "report-review.html", "report-review.css", "report-review.js"]);
   if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;
@@ -446,6 +446,13 @@ async function handleApi(request, response, url) {
     return true;
   }
   if (await accessApi.handle(request, response, url, { getPool, sendJson, readJsonBody, requireDatabase })) return true;
+  const isPublicReportReview = url.pathname === "/api/report-review" && ["GET", "POST", "PUT"].includes(request.method);
+  if (isPublicReportReview) {
+    if (await operationalApi.handle(request, response, url, {
+      getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase,
+      publicReportReviewToken: process.env.REPORT_REVIEW_TOKEN || "nutricao-2026"
+    })) return true;
+  }
   const structuredApisEnabled = process.env.STRUCTURED_APIS_ENABLED !== "false" &&
     !(process.env.RENDER === "true" && process.env.STRUCTURED_APIS_ENABLED !== "true");
   if (!structuredApisEnabled && url.pathname.startsWith("/api/") &&
@@ -485,7 +492,7 @@ async function handleApi(request, response, url) {
     return true;
   }
   if (await resourceApi.handle(request, response, url, { getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase })) return true;
-  if (await operationalApi.handle(request, response, url, { getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase })) return true;
+  if (await operationalApi.handle(request, response, url, { getPool, defaultUnitId, currentUser, readJsonBody, sendJson, requireDatabase, publicReportReviewToken: process.env.REPORT_REVIEW_TOKEN || "nutricao-2026" })) return true;
   if (url.pathname === "/api/offline-files" && request.method === "POST") {
     try {
       const pool = await getPool();

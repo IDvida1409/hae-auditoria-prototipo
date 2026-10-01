@@ -1028,10 +1028,6 @@ function defaultState() {
     reportFolderParentArea: "",
     reportFolderTab: "subareas",
     reportPdfSource: false,
-    reportEditorOpen: false,
-    reportEditorKind: "monthly",
-    reportEditorScope: "",
-    reportEditorDrafts: {},
     leaveAuditConfirm: false,
     auditFinalizeModal: false,
     auditPlanModeModal: false
@@ -1069,10 +1065,6 @@ function persistableState(source = state) {
     settingsUsersExpanded: source.settingsUsersExpanded,
     settingsEditingUserId: "",
     reportFolderParentArea: source.reportFolderParentArea,
-    reportEditorOpen: source.reportEditorOpen,
-    reportEditorKind: source.reportEditorKind,
-    reportEditorScope: source.reportEditorScope,
-    reportEditorDrafts: source.reportEditorDrafts,
     settingsExpandedArea: source.settingsExpandedArea,
     settingsNewAreaOpen: false,
     areaConfigOverrides: source.areaConfigOverrides,
@@ -1132,10 +1124,6 @@ function normalizeSavedState(saved = {}) {
     reportFolderArea: null,
     reportFolderParentArea: "",
     reportPdfSource: false,
-    reportEditorOpen: false,
-    reportEditorKind: ["monthly", "comparison", "organization-monthly"].includes(merged.reportEditorKind) ? merged.reportEditorKind : "monthly",
-    reportEditorScope: "",
-    reportEditorDrafts: merged.reportEditorDrafts && typeof merged.reportEditorDrafts === "object" ? merged.reportEditorDrafts : {},
     auditInstructionsOpen: false,
     settingsSection: validSettingsSections.has(merged.settingsSection) && merged.settingsSection !== "users" ? merged.settingsSection : base.settingsSection,
     settingsUserView: validSettingsUserViews.has(merged.settingsUserView) ? merged.settingsUserView : base.settingsUserView,
@@ -6231,145 +6219,7 @@ function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = s
   `;
 }
 
-function reportEditorScopeOptions(kind, selectedScope) {
-  if (kind === "organization-monthly") {
-    return organizationAreas.map((area) => `<option value="${escapeHtml(area.id)}" ${area.id === selectedScope ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("");
-  }
-  return areaData.filter((area) => canAccessArea(area.id)).map((area) => `<option value="${escapeHtml(area.id)}" ${area.id === selectedScope ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("");
-}
-
-function reportEditorSource(kind, scope) {
-  const previousArea = state.selectedArea;
-  const previousKind = state.reportKind;
-  let markup = "";
-  if (kind === "organization-monthly") {
-    const parent = organizationAreaById(scope) || organizationAreas[0];
-    if (parent) markup = organizationMonthlyReportPage(parent);
-  } else {
-    const area = areaById(scope) || reportSelectedArea();
-    if (area) {
-      state.selectedArea = area.id;
-      state.reportKind = kind;
-      markup = kind === "comparison" ? comparativeReportPage() : monthlyReportPage();
-    }
-  }
-  state.selectedArea = previousArea;
-  state.reportKind = previousKind;
-  return markup;
-}
-
-function reportEditorKey(kind, scope) {
-  return `${kind}:${scope}:${currentMonthId}`;
-}
-
-function prepareReportEditor() {
-  const root = document.querySelector("[data-report-editor-document]");
-  if (!root) return;
-  const kind = root.dataset.reportEditorKind;
-  const scope = root.dataset.reportEditorScope;
-  const draft = state.reportEditorDrafts?.[reportEditorKey(kind, scope)] || {};
-  const targets = [
-    ...root.querySelectorAll(".report-doc-body > h1, .report-doc-section > h2, .report-doc-section > h3, .report-doc-lead, .report-doc-text, .report-note-box > strong, .report-note-box > p, .report-footnote")
-  ].filter((node) => !node.closest("table, figure, svg, .report-signatures"));
-  let index = 0;
-  for (const node of targets) {
-    let editable = node;
-    if (node.matches("h2") && node.querySelector(":scope > span")) {
-      const text = [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent).join("").trim();
-      [...node.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).forEach((child) => child.remove());
-      editable = document.createElement("span");
-      editable.className = "report-editor-editable-title";
-      editable.textContent = text;
-      node.append(editable);
-    }
-    editable.contentEditable = "true";
-    editable.spellcheck = true;
-    editable.dataset.reportEditable = String(index);
-    editable.title = "Texto editável. Gráficos, tabelas, fotos e indicadores são protegidos.";
-    if (Object.prototype.hasOwnProperty.call(draft, String(index))) editable.textContent = draft[String(index)];
-    index += 1;
-  }
-}
-
-function reportEditorPage() {
-  const kind = ["monthly", "comparison", "organization-monthly"].includes(state.reportEditorKind) ? state.reportEditorKind : "monthly";
-  const defaultScope = kind === "organization-monthly" ? organizationAreas[0]?.id : reportSelectedArea()?.id;
-  const scope = (kind === "organization-monthly" ? organizationAreas : areaData).some((area) => area.id === state.reportEditorScope)
-    ? state.reportEditorScope
-    : defaultScope;
-  state.reportEditorScope = scope || "";
-  const source = reportEditorSource(kind, scope);
-  const labels = { monthly: "Relatório individual mensal", comparison: "Relatório analítico comparativo", "organization-monthly": "Relatório consolidado da área" };
-  return `
-    <section class="report-editor-page">
-      <header class="report-editor-head">
-        <div><span class="eyebrow">Relatórios</span><h1>Editar relatório em HTML</h1><p>Altere títulos e textos antes de compartilhar com a Nutrição. Gráficos, tabelas, fotos e indicadores permanecem bloqueados.</p></div>
-        <div class="report-editor-actions"><button class="fichario-sub-action" data-close-report-editor type="button">Voltar</button><button class="fichario-sub-action is-primary" data-save-report-editor type="button">Salvar alterações</button></div>
-      </header>
-      <div class="report-editor-toolbar">
-        <label><span>Modelo</span><select data-report-editor-kind>
-          ${Object.entries(labels).map(([value, label]) => `<option value="${value}" ${kind === value ? "selected" : ""}>${label}</option>`).join("")}
-        </select></label>
-        <label><span>${kind === "organization-monthly" ? "Área" : "Subárea"}</span><select data-report-editor-scope>${reportEditorScopeOptions(kind, scope)}</select></label>
-        <small>Somente os campos com contorno azul podem ser editados.</small>
-      </div>
-      <div class="report-editor-canvas" data-report-editor-document data-report-editor-kind="${escapeHtml(kind)}" data-report-editor-scope="${escapeHtml(scope || "")}">${source || `<div class="report-editor-empty">Selecione um modelo e uma área com dados.</div>`}</div>
-    </section>
-  `;
-}
-
-async function loadReportEditorDraft() {
-  const kind = state.reportEditorKind;
-  const scope = state.reportEditorScope;
-  if (!scope || currentAccessUser?.role !== "admin") return;
-  const key = reportEditorKey(kind, scope);
-  try {
-    const params = new URLSearchParams({ reportType: kind, scopeKey: scope, periodKey: currentMonthId });
-    const data = await operationalRequest(`report-edits?${params.toString()}`);
-    if (!data.edit?.content) return;
-    state.reportEditorDrafts = { ...(state.reportEditorDrafts || {}), [key]: data.edit.content };
-    render({ skipSave: true });
-  } catch {
-    // O editor continua utilizável com a cópia local quando a API estiver indisponível.
-  }
-}
-
-function reportEditorNotification(kind, scope) {
-  const labels = { monthly: "relatório individual mensal", comparison: "relatório analítico comparativo", "organization-monthly": "relatório consolidado da área" };
-  return {
-    id: `local-report-edit-${Date.now()}`,
-    notification_type: "report_content_saved",
-    entity_type: "report_editable_content",
-    entity_id: "",
-    title: "Texto de relatório atualizado",
-    body: `O ${labels[kind] || "modelo de relatório"} foi salvo para ${scope}.`,
-    created_at: new Date().toISOString(),
-    read_at: null
-  };
-}
-
-async function saveReportEditor() {
-  const root = document.querySelector("[data-report-editor-document]");
-  if (!root) return;
-  const kind = root.dataset.reportEditorKind;
-  const scope = root.dataset.reportEditorScope;
-  const content = Object.fromEntries([...root.querySelectorAll("[data-report-editable]")].map((node) => [node.dataset.reportEditable, node.innerText.trim()]));
-  const key = reportEditorKey(kind, scope);
-  state.reportEditorDrafts = { ...(state.reportEditorDrafts || {}), [key]: content };
-  saveState();
-  accessNotifications = [reportEditorNotification(kind, scope), ...accessNotifications];
-  try {
-    await operationalRequest("report-edits", { method: "POST", body: JSON.stringify({ reportType: kind, scopeKey: scope, periodKey: currentMonthId, content }) });
-    accessNotice = { type: "success", text: "Alterações salvas. A notificação foi registrada no sistema." };
-  } catch {
-    accessNotice = { type: "success", text: "Alterações salvas neste aparelho. A sincronização será tentada novamente." };
-  }
-  state.reportEditorOpen = false;
-  render({ skipSave: true });
-}
-
 function reportsPage() {
-  if (state.reportEditorOpen && currentAccessUser?.role === "admin") return reportEditorPage();
   const visibleParents = isAreaResponsible() ? responsibleOrganizationAreas() : organizationAreas;
   const visibleStandalone = isAreaResponsible()
     ? responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area))
@@ -6392,7 +6242,6 @@ function reportsPage() {
             <h2>Relatórios por área auditada</h2>
             <p>Selecione uma pasta para consultar os relatórios disponíveis e o histórico da área.</p>
           </div>
-          ${currentAccessUser?.role === "admin" ? `<button class="fichario-sub-action is-primary" data-open-report-editor type="button">Editar modelos HTML</button>` : ""}
         </div>
         <div class="report-folder-grid">
           ${parentTiles}${standaloneTiles}
@@ -8556,7 +8405,6 @@ function render(options = {}) {
   `;
   const reportModal = app.querySelector(".report-library-backdrop");
   if (reportModal) document.body.appendChild(reportModal);
-  prepareReportEditor();
   if (!options.skipSave) saveState();
 }
 
@@ -9210,25 +9058,6 @@ document.addEventListener("click", async (event) => {
     }
     accessNotice = { type: "success", text: "O relatório ainda está sendo preparado. Ele será liberado assim que o PDF estiver arquivado." };
     render();
-    return;
-  }
-
-  if (event.target.closest("[data-open-report-editor]")) {
-    if (currentAccessUser?.role !== "admin") return;
-    state.reportEditorOpen = true;
-    state.reportEditorKind = "monthly";
-    state.reportEditorScope = reportSelectedArea()?.id || areaData[0]?.id || "";
-    render();
-    loadReportEditorDraft();
-    return;
-  }
-  if (event.target.closest("[data-close-report-editor]")) {
-    state.reportEditorOpen = false;
-    render();
-    return;
-  }
-  if (event.target.closest("[data-save-report-editor]")) {
-    await saveReportEditor();
     return;
   }
 
@@ -10315,21 +10144,6 @@ function handleAuditEvidenceFileInput(evidence) {
 }
 
 document.addEventListener("change", (event) => {
-  const editorKind = event.target.closest("[data-report-editor-kind]");
-  if (editorKind) {
-    state.reportEditorKind = editorKind.value;
-    state.reportEditorScope = state.reportEditorKind === "organization-monthly" ? organizationAreas[0]?.id || "" : reportSelectedArea()?.id || areaData[0]?.id || "";
-    render();
-    loadReportEditorDraft();
-    return;
-  }
-  const editorScope = event.target.closest("[data-report-editor-scope]");
-  if (editorScope) {
-    state.reportEditorScope = editorScope.value;
-    render();
-    loadReportEditorDraft();
-    return;
-  }
   const executiveScope = event.target.closest("[data-executive-scope]");
   if (executiveScope) {
     executivePreviewScope = executiveScope.value;
