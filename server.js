@@ -14,7 +14,13 @@ const accessApi = require("./lib/access-api");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
-const { enqueueMonthlyAuditReport, reconcileFinishedAuditReports, validateAuditReadyToFinalize } = require("./lib/report-service");
+const {
+  enqueueMonthlyAuditReport,
+  enqueueActionPlanDocumentPdf,
+  reconcileFinishedAuditReports,
+  reconcileApprovedActionPlanPdfs,
+  validateAuditReadyToFinalize
+} = require("./lib/report-service");
 const { weightedAuditScore } = require("./lib/scoring");
 const activityLog = require("./lib/activity-log");
 const { buildAndroidWeb } = require("./tools/build-android-web");
@@ -1052,10 +1058,14 @@ async function handleApi(request, response, url) {
             aa.slug as area_slug,
             u.full_name as assigned_to_name,
             creator.full_name as created_by_name,
-            d.public_code,
-            d.generated_at as document_generated_at,
-            d.generation_mode,
-            feedback.id as feedback_id,
+             d.public_code,
+             d.generated_at as document_generated_at,
+             d.generation_mode,
+             d.pdf_file_url,
+             d.pdf_file_name,
+             d.pdf_generated_at,
+             d.pdf_generation_error,
+             feedback.id as feedback_id,
             feedback.submitted_by_user_id as feedback_submitted_by_user_id,
             feedback.observation as feedback_observation,
             feedback.correction_summary as feedback_correction_summary,
@@ -1484,15 +1494,19 @@ async function handleApi(request, response, url) {
            where id=coalesce($1,(select last_feedback_id from action_plans where id=$5))`,
           [body.feedbackId || null, body.decision, user.id, body.justification || null, planReviewMatch.id]
         );
+        let actionPlanPdfJob = null;
         if (plan?.action_plan_document_id) {
-          await client.query(
+          const updatedDocument = await client.query(
             `update action_plan_documents d set status=case
                when not exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status<>'approved') then 'approved'
                when exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status in ('rejected','reopened')) then 'reopened'
                else 'pending_review' end,
              closed_at=case when not exists(select 1 from action_plans p where p.action_plan_document_id=d.id and p.status<>'approved') then now() else null end,
-             updated_at=now() where d.id=$1`, [plan.action_plan_document_id]
+             updated_at=now() where d.id=$1 returning *`, [plan.action_plan_document_id]
           );
+          if (updatedDocument.rows[0]?.status === "approved") {
+            actionPlanPdfJob = await enqueueActionPlanDocumentPdf(client, plan.action_plan_document_id, user.id);
+          }
         }
         const pendingReviews = plan?.action_plan_document_id
           ? await client.query(
@@ -1516,7 +1530,7 @@ async function handleApi(request, response, url) {
       } finally {
         client.release();
       }
-      sendJson(response, 200, { actionPlan: plan, reviewEvent: event.rows[0] });
+      sendJson(response, 200, { actionPlan: plan, reviewEvent: event.rows[0], actionPlanPdfJob });
     } catch (error) {
       sendJson(response, 500, { error: error.message || "Erro ao revisar plano" });
     }
@@ -1936,8 +1950,10 @@ const reportTimer = setInterval(async () => {
       const migrated = await fileStorage.migrateReportFiles(pool);
       if (migrated) console.log(`PDFs migrados do PostgreSQL para o disco persistente: ${migrated}`);
       const recovered = await reconcileFinishedAuditReports(pool);
+      const recoveredActionPlans = await reconcileApprovedActionPlanPdfs(pool);
       reportBacklogReconciled = true;
       if (recovered.length) console.log(`Relatórios recuperados para geração: ${recovered.length}`);
+      if (recoveredActionPlans.length) console.log(`Planos de ação recuperados para geração: ${recoveredActionPlans.length}`);
     }
     await reportWorker.processNext(pool);
   } catch (error) { console.error("Worker de relatorios:", error.message); }

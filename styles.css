@@ -12599,6 +12599,36 @@ h3 {
   background: #f0f5fb;
 }
 
+.password-modal-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 20, 37, .5);
+  backdrop-filter: blur(3px);
+}
+.password-modal {
+  width: min(100%, 430px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(7, 26, 61, .2);
+}
+.password-modal-head { display: flex; justify-content: space-between; gap: 16px; padding: 20px 22px 15px; border-bottom: 1px solid var(--line); }
+.password-modal-head h2 { margin: 3px 0 0; color: var(--ink-950); font-size: 20px; font-weight: 650; }
+.password-modal-head p { margin: 5px 0 0; color: var(--ink-600); font-size: 12px; line-height: 1.4; }
+.password-modal-head .panel-close { position: static; flex: 0 0 auto; }
+.password-modal-form { display: grid; gap: 14px; padding: 18px 22px 20px; }
+.password-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+@media (max-width: 560px) {
+  .password-modal-backdrop { align-items: end; padding: 10px; }
+  .password-modal { width: 100%; }
+  .password-modal-head, .password-modal-form { padding-left: 16px; padding-right: 16px; }
+}
+
 .fichario-tabs {
   flex: 0 0 auto;
   display: flex;

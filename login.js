@@ -15,12 +15,16 @@
     logo.alt = branding.name || "Hospital";
     logo.classList.add("is-unit-logo");
   }
-  const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form"), firstAccess: document.getElementById("first-access-form") };
+  const forms = { login: document.getElementById("login-form"), change: document.getElementById("change-form"), firstAccess: document.getElementById("first-access-form"), passwordReset: document.getElementById("password-reset-form") };
   const firstAccessButton = document.getElementById("first-access-button");
   const firstAccessBack = document.getElementById("first-access-back");
   const firstAccessUser = document.getElementById("first-access-user");
+  const passwordResetBack = document.getElementById("password-reset-back");
+  const passwordResetUser = document.getElementById("password-reset-user");
   let firstAccessCode = "";
   let firstAccessVerified = false;
+  let passwordResetCode = "";
+  let passwordResetVerified = false;
   window.addEventListener("pageshow", () => {
     if (!forms.login.hidden) forms.login.reset();
   });
@@ -28,8 +32,8 @@
   function message(text, success = false) { status.textContent = text; status.classList.toggle("success", success); }
   function setMode(next) {
     Object.entries(forms).forEach(([key, form]) => { form.hidden = key !== next; });
-    modal.classList.toggle("changing", next === "change");
-    title.textContent = next === "change" ? "Defina sua nova senha" : next === "firstAccess" ? "Primeiro acesso" : "LOGIN";
+    modal.classList.toggle("changing", next === "change" || next === "passwordReset");
+    title.textContent = next === "change" ? "Defina sua nova senha" : next === "firstAccess" ? "Primeiro acesso" : next === "passwordReset" ? "Redefinir senha" : "LOGIN";
     message("");
     forms[next].querySelector("input")?.focus();
   }
@@ -57,6 +61,20 @@
     submit(forms.login, async (values) => {
       const data = await api("login", { method: "POST", body: JSON.stringify({ ...values, remember: values.remember === "on" }) });
       applyBranding(data.branding);
+      if (data.user.password_reset_pending || data.passwordResetRequired) {
+        const username = String(values.username || "").trim().toLowerCase();
+        forms.passwordReset.reset();
+        forms.passwordReset.elements.username.value = username;
+        passwordResetCode = String(values.password || "").trim().toUpperCase();
+        passwordResetVerified = false;
+        passwordResetUser.hidden = true;
+        forms.passwordReset.querySelectorAll(".password-reset-password").forEach((field) => { field.hidden = true; field.querySelector("input").required = false; });
+        forms.passwordReset.querySelector(".primary-button span").textContent = "Validar código";
+        setMode("passwordReset");
+        if (passwordResetCode) forms.passwordReset.elements.code.value = passwordResetCode;
+        message("Use seu usuário e o código temporário para criar uma nova senha.");
+        return;
+      }
       if (data.user.must_change_password) { forms.login.reset(); setMode("change"); return; }
       sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
       sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username || values.username));
@@ -84,6 +102,7 @@
     setMode("firstAccess");
   });
   firstAccessBack.addEventListener("click", () => setMode("login"));
+  passwordResetBack.addEventListener("click", () => setMode("login"));
   forms.firstAccess.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(forms.firstAccess, async (values) => {
@@ -101,6 +120,31 @@
       }
       if (values.password !== values.confirmation) throw new Error("As senhas não coincidem.");
       const data = await api("first-access/complete", { method: "POST", body: JSON.stringify({ code: firstAccessCode, password: values.password }) });
+      applyBranding(data.branding);
+      sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
+      sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username));
+      location.replace("/");
+      return "navigating";
+    });
+  });
+  forms.passwordReset.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit(forms.passwordReset, async (values) => {
+      const username = String(values.username || "").trim().toLowerCase();
+      const code = String(values.code || passwordResetCode || "").trim().toUpperCase();
+      if (!passwordResetVerified) {
+        const data = await api("password-reset/lookup", { method: "POST", body: JSON.stringify({ username, code }) });
+        passwordResetCode = code;
+        passwordResetVerified = true;
+        passwordResetUser.hidden = false;
+        passwordResetUser.textContent = `Usuário encontrado: ${data.user.username}`;
+        forms.passwordReset.querySelectorAll(".password-reset-password").forEach((field) => { field.hidden = false; field.querySelector("input").required = true; });
+        forms.passwordReset.querySelector(".primary-button span").textContent = "Criar senha e entrar";
+        forms.passwordReset.elements.password.focus();
+        return;
+      }
+      if (values.password !== values.confirmation) throw new Error("As senhas não coincidem.");
+      const data = await api("password-reset/complete", { method: "POST", body: JSON.stringify({ username, code: passwordResetCode, password: values.password }) });
       applyBranding(data.branding);
       sessionStorage.setItem("idauditor-user", JSON.stringify(data.user));
       sessionStorage.setItem("idauditor-fresh-login", String(data.user.id || data.user.username));
@@ -144,7 +188,7 @@
     icons();
   });
   api("me").then((data) => {
-    if (!data.user.must_change_password) location.replace("/");
+    if (!data.user.must_change_password && !data.user.password_reset_pending) location.replace("/");
   }).catch(() => {});
   icons();
 })();

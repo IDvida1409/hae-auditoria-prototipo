@@ -189,6 +189,7 @@ let currentAccessUser = null;
 let accessNotice = null;
 let accessNotifications = [];
 let notificationsOpen = false;
+let passwordModalOpen = false;
 let calendarOpen = false;
 let calendarScheduleOpen = false;
 let calendarMonthCursor = new Date().getMonth();
@@ -1368,6 +1369,10 @@ function registerServiceWorker() {
 function reportFileRequest() {
   const params = new URLSearchParams(location.search);
   const kind = params.get("reportFile");
+  if (kind === "action-plan") {
+    const documentId = params.get("document") || "";
+    return /^[0-9a-f-]{36}$/i.test(documentId) ? { kind, documentId } : null;
+  }
   if (kind === "organization-monthly") {
     const parent = organizationAreaById(params.get("parent") || "");
     return parent ? { kind, parent } : null;
@@ -1392,6 +1397,20 @@ function reportDocumentPreviewToolbar(activeKind) {
 function renderReportFileRequest(request) {
   document.body.classList.add("report-document-body");
   app.className = "app-shell is-report-document";
+  if (request.kind === "action-plan") {
+    const plan = planningActionRows().find((item) => String(item.documentId || item.id) === request.documentId);
+    if (!plan) throw new Error("Plano de ação aprovado não encontrado para geração do PDF.");
+    state.planningPlanId = plan.id;
+    state.actionPlanPreview = true;
+    const source = document.createElement("div");
+    source.innerHTML = planningPlanPreview();
+    const documentMarkup = source.querySelector(".action-plan-document")?.outerHTML;
+    if (!documentMarkup) throw new Error("Documento do plano de ação não foi preparado.");
+    app.innerHTML = `<main class="stored-report-view">${documentMarkup}</main>`;
+    document.title = actionPlanPdfFilename(plan);
+    window.__IDAUDITOR_REPORT_READY__ = true;
+    return;
+  }
   if (request.kind === "organization-monthly") {
     app.innerHTML = `${reportDocumentPreviewToolbar(request.kind)}<main class="stored-report-view">${organizationMonthlyReportPage(request.parent)}</main>`;
     document.title = `hae-consolidado-area-${request.parent.id}-${currentMonthId}.pdf`;
@@ -1619,6 +1638,10 @@ async function loadOperationalData(options = {}) {
       owner: plan.assigned_to_name || area?.name || "Responsável da área",
       auditorName: plan.created_by_name || "Auditor não identificado",
       publicCode: plan.public_code || "",
+      pdfFileUrl: plan.pdf_file_url || "",
+      pdfFileName: plan.pdf_file_name || "",
+      pdfGeneratedAt: plan.pdf_generated_at || null,
+      pdfGenerationError: plan.pdf_generation_error || "",
       generatedAt: plan.document_generated_at || plan.created_at,
       generationMode: plan.generation_mode,
       status: planningStatusFromBackend(plan.status),
@@ -1682,18 +1705,28 @@ function hasReportsAwaitingGeneration() {
   });
 }
 
+function hasActionPlansAwaitingPdf() {
+  return (operationalActionPlans || []).some((plan) => plan.status === "approved" && !plan.pdfFileUrl && !plan.pdfGenerationError);
+}
+
 function schedulePendingReportRefresh() {
-  if (reportRefreshTimer || reportRefreshAttempts >= 18 || !hasReportsAwaitingGeneration()) {
-    if (!hasReportsAwaitingGeneration()) reportRefreshAttempts = 0;
+  const reportsPending = hasReportsAwaitingGeneration();
+  const actionPlansPending = hasActionPlansAwaitingPdf();
+  if (reportRefreshTimer || reportRefreshAttempts >= 18 || (!reportsPending && !actionPlansPending)) {
+    if (!reportsPending && !actionPlansPending) reportRefreshAttempts = 0;
     return;
   }
   reportRefreshTimer = setTimeout(async () => {
     reportRefreshTimer = null;
     reportRefreshAttempts += 1;
     try {
-      const data = await operationalRequest("reports");
-      operationalReports = data.reports || [];
-      operationalReportJobs = data.jobs || [];
+      const reportData = await operationalRequest("reports");
+      operationalReports = reportData.reports || [];
+      operationalReportJobs = reportData.jobs || [];
+      if (actionPlansPending) {
+        await loadOperationalData({ deferAuditDetails: true });
+        return;
+      }
       render();
     } catch {}
     schedulePendingReportRefresh();
@@ -2412,12 +2445,27 @@ function topbar() {
         </button>
         <div class="user-menu hidden" data-user-menu-panel>
           ${currentAccessUser?.role === "admin" ? '<button type="button" data-nav="users">Usuários</button>' : ""}
-          <button type="button" data-nav="settings">Alterar senha</button>
+          <button type="button" data-open-password-modal>Alterar senha</button>
           <button type="button" data-access-logout>Sair</button>
         </div>
       </div>
     </header>
   `;
+}
+
+function passwordChangeModal() {
+  if (!passwordModalOpen) return "";
+  return `<div class="password-modal-backdrop" data-close-password-modal role="presentation">
+    <section class="password-modal surface" role="dialog" aria-modal="true" aria-labelledby="password-modal-title" data-password-modal>
+      <header class="password-modal-head"><div><span class="modal-kicker">Segurança</span><h2 id="password-modal-title">Alterar senha</h2><p>Informe a senha atual e defina uma nova senha para este acesso.</p></div><button type="button" class="panel-close" data-close-password-modal aria-label="Fechar">${icons.close}</button></header>
+      <form class="password-modal-form" data-password-change-form>
+        <label class="settings-modal-field"><span>Senha atual</span><input name="currentPassword" type="password" autocomplete="current-password" required maxlength="128" /></label>
+        <label class="settings-modal-field"><span>Nova senha</span><input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" /></label>
+        <label class="settings-modal-field"><span>Confirmar nova senha</span><input name="confirmation" type="password" autocomplete="new-password" required maxlength="128" /></label>
+        <div class="password-modal-actions"><button type="button" class="settings-soft-btn" data-close-password-modal>Cancelar</button><button type="submit" class="settings-soft-btn settings-primary">Salvar nova senha</button></div>
+      </form>
+    </section>
+  </div>`;
 }
 
 function ficharioTabs() {
@@ -4909,6 +4957,7 @@ async function openActionPlanPdf(plan, targetWindow = null, options = {}) {
 
       updatePreparedPdfWindow(targetWindow, "Finalizando o PDF...", filename);
       const pdfBlob = pdf.output("blob");
+      if (options.mode === "archive") return pdfBlob;
       const namedPdf = typeof File === "function"
         ? new File([pdfBlob], filename, { type: "application/pdf" })
         : pdfBlob;
@@ -4929,7 +4978,7 @@ async function openActionPlanPdf(plan, targetWindow = null, options = {}) {
       holder.remove();
     }
   } catch (error) {
-    if (options.mode === "download") throw error;
+    if (options.mode === "download" || options.mode === "archive") throw error;
     actionPlanPrintFallback(targetWindow, plan);
   }
 }
@@ -7845,13 +7894,16 @@ function planningPlanPreview() {
   const responsibleView = isAreaResponsible();
   const acknowledgement = state.actionPlanAcknowledgements?.[plan.id];
   const responsibleResponses = state.actionPlanResponses?.[plan.id] || {};
+  const archivedPdfActions = plan.status !== "approved" ? "" : plan.pdfFileUrl
+    ? `<div class="action-plan-pdf-actions"><button class="fichario-sub-action" data-action-plan-pdf="open" data-pdf-url="${escapeHtml(plan.pdfFileUrl)}" data-pdf-name="${escapeHtml(plan.pdfFileName || actionPlanPdfFilename(plan))}" type="button">${svgIcon("externalLink")} Abrir PDF</button><button class="fichario-sub-action" data-action-plan-pdf="download" data-pdf-url="${escapeHtml(plan.pdfFileUrl)}" data-pdf-name="${escapeHtml(plan.pdfFileName || actionPlanPdfFilename(plan))}" type="button">${svgIcon("document")} Baixar PDF</button></div>`
+    : `<div class="action-plan-pdf-actions"><button class="fichario-sub-action" type="button" disabled title="${escapeHtml(plan.pdfGenerationError || "O PDF está sendo gerado e arquivado automaticamente.")}">${plan.pdfGenerationError ? "PDF indisponível" : "Preparando PDF..."}</button></div>`;
   return `
     <div class="fichario-sub-panel action-plan-preview-shell">
       ${state.planningNotice ? `<div class="planning-flow-notice">${escapeHtml(state.planningNotice)}</div>` : ""}
       <div class="action-plan-preview-toolbar">
         <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
-        ${plan.status === "approved" ? `<div class="action-plan-pdf-actions"><button class="fichario-sub-action" data-print-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("externalLink")} Abrir PDF</button><button class="fichario-sub-action" data-download-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("document")} Baixar PDF</button></div>` : ""}
+        ${archivedPdfActions}
       </div>
       ${responsibleView ? `<div class="action-plan-editing-note"><strong>Plano disponível para resposta</strong><span>${acknowledgement ? "Ciência confirmada. Preencha as correções e evidências de cada NC." : "Confirme a ciência para liberar o preenchimento."}</span></div>` : isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
@@ -8348,6 +8400,7 @@ function render(options = {}) {
       <section class="content">
         ${viewContent()}
       </section>
+      ${passwordChangeModal()}
     </main>
   `;
   const reportModal = app.querySelector(".report-library-backdrop");
@@ -8444,6 +8497,18 @@ function enterAudit(areaId) {
 }
 
 document.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-open-password-modal]")) {
+    passwordModalOpen = true;
+    notificationsOpen = false;
+    render({ skipSave: true });
+    requestAnimationFrame(() => document.querySelector('[data-password-change-form] input[name="currentPassword"]')?.focus());
+    return;
+  }
+  if (event.target.closest("[data-close-password-modal]")) {
+    passwordModalOpen = false;
+    render({ skipSave: true });
+    return;
+  }
   const calendarToggleAtStart = event.target.closest("[data-calendar-toggle]");
   if (calendarToggleAtStart) {
     calendarOpen = !calendarOpen;
@@ -8702,7 +8767,7 @@ document.addEventListener("click", async (event) => {
     resetUser.disabled = true;
     accessRequest(`users/${resetUser.dataset.resetUser}/reset-password`, { method: "POST", body: "{}" })
       .then(async (data) => {
-        accessNotice = { type: "success", text: `Novo código de primeiro acesso para ${data.user.full_name}:`, code: data.temporaryCode };
+        accessNotice = { type: "success", text: `Novo código temporário para redefinir a senha de ${data.user.full_name}:`, code: data.temporaryCode };
         await loadAccessUsers();
         render();
       })
@@ -9317,6 +9382,25 @@ document.addEventListener("click", async (event) => {
     state.planningView = "overview";
     setPlanningNotice(`Devolutiva de ${plan.area.name} enviada para análise do auditor.`);
     render();
+    return;
+  }
+
+  const archivedActionPlanPdf = event.target.closest("[data-action-plan-pdf]");
+  if (archivedActionPlanPdf) {
+    const storedUrl = archivedActionPlanPdf.dataset.pdfUrl || "";
+    const resolvedUrl = storedUrl.startsWith("/") ? `${nativeApiOrigin}${storedUrl}` : storedUrl;
+    if (!resolvedUrl) return;
+    if (archivedActionPlanPdf.dataset.actionPlanPdf === "download") {
+      const link = document.createElement("a");
+      link.href = resolvedUrl;
+      link.download = archivedActionPlanPdf.dataset.pdfName || "plano-de-acao.pdf";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } else {
+      window.open(resolvedUrl, "_blank", "noopener,noreferrer");
+    }
     return;
   }
 
@@ -10264,6 +10348,28 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  const passwordForm = event.target.closest("[data-password-change-form]");
+  if (passwordForm) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(passwordForm));
+    if (values.password !== values.confirmation) {
+      setOfflineNotice({ phase: "error", message: "As senhas não coincidem." });
+      return;
+    }
+    const submitButton = passwordForm.querySelector("button[type=submit]");
+    if (submitButton) submitButton.disabled = true;
+    accessRequest("password", { method: "POST", body: JSON.stringify(values) })
+      .then(() => {
+        passwordModalOpen = false;
+        setOfflineNotice({ phase: "success", message: "Senha alterada com sucesso. Entre novamente para continuar." });
+        render({ skipSave: true });
+      })
+      .catch((error) => {
+        if (submitButton) submitButton.disabled = false;
+        setOfflineNotice({ phase: "error", message: error.message });
+      });
+    return;
+  }
   const calendarForm = event.target.closest("[data-calendar-schedule-form]");
   if (calendarForm) {
     event.preventDefault();
