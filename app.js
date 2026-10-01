@@ -4539,7 +4539,7 @@ function isCurrentMonthlyReport(report) {
   );
 }
 
-function prepareReportPdfWindow() {
+function prepareReportPdfWindow(label = "Abrindo relatório...") {
   const pdfWindow = window.open("", "_blank");
   if (!pdfWindow) return null;
   pdfWindow.document.open();
@@ -4551,12 +4551,21 @@ function prepareReportPdfWindow() {
         <title>Abrindo relatório</title>
       </head>
       <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#10264e;font:600 15px Arial,sans-serif">
-        Abrindo relatório...
+        <div style="text-align:center"><strong data-pdf-progress-label>${escapeHtml(label)}</strong><small data-pdf-progress-detail style="display:block;margin-top:8px;color:#60728a;font:400 12px Arial,sans-serif"></small></div>
       </body>
     </html>
   `);
   pdfWindow.document.close();
   return pdfWindow;
+}
+
+function updatePreparedPdfWindow(targetWindow, label, detail = "") {
+  try {
+    const labelNode = targetWindow?.document?.querySelector("[data-pdf-progress-label]");
+    const detailNode = targetWindow?.document?.querySelector("[data-pdf-progress-detail]");
+    if (labelNode) labelNode.textContent = label;
+    if (detailNode) detailNode.textContent = detail;
+  } catch {}
 }
 
 function ensureReportPdfLibrary() {
@@ -4743,6 +4752,34 @@ function openReportPdf(targetWindow = null, options = {}) {
     });
 }
 
+async function prepareActionPlanPdfImages(root) {
+  const images = Array.from(root.querySelectorAll(".action-plan-source-photo img, .action-plan-response-evidence img"));
+  for (const image of images) {
+    if (!image.complete) await new Promise((resolve) => {
+      image.onload = resolve;
+      image.onerror = resolve;
+    });
+    if (!image.naturalWidth || !image.naturalHeight) continue;
+    const rect = image.getBoundingClientRect();
+    const targetWidth = Math.min(900, Math.max(380, Math.ceil(rect.width * 2)));
+    const targetHeight = Math.max(1, Math.round(targetWidth * image.naturalHeight / image.naturalWidth));
+    if (image.naturalWidth <= targetWidth && image.naturalHeight <= targetHeight) continue;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const context = canvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, targetWidth, targetHeight);
+      context.drawImage(image, 0, 0, targetWidth, targetHeight);
+      image.src = canvas.toDataURL("image/jpeg", 0.86);
+      await image.decode?.().catch(() => {});
+    } catch {
+      // Mantém a imagem original quando o navegador impede a conversão local.
+    }
+  }
+}
+
 function actionPlanPdfFilename(plan) {
   const code = String(plan?.publicCode || plan?.id || "plano-de-acao")
     .normalize("NFD")
@@ -4786,11 +4823,12 @@ function actionPlanPrintFallback(targetWindow, plan) {
   printWindow.document.close();
 }
 
-async function openActionPlanPdf(plan, targetWindow = null) {
+async function openActionPlanPdf(plan, targetWindow = null, options = {}) {
   const documentRoot = document.querySelector(".action-plan-document");
   if (!documentRoot) throw new Error("Plano de ação não encontrado para gerar o PDF.");
 
   try {
+    updatePreparedPdfWindow(targetWindow, "Carregando o gerador do PDF...", "Isso acontece apenas na primeira abertura.");
     await ensureReportPdfLibrary();
     const holder = document.createElement("div");
     holder.className = "action-plan-pdf-render-root";
@@ -4800,7 +4838,9 @@ async function openActionPlanPdf(plan, targetWindow = null) {
     document.body.appendChild(holder);
 
     try {
+      updatePreparedPdfWindow(targetWindow, "Preparando as evidências...", "Otimizando as fotos para o documento.");
       await waitForReportImages(clone);
+      await prepareActionPlanPdfImages(clone);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
       const filename = actionPlanPdfFilename(plan);
@@ -4830,11 +4870,12 @@ async function openActionPlanPdf(plan, targetWindow = null) {
 
       let cursorY = margin;
       let previousBottom = rootRect.top;
-      for (const section of sections) {
+      for (const [sectionIndex, section] of sections.entries()) {
+        updatePreparedPdfWindow(targetWindow, "Gerando o plano de ação...", `Etapa ${sectionIndex + 1} de ${sections.length}`);
         const sectionRect = section.getBoundingClientRect();
         const gap = Math.max(0, sectionRect.top - previousBottom) * mmPerPixel;
         const canvas = await window.html2canvas(section, {
-          scale: 1.5,
+          scale: 1.35,
           useCORS: true,
           backgroundColor: "#ffffff",
           scrollX: 0,
@@ -4866,45 +4907,29 @@ async function openActionPlanPdf(plan, targetWindow = null) {
         previousBottom = sectionRect.bottom;
       }
 
+      updatePreparedPdfWindow(targetWindow, "Finalizando o PDF...", filename);
       const pdfBlob = pdf.output("blob");
       const namedPdf = typeof File === "function"
         ? new File([pdfBlob], filename, { type: "application/pdf" })
         : pdfBlob;
+      if (options.mode === "download") {
+        pdf.save(filename);
+        return;
+      }
+
       const pdfUrl = URL.createObjectURL(namedPdf);
-      const pdfWindow = targetWindow || window.open("", "_blank");
-      if (pdfWindow) {
-        pdfWindow.document.open();
-        pdfWindow.document.write(`
-          <!doctype html>
-          <html lang="pt-BR">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <title>${filename}</title>
-              <style>
-                * { box-sizing: border-box; }
-                html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #e8edf3; font-family: Arial, sans-serif; }
-                header { height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; color: #fff; background: #0b3762; }
-                strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                a { flex: 0 0 auto; padding: 9px 14px; border-radius: 6px; color: #0b3762; background: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
-                iframe { display: block; width: 100%; height: calc(100% - 54px); border: 0; background: #fff; }
-              </style>
-            </head>
-            <body>
-              <header><strong>${filename}</strong><a href="${pdfUrl}" download="${filename}">Baixar PDF</a></header>
-              <iframe src="${pdfUrl}" title="${filename}"></iframe>
-            </body>
-          </html>
-        `);
-        pdfWindow.document.close();
-      } else {
+      const pdfWindow = targetWindow || window.open(pdfUrl, "_blank");
+      if (pdfWindow && targetWindow) {
+        targetWindow.location.replace(pdfUrl);
+      } else if (!pdfWindow) {
         pdf.save(filename);
       }
-      setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 10 * 60 * 1000);
     } finally {
       holder.remove();
     }
   } catch (error) {
+    if (options.mode === "download") throw error;
     actionPlanPrintFallback(targetWindow, plan);
   }
 }
@@ -7826,7 +7851,7 @@ function planningPlanPreview() {
       <div class="action-plan-preview-toolbar">
         <button class="fichario-sub-action" data-close-action-plan-preview type="button">${svgIcon("arrow", "is-back")} Voltar aos planos</button>
         <span class="planning-status is-${statusTone}">${escapeHtml(statusLabel)}</span>
-        ${plan.status === "approved" ? `<button class="fichario-sub-action" data-print-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("document")} Abrir PDF</button>` : ""}
+        ${plan.status === "approved" ? `<div class="action-plan-pdf-actions"><button class="fichario-sub-action" data-print-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("externalLink")} Abrir PDF</button><button class="fichario-sub-action" data-download-action-plan="${escapeHtml(plan.id)}" type="button">${svgIcon("document")} Baixar PDF</button></div>` : ""}
       </div>
       ${responsibleView ? `<div class="action-plan-editing-note"><strong>Plano disponível para resposta</strong><span>${acknowledgement ? "Ciência confirmada. Preencha as correções e evidências de cada NC." : "Confirme a ciência para liberar o preenchimento."}</span></div>` : isDraft ? `<div class="action-plan-editing-note"><strong>Modo de edição do auditor</strong><span>Edite somente os campos “Observação do auditor” e “Ação orientada”. Após o envio, o plano será bloqueado.</span></div>` : `<div class="action-plan-locked-note">${svgIcon("shield")}<span><strong>Documento bloqueado para edição</strong><small>${hasResponse ? "Devolutiva assinada pelo responsável e disponível para decisão." : "Plano já enviado ao responsável. Nenhum conteúdo pode ser alterado."}</small></span></div>`}
       <article class="action-plan-document">
@@ -9136,6 +9161,7 @@ document.addEventListener("click", async (event) => {
     state.planningDecisionModal = false;
     if (isAreaResponsible() && !state.actionPlanAcknowledgements?.[plan.id]) state.actionPlanConsentId = plan.id;
     render();
+    if (plan.status === "approved") ensureReportPdfLibrary().catch(() => {});
     requestAnimationFrame(() => document.querySelector(".action-plan-preview-shell")?.scrollIntoView({ block: "start" }));
     return;
   }
@@ -9298,12 +9324,31 @@ document.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-print-action-plan]");
     const plan = planningActionRows().find((row) => row.id === button.dataset.printActionPlan);
     if (!plan || plan.status !== "approved") return;
-    const pdfWindow = prepareReportPdfWindow();
+    const pdfWindow = prepareReportPdfWindow("Preparando plano de ação...");
     openActionPlanPdf(plan, pdfWindow).catch((error) => {
       if (pdfWindow) pdfWindow.close();
       setPlanningNotice(error.message || "Não foi possível gerar o PDF do plano de ação.");
       render();
     });
+    return;
+  }
+
+  if (event.target.closest("[data-download-action-plan]")) {
+    const button = event.target.closest("[data-download-action-plan]");
+    const plan = planningActionRows().find((row) => row.id === button.dataset.downloadActionPlan);
+    if (!plan || plan.status !== "approved") return;
+    const originalMarkup = button.innerHTML;
+    button.disabled = true;
+    button.textContent = "Gerando PDF...";
+    try {
+      await openActionPlanPdf(plan, null, { mode: "download" });
+    } catch (error) {
+      setPlanningNotice(error.message || "Não foi possível baixar o PDF do plano de ação.");
+      render();
+      return;
+    }
+    button.disabled = false;
+    button.innerHTML = originalMarkup;
     return;
   }
 

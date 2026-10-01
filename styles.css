@@ -2664,6 +2664,12 @@ h3 {
   margin-right: auto;
 }
 
+.action-plan-pdf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .action-plan-preview-toolbar .is-back svg {
   transform: rotate(180deg);
 }
@@ -3256,7 +3262,7 @@ h3 {
   .action-plan-preview-shell { padding: 8px; }
   .action-plan-preview-toolbar { flex-wrap: wrap; }
   .action-plan-preview-toolbar .planning-status { margin-right: 0; }
-  .action-plan-preview-toolbar .fichario-sub-action:last-child { margin-left: auto; }
+  .action-plan-preview-toolbar .action-plan-pdf-actions { margin-left: auto; }
   .action-plan-doc-header { padding: 11px 14px; }
   .action-plan-brand img { width: 94px; height: 32px; }
   .action-plan-brand span { display: none; }
