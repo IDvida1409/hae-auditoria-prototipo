@@ -4748,8 +4748,7 @@ function actionPlanPdfFilename(plan) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
+    .replace(/^-+|-+$/g, "");
   return `${code || "plano-de-acao"}.pdf`;
 }
 
@@ -4803,39 +4802,104 @@ async function openActionPlanPdf(plan, targetWindow = null) {
     try {
       await waitForReportImages(clone);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const canvas = await window.html2canvas(clone, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: holder.scrollWidth,
-        windowHeight: holder.scrollHeight
-      });
       const pdf = new window.jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const filename = actionPlanPdfFilename(plan);
+      const documentTitle = filename.replace(/\.pdf$/i, "");
+      pdf.setProperties({
+        title: documentTitle,
+        subject: `Plano de ação - ${plan?.area?.name || "Área auditada"}`,
+        author: plan?.auditorName || "IDAuditor",
+        creator: "IDAuditor"
+      });
       const margin = 8;
-      const availableWidth = pdf.internal.pageSize.getWidth() - margin * 2;
-      const availableHeight = pdf.internal.pageSize.getHeight() - margin * 2;
-      const pagePixelHeight = Math.floor(canvas.width * (availableHeight / availableWidth));
-      let sourceY = 0;
-      let pageIndex = 0;
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const availableWidth = pdfWidth - margin * 2;
+      const availableHeight = pdfHeight - margin * 2;
+      const rootRect = clone.getBoundingClientRect();
+      const mmPerPixel = availableWidth / rootRect.width;
+      const sections = [];
 
-      while (sourceY < canvas.height) {
-        const sliceHeight = Math.min(pagePixelHeight, canvas.height - sourceY);
-        const pageCanvas = document.createElement("canvas");
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-        pageCanvas.getContext("2d").drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        if (pageIndex) pdf.addPage("a4", "portrait");
-        const imageHeight = availableWidth * (sliceHeight / canvas.width);
-        pdf.addImage(pageCanvas.toDataURL("image/jpeg", 0.96), "JPEG", margin, margin, availableWidth, imageHeight, undefined, "FAST");
-        sourceY += sliceHeight;
-        pageIndex += 1;
+      for (const child of clone.children) {
+        if (child.classList.contains("action-plan-nc-list")) {
+          sections.push(...child.querySelectorAll(":scope > .action-plan-nc-card"));
+        } else {
+          sections.push(child);
+        }
       }
 
-      const pdfUrl = URL.createObjectURL(pdf.output("blob"));
-      if (targetWindow) targetWindow.location.href = pdfUrl;
-      else window.open(pdfUrl, "_blank");
+      let cursorY = margin;
+      let previousBottom = rootRect.top;
+      for (const section of sections) {
+        const sectionRect = section.getBoundingClientRect();
+        const gap = Math.max(0, sectionRect.top - previousBottom) * mmPerPixel;
+        const canvas = await window.html2canvas(section, {
+          scale: 1.5,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: holder.scrollWidth,
+          windowHeight: Math.max(section.scrollHeight, sectionRect.height)
+        });
+        let imageWidth = sectionRect.width * mmPerPixel;
+        let imageHeight = sectionRect.height * mmPerPixel;
+        let imageX = margin + Math.max(0, sectionRect.left - rootRect.left) * mmPerPixel;
+
+        if (imageHeight > availableHeight) {
+          const fitRatio = availableHeight / imageHeight;
+          imageWidth *= fitRatio;
+          imageHeight = availableHeight;
+          imageX = (pdfWidth - imageWidth) / 2;
+        }
+
+        const proposedY = cursorY + gap;
+        if (proposedY + imageHeight > pdfHeight - margin && cursorY > margin) {
+          pdf.addPage("a4", "portrait");
+          cursorY = margin;
+        } else {
+          cursorY = proposedY;
+        }
+
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.94), "JPEG", imageX, cursorY, imageWidth, imageHeight, undefined, "FAST");
+        cursorY += imageHeight;
+        previousBottom = sectionRect.bottom;
+      }
+
+      const pdfBlob = pdf.output("blob");
+      const namedPdf = typeof File === "function"
+        ? new File([pdfBlob], filename, { type: "application/pdf" })
+        : pdfBlob;
+      const pdfUrl = URL.createObjectURL(namedPdf);
+      const pdfWindow = targetWindow || window.open("", "_blank");
+      if (pdfWindow) {
+        pdfWindow.document.open();
+        pdfWindow.document.write(`
+          <!doctype html>
+          <html lang="pt-BR">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>${filename}</title>
+              <style>
+                * { box-sizing: border-box; }
+                html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #e8edf3; font-family: Arial, sans-serif; }
+                header { height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; color: #fff; background: #0b3762; }
+                strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                a { flex: 0 0 auto; padding: 9px 14px; border-radius: 6px; color: #0b3762; background: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
+                iframe { display: block; width: 100%; height: calc(100% - 54px); border: 0; background: #fff; }
+              </style>
+            </head>
+            <body>
+              <header><strong>${filename}</strong><a href="${pdfUrl}" download="${filename}">Baixar PDF</a></header>
+              <iframe src="${pdfUrl}" title="${filename}"></iframe>
+            </body>
+          </html>
+        `);
+        pdfWindow.document.close();
+      } else {
+        pdf.save(filename);
+      }
       setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
     } finally {
       holder.remove();
