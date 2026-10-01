@@ -5435,7 +5435,8 @@ function reportEvidenceImageForQuestion(row) {
 function reportEvidenceGrid(area) {
   let rows = reportNcRows(area, 4).filter((row) => row.evidenceFileId);
   const isLocalPreview = ["localhost", "127.0.0.1"].includes(location.hostname) && new URLSearchParams(location.search).get("preview");
-  if (!rows.length && isLocalPreview && area.id === "cozinha-catering") {
+  const isExternalReportReview = location.pathname.toLowerCase().endsWith("/report-review.html");
+  if (!rows.length && (isLocalPreview || isExternalReportReview) && area.id === "cozinha-catering") {
     const previewEvidence = {
       20: "assets/report-evidence-catering-1.png",
       10: "assets/report-evidence-catering-2.png",
