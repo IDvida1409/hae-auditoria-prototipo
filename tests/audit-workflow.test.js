@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 const resetMigration = fs.readFileSync(path.join(__dirname, "..", "migrations", "019_reset_operational_data_for_field_test.sql"), "utf8");
+const masterMigration = fs.readFileSync(path.join(__dirname, "..", "migrations", "023_master_user_visibility.sql"), "utf8");
 
 test("auditorias de subáreas são iniciadas individualmente", () => {
   assert.doesNotMatch(source, /data-start-audit-group/);
@@ -47,4 +48,16 @@ test("a limpeza de campo apaga somente dados operacionais", () => {
   assert.doesNotMatch(resetMigration, /truncate table[\s\S]*app_users/i);
   assert.doesNotMatch(resetMigration, /truncate table[\s\S]*audit_areas/i);
   assert.doesNotMatch(resetMigration, /truncate table[\s\S]*checklists/i);
+});
+
+test("usuário master é persistido sem alterar a limpeza operacional", () => {
+  assert.match(masterMigration, /add column if not exists is_master boolean/i);
+  assert.match(masterMigration, /is_master=true/i);
+  assert.doesNotMatch(masterMigration, /truncate table[\s\S]*app_users/i);
+
+  const fieldReset = fs.readFileSync(path.join(__dirname, "..", "migrations", "024_reset_field_test_operational_data.sql"), "utf8");
+  assert.match(fieldReset, /action_plan_documents/);
+  assert.match(fieldReset, /audit_cycles/);
+  assert.doesNotMatch(fieldReset, /truncate table[\s\S]*reports/i);
+  assert.doesNotMatch(fieldReset, /truncate table[\s\S]*stored_files/i);
 });

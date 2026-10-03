@@ -141,7 +141,10 @@ async function main() {
     assert.equal(reset.response.status, 200);
     assert.match(reset.data.temporaryCode, /^[A-HJ-NP-Z2-9]{10}$/);
     assert.equal((await access("login", { username: "access.test", password: finalPassword })).response.status, 401);
-    assert.equal((await access("login", { username: "access.test", password: reset.data.temporaryCode })).data.user.must_change_password, true);
+    const resetLogin = await access("login", { username: "access.test", password: reset.data.temporaryCode });
+    assert.equal(resetLogin.data.passwordResetRequired, true);
+    assert.equal(resetLogin.data.user.must_change_password, false);
+    assert.equal(resetLogin.data.user.password_reset_pending, true);
     const csrf = await fetch(base + "/api/access/users", { method: "POST", headers: { cookie: accessLogin.cookie, origin: "https://untrusted.test", "content-type": "application/json" }, body: "{}" });
     assert.equal(csrf.status, 403);
     assert.equal((await access("logout", {}, accessLogin.cookie)).response.status, 200);

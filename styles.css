@@ -13756,6 +13756,11 @@ h3 {
 .fichario-user-area-field { display: grid; gap: 5px; }
 .fichario-user-area-field label { display: grid; gap: 7px; color: var(--ink-600); font-size: 12px; font-weight: 590; }
 .fichario-user-area-field select { min-height: 40px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-800); background: #fff; font-size: 13px; }
+.master-access-toggle { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0 6px; padding: 11px 13px; border: 1px solid #d8e3f1; border-radius: 8px; background: #f7faff; color: var(--ink-700); }
+.master-access-toggle input { margin-top: 2px; accent-color: var(--blue-700); }
+.master-access-toggle span { display: grid; gap: 3px; }
+.master-access-toggle strong { font-size: 13px; }
+.master-access-toggle small { color: var(--ink-500); font-size: 11px; font-weight: 450; }
 .fichario-area-assignment-hint { display: block; margin-top: 7px; color: var(--blue-700); font-size: 12px; }
 .fichario-subarea-builder { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 .fichario-subarea-builder h3 { margin: 0; color: var(--ink-950); font-size: 15px; font-weight: 620; }

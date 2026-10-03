@@ -618,63 +618,7 @@ async function handleApi(request, response, url) {
   }
 
   if (url.pathname === "/api/auth/login") {
-    if (request.method !== "POST") {
-      methodNotAllowed(response);
-      return true;
-    }
-    try {
-      const pool = await getPool();
-      if (!requireDatabase(response, pool)) return true;
-      const body = await readJsonBody(request);
-      const email = String(body.email || "").trim().toLowerCase();
-      if (!email) {
-        sendJson(response, 400, { error: "E-mail obrigatório" });
-        return true;
-      }
-      const result = await pool.query(
-        `
-          select id, unit_id, full_name, email, role, platform_scope, active
-          from app_users
-          where lower(email) = lower($1)
-            and active = true
-          limit 1
-        `,
-        [email]
-      );
-      if (!result.rows[0]) {
-        sendJson(response, 401, { error: "Usuário não encontrado ou inativo" });
-        return true;
-      }
-      const token = newToken("sess");
-      const session = await pool.query(
-        `
-          insert into user_sessions (
-            user_id,
-            token_hash,
-            ip_address,
-            user_agent,
-            expires_at,
-            last_seen_at
-          )
-          values ($1, $2, $3, $4, now() + interval '12 hours', now())
-          returning id, user_id, expires_at, created_at
-        `,
-        [
-          result.rows[0].id,
-          hashToken(token),
-          requestIp(request),
-          request.headers["user-agent"] || null
-        ]
-      );
-      sendJson(response, 200, {
-        user: result.rows[0],
-        session: session.rows[0],
-        token,
-        tokenType: "bearer"
-      });
-    } catch (error) {
-      sendJson(response, 500, { error: error.message || "Erro no login" });
-    }
+    sendJson(response, 410, { error: "Esta rota de login foi desativada. Use /api/access/login." });
     return true;
   }
 
@@ -1442,6 +1386,7 @@ async function handleApi(request, response, url) {
         return true;
       }
       const nextStatus = body.decision === "approved" ? "approved" : body.allowResubmission ? "reopened" : "rejected";
+      let actionPlanPdfJob = null;
       const client = await pool.connect();
       let plan;
       let event;
@@ -1501,7 +1446,6 @@ async function handleApi(request, response, url) {
            where id=coalesce($1,(select last_feedback_id from action_plans where id=$5))`,
           [body.feedbackId || null, body.decision, user.id, body.justification || null, planReviewMatch.id]
         );
-        let actionPlanPdfJob = null;
         if (plan?.action_plan_document_id) {
           const updatedDocument = await client.query(
             `update action_plan_documents d set status=case
@@ -1962,7 +1906,10 @@ const reportTimer = setInterval(async () => {
       if (recovered.length) console.log(`Relatórios recuperados para geração: ${recovered.length}`);
       if (recoveredActionPlans.length) console.log(`Planos de ação recuperados para geração: ${recoveredActionPlans.length}`);
     }
-    await reportWorker.processNext(pool);
+    const processedJob = await reportWorker.processNext(pool);
+    if (processedJob && ["queued", "failed"].includes(processedJob.status)) {
+      console.error(`Worker de relatorios: job ${processedJob.id} ${processedJob.status}: ${processedJob.error_message || "sem detalhe"}`);
+    }
   } catch (error) { console.error("Worker de relatorios:", error.message); }
   finally { reportWorkerRunning = false; }
 }, 3000);

@@ -462,6 +462,10 @@ async function loadAccessUsers() {
 }
 
 async function loadAccessNotifications() {
+  if (currentAccessUser?.is_master) {
+    accessNotifications = [];
+    return;
+  }
   const data = await accessRequest("notifications").catch(() => ({ notifications: [] }));
   accessNotifications = [...(data.notifications || [])]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -7318,6 +7322,7 @@ function ficharioUserEditor(user = null) {
         <label><span>Login de acesso</span><input name="username" value="${escapeHtml(user?.username || "")}" placeholder="nome.sobrenome" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,63}" required /><div class="username-suggestions" data-username-suggestions hidden></div></label>
         <label><span>Perfil</span><select name="role" required>${Object.entries(accessRoleLabels).map(([id, label]) => `<option value="${id}" ${user?.role === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
       </div>
+      ${currentAccessUser?.is_master ? `<label class="master-access-toggle"><input name="isMaster" type="checkbox" ${user?.is_master ? "checked" : ""} /><span><strong>Acesso reservado</strong><small>Fica oculto para administradores comuns e não recebe notificações operacionais.</small></span></label>` : ""}
       <div class="fichario-user-area-field"><label><span>Área vinculada</span>${customSettingsSelect("areaGroupIds", [{ value: "", label: "Selecionar área", areaCount: 0 }, ...areaChoices], selectedArea, { searchable: true })}</label><small class="fichario-area-assignment-hint" data-area-assignment-hint>Selecione uma área para ver a regra de atribuição.</small></div>
     </form>
   </div>`;
@@ -10428,6 +10433,7 @@ document.addEventListener("submit", (event) => {
   submit.disabled = true;
   const formData = new FormData(form);
   const body = Object.fromEntries(formData);
+  body.isMaster = form.querySelector('[name="isMaster"]')?.checked === true;
   body.areaIds = String(formData.get("areaGroupIds") || "").split(",").filter(Boolean);
   const editing = Boolean(form.dataset.userId);
   const path = editing ? `users/${form.dataset.userId}` : "users";
@@ -10573,7 +10579,7 @@ function applyLocalPreviewActionPlans() {
       : null;
     if (["admin", "responsible"].includes(localPreviewRole)) {
       currentAccessUser = localPreviewRole === "admin"
-        ? { id: "local-admin", username: "preview.admin", full_name: "David Souza", role: "admin", area_slugs: [] }
+        ? { id: "local-admin", username: "preview.admin", full_name: "David Souza", role: "admin", is_master: true, area_slugs: [] }
         : { id: "local-responsible", username: "preview.responsavel", full_name: "Responsável", role: "area_responsible", area_slugs: ["cozinha-catering"] };
       applyLocalPreviewScores();
       applyLocalPreviewActionPlans();
