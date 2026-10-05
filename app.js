@@ -220,11 +220,7 @@ const REPORT_LAYOUT_VERSION = "approved-layout-v5-jspdf";
 
 const accessRoleLabels = {
   admin: "Administrador",
-  quality: "Qualidade",
-  auditor: "Auditor",
-  area_responsible: "Responsável da área",
-  restaurant_responsible: "Responsável do restaurante",
-  viewer: "Visualizador"
+  area_responsible: "Responsável da área"
 };
 
 const nativeApiOrigin = window.Capacitor?.isNativePlatform?.() ? "https://hae-auditoria-prototipo.onrender.com" : "";
@@ -384,7 +380,7 @@ function normalizeAccessUser(user) {
     ...user,
     name: user.full_name,
     profile: accessRoleLabels[user.role] || user.role,
-    area: user.area_name || (["admin", "quality"].includes(user.role) ? "Todas as áreas" : "Área a definir"),
+    area: user.area_name || (user.role === "admin" ? "Todas as áreas" : "Área a definir"),
     assignedAreaIds: Array.isArray(user.assigned_area_ids) ? user.assigned_area_ids : [],
     status: user.active ? (user.reset_pending ? "Reset solicitado" : user.must_change_password ? "Primeiro acesso" : "Ativo") : "Inativo"
   };
@@ -750,10 +746,8 @@ window.addEventListener("online", () => {
 });
 
 const settingsPermissionProfiles = [
-  { profile: "Qualidade/Admin", scope: "Acesso total", actions: "Usuários, metas, auditorias, relatórios, planos e aprovações." },
-  { profile: "Auditor", scope: "Execução da auditoria", actions: "Iniciar auditoria, responder checklist, anexar evidências, gerar NCs e finalizar relatório." },
-  { profile: "Responsável da área", scope: "Área vinculada", actions: "Visualizar relatório, responder plano de ação, anexar evidência e acompanhar retorno." },
-  { profile: "Visualizador", scope: "Somente consulta", actions: "Consultar indicadores, relatórios e histórico sem alterar registros." }
+  { profile: "Administrador", scope: "Acesso administrativo", actions: "Usuários, áreas, auditorias, relatórios, planos e aprovações." },
+  { profile: "Responsável da área", scope: "Área vinculada", actions: "Visualizar relatórios, responder planos de ação, anexar evidências e acompanhar retornos." }
 ];
 
 const settingsGoalRules = [
@@ -2419,7 +2413,7 @@ function globalSearchResults(query) {
 function topbar() {
   const displayName = currentAccessUser?.full_name || "Usuário";
   const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "US";
-  const roleLabel = accessRoleLabels[currentAccessUser?.role] || "Acesso offline";
+  const roleLabel = currentAccessUser?.role === "admin" ? "Administrador" : "";
   const unreadNotifications = accessNotifications.filter((item) => !item.read_at).length;
   const searchResults = globalSearchResults(globalSearchQuery);
   return `
@@ -2447,7 +2441,7 @@ function topbar() {
       <div class="user-mini" data-user-menu>
         <button class="user-menu-trigger" type="button" data-user-menu-trigger aria-expanded="false">
           <span class="user-avatar">${escapeHtml(initials)}</span>
-          <span class="user-name-block"><strong>${escapeHtml(displayName)}</strong><span>${escapeHtml(roleLabel)}</span></span>
+          <span class="user-name-block"><strong>${escapeHtml(displayName)}</strong>${roleLabel ? `<span>${escapeHtml(roleLabel)}</span>` : ""}</span>
           ${icons.chevron}
         </button>
         <div class="user-menu hidden" data-user-menu-panel>
@@ -7040,7 +7034,7 @@ function settingsNewUserForm() {
         <div class="note-field"><label>Login de acesso</label><input value="david.souza" /></div>
         <div class="note-field"><label>Senha provisória</label><input value="Idvida@2026" /></div>
         <div class="note-field"><label>Área vinculada</label><select><option>Todas as áreas</option>${areaData.map((area) => `<option>${escapeHtml(area.name)}</option>`).join("")}</select></div>
-        <div class="note-field"><label>Perfil/permissão</label><select><option>Auditor</option><option>Qualidade/Admin</option><option>Responsável da área</option><option>Visualizador</option></select></div>
+        <div class="note-field"><label>Perfil/permissão</label><select><option>Administrador</option><option>Responsável da área</option></select></div>
         <div class="settings-login-suggestions">
           <span>Logins disponíveis:</span>
           <button type="button">david.souza</button>
