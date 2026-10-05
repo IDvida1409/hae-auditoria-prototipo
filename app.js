@@ -1003,6 +1003,7 @@ function defaultState() {
     openTableSection: "recebimento",
     settingsSection: "rules",
     settingsChecklistAreaId: "",
+    settingsChecklistBlockIndex: 0,
     settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
@@ -1064,6 +1065,7 @@ function persistableState(source = state) {
     checklistPage: source.checklistPage,
     openTableSection: source.openTableSection,
     settingsSection: source.settingsSection,
+    settingsChecklistBlockIndex: Number.isInteger(source.settingsChecklistBlockIndex) ? source.settingsChecklistBlockIndex : 0,
     settingsUserView: source.settingsUserView,
     settingsRulesView: source.settingsRulesView,
     settingsUsersExpanded: source.settingsUsersExpanded,
@@ -7235,33 +7237,57 @@ function settingsChecklistAreaOptions() {
   return source.map((area) => `<option value="${escapeHtml(area.id)}" ${String(state.settingsChecklistAreaId) === String(area.id) ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("");
 }
 
+function checklistWeightValue(value, fallback = 1) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : String(fallback);
+}
+
+function settingsChecklistBlockOptions(checklist) {
+  return (checklist?.blocks || []).map((block, blockIndex) => `
+    <option value="${blockIndex}" ${Number(state.settingsChecklistBlockIndex) === blockIndex ? "selected" : ""}>
+      ${escapeHtml(`${blockIndex + 1}. ${block.title || "Bloco sem título"}`)}
+    </option>
+  `).join("");
+}
+
 function settingsChecklistQuestions(block, blockIndex) {
   return (block.questions || []).map((question, questionIndex) => `
-    <article class="settings-checklist-question" data-checklist-question="${blockIndex}:${questionIndex}">
-      <div class="settings-checklist-question-head">
-        <strong>Pergunta ${question.number || question.question_number || questionIndex + 1}</strong>
-        <button class="settings-soft-btn settings-danger-btn" data-checklist-remove-question="${blockIndex}:${questionIndex}" type="button">Remover</button>
-      </div>
-      <div class="settings-checklist-question-grid">
-        <label><span>Número</span><input type="number" min="1" name="question-number" value="${escapeHtml(question.number ?? question.question_number ?? questionIndex + 1)}" /></label>
-        <label class="settings-checklist-question-text"><span>Texto da pergunta</span><textarea name="question-text" rows="3" maxlength="4000">${escapeHtml(question.text ?? question.requirement_text ?? "")}</textarea></label>
-        <label><span>Peso</span><input type="number" min="0.01" max="100" step="0.01" name="question-weight" value="${escapeHtml(question.weight ?? 1)}" /></label>
+    <details class="settings-checklist-question">
+      <summary class="settings-checklist-question-summary">
+        <span class="settings-checklist-question-title"><strong>Pergunta ${question.number || question.question_number || questionIndex + 1}</strong><span>${escapeHtml(question.text ?? question.requirement_text ?? "Pergunta sem texto")}</span></span>
+        <span class="settings-checklist-question-summary-meta">Peso ${escapeHtml(checklistWeightValue(question.weight, 1))}</span>
+      </summary>
+      <div class="settings-checklist-question-body" data-checklist-question="${blockIndex}:${questionIndex}">
+        <div class="settings-checklist-question-head">
+          <strong>Editar pergunta</strong>
+          <button class="settings-soft-btn settings-danger-btn" data-checklist-remove-question="${blockIndex}:${questionIndex}" type="button">Remover</button>
+        </div>
+        <div class="settings-checklist-question-grid">
+          <label><span>Número</span><input type="number" min="1" name="question-number" value="${escapeHtml(question.number ?? question.question_number ?? questionIndex + 1)}" /></label>
+          <label class="settings-checklist-question-text"><span>Texto da pergunta</span><textarea name="question-text" rows="3" maxlength="4000">${escapeHtml(question.text ?? question.requirement_text ?? "")}</textarea></label>
+          <label><span>Peso da pergunta</span><input type="number" min="0.01" max="100" step="0.01" name="question-weight" value="${escapeHtml(checklistWeightValue(question.weight, 1))}" /><small>1 = peso normal</small></label>
         <label><span>Risco</span><select name="question-risk">${checklistRiskOptions(question.riskLevel ?? question.risk_level ?? "low")}</select></label>
         <label class="settings-checklist-reference"><span>Referência</span><input name="question-reference" maxlength="500" value="${escapeHtml(question.reference ?? question.legal_reference ?? "")}" placeholder="Ex.: Portaria SMS n. 2.619/2011" /></label>
         <label class="settings-checklist-evidence"><input type="checkbox" name="question-evidence" ${question.requiredEvidenceOnNc !== false && question.required_evidence_on_nc !== false ? "checked" : ""} /><span>Exigir evidência quando NC</span></label>
+        </div>
       </div>
-    </article>
+    </details>
   `).join("");
 }
 
 function settingsChecklistBlocks() {
   const checklist = settingsChecklistData?.checklist;
   if (!checklist) return `<div class="settings-empty-state">Selecione uma área para carregar o checklist.</div>`;
-  return (checklist.blocks || []).map((block, blockIndex) => `
+  const blocks = checklist.blocks || [];
+  if (!blocks.length) return `<div class="settings-empty-state">Esta área ainda não possui blocos.</div>`;
+  const blockIndex = Math.min(Math.max(Number(state.settingsChecklistBlockIndex) || 0, 0), blocks.length - 1);
+  const block = blocks[blockIndex];
+  state.settingsChecklistBlockIndex = blockIndex;
+  return `
     <section class="settings-checklist-block" data-checklist-block="${blockIndex}">
       <header class="settings-checklist-block-head">
         <label><span>Bloco ${blockIndex + 1}</span><input name="block-title" maxlength="250" value="${escapeHtml(block.title)}" /></label>
-        <label><span>Peso do bloco</span><input type="number" min="0.01" max="100" step="0.01" name="block-weight" value="${escapeHtml(block.weight ?? 1)}" /></label>
+        <label><span>Peso do bloco</span><input type="number" min="0.01" max="100" step="0.01" name="block-weight" value="${escapeHtml(checklistWeightValue(block.weight, 1))}" /></label>
         <button class="settings-soft-btn settings-danger-btn" data-checklist-remove-block="${blockIndex}" type="button">Remover bloco</button>
       </header>
       <div class="settings-checklist-question-list">
@@ -7269,7 +7295,7 @@ function settingsChecklistBlocks() {
       </div>
       <button class="settings-soft-btn" data-checklist-add-question="${blockIndex}" type="button">Adicionar pergunta</button>
     </section>
-  `).join("");
+  `;
 }
 
 function settingsChecklistPanel() {
@@ -7281,6 +7307,7 @@ function settingsChecklistPanel() {
       </div>
       <div class="settings-checklist-toolbar">
         <label><span>Área</span><select data-checklist-area>${settingsChecklistAreaOptions()}</select></label>
+        ${checklist ? `<label><span>Bloco</span><select data-checklist-block-select>${settingsChecklistBlockOptions(checklist)}</select></label>` : ""}
         ${checklist ? `<span class="settings-checklist-version">Versão ativa: ${escapeHtml(checklist.version_label || "Sem versão")}</span>` : ""}
       </div>
       ${settingsChecklistLoading ? '<div class="settings-empty-state">Carregando perguntas...</div>' : checklist ? `
@@ -7312,11 +7339,14 @@ async function loadSettingsChecklist(areaId = state.settingsChecklistAreaId) {
 function readSettingsChecklistForm() {
   const form = document.querySelector("[data-checklist-form]");
   if (!form || !settingsChecklistData?.checklist) return null;
-  const blocks = [...form.querySelectorAll("[data-checklist-block]")].map((blockNode, blockIndex) => ({
-    title: blockNode.querySelector('[name="block-title"]')?.value?.trim() || "",
+  const sourceBlocks = settingsChecklistData.checklist.blocks || [];
+  const visibleBlock = form.querySelector("[data-checklist-block]");
+  const selectedIndex = Number(visibleBlock?.dataset.checklistBlock ?? state.settingsChecklistBlockIndex);
+  const readBlock = (blockNode, sourceBlock, blockIndex) => ({
+    title: blockNode?.querySelector('[name="block-title"]')?.value?.trim() || sourceBlock?.title || "",
     displayOrder: blockIndex + 1,
-    weight: Number(blockNode.querySelector('[name="block-weight"]')?.value || 1),
-    questions: [...blockNode.querySelectorAll("[data-checklist-question]")].map((questionNode, questionIndex) => ({
+    weight: Number(blockNode?.querySelector('[name="block-weight"]')?.value || sourceBlock?.weight || 1),
+    questions: blockNode ? [...blockNode.querySelectorAll("[data-checklist-question]")].map((questionNode, questionIndex) => ({
       number: Number(questionNode.querySelector('[name="question-number"]')?.value || questionIndex + 1),
       text: questionNode.querySelector('[name="question-text"]')?.value?.trim() || "",
       weight: Number(questionNode.querySelector('[name="question-weight"]')?.value || 1),
@@ -7324,8 +7354,17 @@ function readSettingsChecklistForm() {
       reference: questionNode.querySelector('[name="question-reference"]')?.value?.trim() || "",
       requiredEvidenceOnNc: Boolean(questionNode.querySelector('[name="question-evidence"]')?.checked),
       allowedAnswers: ["C", "NC", "X"]
+    })) : (sourceBlock?.questions || []).map((question) => ({
+      number: Number(question.number ?? question.question_number),
+      text: question.text ?? question.requirement_text ?? "",
+      weight: Number(question.weight || 1),
+      riskLevel: question.riskLevel ?? question.risk_level ?? "low",
+      reference: question.reference ?? question.legal_reference ?? "",
+      requiredEvidenceOnNc: question.requiredEvidenceOnNc !== false && question.required_evidence_on_nc !== false,
+      allowedAnswers: ["C", "NC", "X"]
     }))
-  }));
+  });
+  const blocks = sourceBlocks.map((sourceBlock, blockIndex) => readBlock(blockIndex === selectedIndex ? visibleBlock : null, sourceBlock, blockIndex));
   return { blocks, versionLabel: form.querySelector('[name="version-label"]')?.value?.trim() || "" };
 }
 
@@ -9386,6 +9425,7 @@ document.addEventListener("click", async (event) => {
   if (addChecklistBlock) {
     updateSettingsChecklistDraft((checklist) => {
       checklist.blocks = [...(checklist.blocks || []), { title: "Novo bloco", displayOrder: (checklist.blocks || []).length + 1, weight: 1, questions: [] }];
+      state.settingsChecklistBlockIndex = checklist.blocks.length - 1;
     });
     return;
   }
@@ -9412,7 +9452,10 @@ document.addEventListener("click", async (event) => {
   const removeChecklistBlock = event.target.closest("[data-checklist-remove-block]");
   if (removeChecklistBlock) {
     const blockIndex = Number(removeChecklistBlock.dataset.checklistRemoveBlock);
-    updateSettingsChecklistDraft((checklist) => { checklist.blocks?.splice(blockIndex, 1); });
+    updateSettingsChecklistDraft((checklist) => {
+      checklist.blocks?.splice(blockIndex, 1);
+      state.settingsChecklistBlockIndex = Math.max(0, Math.min(state.settingsChecklistBlockIndex, (checklist.blocks?.length || 1) - 1));
+    });
     return;
   }
 
@@ -10490,7 +10533,14 @@ document.addEventListener("change", (event) => {
   const checklistArea = event.target.closest("[data-checklist-area]");
   if (checklistArea) {
     state.settingsChecklistAreaId = checklistArea.value;
+    state.settingsChecklistBlockIndex = 0;
     loadSettingsChecklist(checklistArea.value).finally(() => render());
+    return;
+  }
+  const checklistBlock = event.target.closest("[data-checklist-block-select]");
+  if (checklistBlock) {
+    state.settingsChecklistBlockIndex = Number(checklistBlock.value) || 0;
+    render();
     return;
   }
   const executiveScope = event.target.closest("[data-executive-scope]");
