@@ -178,6 +178,7 @@ const navItems = [
 
 const settingsSections = [
   { id: "rules", label: "Regras", icon: "target", description: "Metas, pontuação e padrão visual." },
+  { id: "checklists", label: "Perguntas por bloco", icon: "list", description: "Edite perguntas, pesos e blocos para as próximas auditorias." },
   { id: "areas", label: "Configurações de áreas", icon: "grid", description: "Áreas, subáreas, nomes e status para próximas auditorias." },
   { id: "new-area", label: "Nova área", icon: "grid", description: "Crie uma área e vincule subáreas existentes ou novas." }
 ];
@@ -185,6 +186,9 @@ const settingsSections = [
 let settingsUsers = [];
 let settingsInactiveUsers = [];
 let settingsAccessAreas = [];
+let settingsChecklistData = null;
+let settingsChecklistLoading = false;
+let settingsChecklistSaving = false;
 let currentAccessUser = null;
 let accessNotice = null;
 let accessNotifications = [];
@@ -848,6 +852,7 @@ const stateStorageKey = "hae-auditoria-state-v4";
 const monthLines = Object.fromEntries(months.map(([id]) => [id, null]));
 
 const checklistData = window.HAE_CHECKLIST_DATA || {};
+const runtimeChecklistData = {};
 
 const answerMeta = {
   C: { label: "Conforme", short: "C", color: "var(--green)" },
@@ -997,6 +1002,7 @@ function defaultState() {
     actionPlanNoticeQuestion: null,
     openTableSection: "recebimento",
     settingsSection: "rules",
+    settingsChecklistAreaId: "",
     settingsUserView: "new",
     settingsRulesView: "goals",
     settingsUsersExpanded: false,
@@ -1452,21 +1458,45 @@ function buildBackendQuestionMap(payload) {
     .trim()
     .toLocaleLowerCase("pt-BR");
   for (const backendArea of payload?.areas || []) {
-    const uiArea = checklistData[backendArea.slug];
     const backendChecklist = backendArea.checklist || (payload.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea.id));
-    const backendBlocks = backendChecklist?.blocks || [];
-    const backendBlocksByTitle = new Map(backendBlocks.map((block) => [normalizeBlockTitle(block.title), block]));
-    (uiArea?.blocks || []).forEach((uiBlock, blockIndex) => {
-      const backendBlock = backendBlocksByTitle.get(normalizeBlockTitle(uiBlock.title)) || backendBlocks[blockIndex];
-      if (!backendBlock) return;
-      const questionsByNumber = new Map((backendBlock.questions || []).map((question) => [Number(question.question_number), question.id]));
-      for (const question of uiBlock.questions || []) {
-        const backendId = questionsByNumber.get(Number(question.number));
-        if (backendId) mapping.set(`${backendArea.slug}:${question.id}`, backendId);
-      }
-    });
+    if (!backendChecklist) continue;
+    const uiChecklist = checklistData[backendArea.slug];
+    const runtimeChecklist = normalizeBackendChecklist(backendArea.slug, backendChecklist, uiChecklist, normalizeBlockTitle);
+    runtimeChecklistData[backendArea.slug] = runtimeChecklist;
+    runtimeChecklist.blocks.forEach((block) => block.questions.forEach((question) => {
+      mapping.set(`${backendArea.slug}:${question.id}`, question.backendId || question.id);
+    }));
   }
   backendQuestionIds = mapping;
+}
+
+function normalizeBackendChecklist(areaId, backendChecklist, fallbackChecklist = null, normalizeBlockTitle = (value) => String(value || "").toLowerCase()) {
+  const fallbackBlocks = fallbackChecklist?.blocks || [];
+  const blocks = (backendChecklist?.blocks || []).map((backendBlock, blockIndex) => {
+    const fallbackBlock = fallbackBlocks.find((block) => normalizeBlockTitle(block.title) === normalizeBlockTitle(backendBlock.title)) || fallbackBlocks[blockIndex];
+    const fallbackQuestions = fallbackBlock?.questions || [];
+    return {
+      id: backendBlock.id,
+      title: backendBlock.title,
+      weight: Number(backendBlock.weight || 1),
+      questions: (backendBlock.questions || []).map((backendQuestion) => {
+        const fallbackQuestion = fallbackQuestions.find((question) => Number(question.number) === Number(backendQuestion.question_number));
+        return {
+          id: fallbackQuestion?.id || `backend-${backendQuestion.id}`,
+          backendId: backendQuestion.id,
+          number: Number(backendQuestion.question_number),
+          text: backendQuestion.requirement_text,
+          reference: backendQuestion.legal_reference || "",
+          riskLevel: backendQuestion.risk_level || "low",
+          risk: Number(backendQuestion.weight || 1),
+          weight: Number(backendQuestion.weight || 1),
+          allowedAnswers: backendQuestion.answer_options || ["C", "NC", "X"],
+          requiredEvidenceOnNc: backendQuestion.required_evidence_on_nc !== false
+        };
+      })
+    };
+  });
+  return { sheetName: backendChecklist.name || "Checklist", totalQuestions: blocks.reduce((total, block) => total + block.questions.length, 0), blocks, checklistId: backendChecklist.id, areaId };
 }
 
 async function loadOfflineBootstrap() {
@@ -1771,6 +1801,7 @@ async function ensureLocalAudit(areaId, validateSession = false) {
   }
   const existing = localAuditFor(areaId);
   if (existing) {
+    await loadChecklistVersionForAudit(areaId, existing.checklistId).catch(() => {});
     const backendArea = (offlineBootstrap?.areas || []).find((area) => area.slug === areaId);
     const remote = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) &&
       auditIsEditableStatus(audit.status) && auditIsCurrentMonth(audit.started_at || audit.created_at));
@@ -1842,6 +1873,7 @@ async function continueOwnAuditOnThisDevice(areaId, remoteAudit, oldLocalAuditId
 async function resumeRemoteAudit(areaId, remoteAudit) {
   const detail = await operationalRequest(`audits/${remoteAudit.id}`);
   if (!auditIsEditableStatus(detail.audit?.status)) throw new Error("Esta auditoria já foi encerrada. Atualize a página.");
+  await loadChecklistVersionForAudit(areaId, detail.audit?.checklist_id);
   const reverseIds = new Map([...backendQuestionIds.entries()]
     .filter(([key]) => key.startsWith(`${areaId}:`))
     .map(([key, backendId]) => [String(backendId), key.slice(areaId.length + 1)]));
@@ -1881,6 +1913,7 @@ async function resumeRemoteAudit(areaId, remoteAudit) {
     localAuditId, remoteAuditId: detail.audit.id, areaId,
     checklistId: detail.audit.checklist_id, status: "in_progress", startedAt: detail.audit.started_at,
     ownerUserId: currentAccessUser?.id,
+    checklistSnapshot: runtimeChecklistData[areaId] || areaChecklist(areaId),
     reviewPending: detail.audit.status === "draft"
   };
   state.answers = { ...state.answers, [areaId]: answers };
@@ -1892,6 +1925,16 @@ async function resumeRemoteAudit(areaId, remoteAudit) {
   state.offlineAudits = { ...state.offlineAudits, [areaId]: audit };
   saveState();
   return audit;
+}
+
+async function loadChecklistVersionForAudit(areaId, checklistId) {
+  if (!checklistId || runtimeChecklistData[areaId]?.checklistId === checklistId) return;
+  const result = await operationalRequest(`checklists/${checklistId}`);
+  const normalized = normalizeBackendChecklist(areaId, result.checklist, checklistData[areaId] || checklistData[areaById(areaId)?.checklistSource]);
+  runtimeChecklistData[areaId] = normalized;
+  const next = new Map([...backendQuestionIds].filter(([key]) => !key.startsWith(`${areaId}:`)));
+  normalized.blocks.forEach((block) => block.questions.forEach((question) => next.set(`${areaId}:${question.id}`, question.backendId || question.id)));
+  backendQuestionIds = next;
 }
 
 async function createLocalAudit(areaId) {
@@ -1908,7 +1951,7 @@ async function createLocalAudit(areaId) {
     delete state.auditEvidenceFiles[areaId];
   }
   const localAuditId = window.crypto?.randomUUID?.() || `audit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString() };
+  const audit = { localAuditId, areaId, checklistId: backendChecklist.id, status: "in_progress", startedAt: new Date().toISOString(), checklistSnapshot: areaChecklist(areaId) };
   const result = await operationalRequest("audit-sessions", { method: "POST", body: JSON.stringify({
     areaId: backendArea.id, localAuditId, deviceUid: await window.HAE_OFFLINE.deviceUid(),
     source: document.body.classList.contains("android-app") ? "tablet_android" : "web"
@@ -2029,7 +2072,9 @@ function areaById(id) {
 function areaChecklist(areaOrId) {
   const areaId = typeof areaOrId === "string" ? areaOrId : areaOrId.id;
   const area = areaData.find((item) => item.id === areaId);
-  return checklistData[areaId] || checklistData[area?.checklistSource] || { sheetName: "", totalQuestions: 0, blocks: [] };
+  const auditSnapshot = state.offlineAudits?.[areaId]?.checklistSnapshot;
+  if (auditSnapshot && ["in_progress", "draft", "sync_pending", "sync_error"].includes(state.offlineAudits?.[areaId]?.status)) return auditSnapshot;
+  return runtimeChecklistData[areaId] || checklistData[areaId] || checklistData[area?.checklistSource] || { sheetName: "", totalQuestions: 0, blocks: [] };
 }
 
 function blocksForArea(areaOrId) {
@@ -7178,6 +7223,119 @@ function settingsRulesPanel() {
   `;
 }
 
+function checklistRiskOptions(selected) {
+  return [["low", "Baixo"], ["moderate", "Moderado"], ["medium", "Médio"], ["high", "Alto"], ["critical", "Crítico"]]
+    .map(([value, label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
+}
+
+function settingsChecklistAreaOptions() {
+  const source = settingsAccessAreas.length
+    ? settingsAccessAreas
+    : configuredOrganizationAreas().flatMap((group) => group.subareas.map(([id, name]) => ({ id, name, slug: id })));
+  return source.map((area) => `<option value="${escapeHtml(area.id)}" ${String(state.settingsChecklistAreaId) === String(area.id) ? "selected" : ""}>${escapeHtml(area.name)}</option>`).join("");
+}
+
+function settingsChecklistQuestions(block, blockIndex) {
+  return (block.questions || []).map((question, questionIndex) => `
+    <article class="settings-checklist-question" data-checklist-question="${blockIndex}:${questionIndex}">
+      <div class="settings-checklist-question-head">
+        <strong>Pergunta ${question.number || question.question_number || questionIndex + 1}</strong>
+        <button class="settings-soft-btn settings-danger-btn" data-checklist-remove-question="${blockIndex}:${questionIndex}" type="button">Remover</button>
+      </div>
+      <div class="settings-checklist-question-grid">
+        <label><span>Número</span><input type="number" min="1" name="question-number" value="${escapeHtml(question.number ?? question.question_number ?? questionIndex + 1)}" /></label>
+        <label class="settings-checklist-question-text"><span>Texto da pergunta</span><textarea name="question-text" rows="3" maxlength="4000">${escapeHtml(question.text ?? question.requirement_text ?? "")}</textarea></label>
+        <label><span>Peso</span><input type="number" min="0.01" max="100" step="0.01" name="question-weight" value="${escapeHtml(question.weight ?? 1)}" /></label>
+        <label><span>Risco</span><select name="question-risk">${checklistRiskOptions(question.riskLevel ?? question.risk_level ?? "low")}</select></label>
+        <label class="settings-checklist-reference"><span>Referência</span><input name="question-reference" maxlength="500" value="${escapeHtml(question.reference ?? question.legal_reference ?? "")}" placeholder="Ex.: Portaria SMS n. 2.619/2011" /></label>
+        <label class="settings-checklist-evidence"><input type="checkbox" name="question-evidence" ${question.requiredEvidenceOnNc !== false && question.required_evidence_on_nc !== false ? "checked" : ""} /><span>Exigir evidência quando NC</span></label>
+      </div>
+    </article>
+  `).join("");
+}
+
+function settingsChecklistBlocks() {
+  const checklist = settingsChecklistData?.checklist;
+  if (!checklist) return `<div class="settings-empty-state">Selecione uma área para carregar o checklist.</div>`;
+  return (checklist.blocks || []).map((block, blockIndex) => `
+    <section class="settings-checklist-block" data-checklist-block="${blockIndex}">
+      <header class="settings-checklist-block-head">
+        <label><span>Bloco ${blockIndex + 1}</span><input name="block-title" maxlength="250" value="${escapeHtml(block.title)}" /></label>
+        <label><span>Peso do bloco</span><input type="number" min="0.01" max="100" step="0.01" name="block-weight" value="${escapeHtml(block.weight ?? 1)}" /></label>
+        <button class="settings-soft-btn settings-danger-btn" data-checklist-remove-block="${blockIndex}" type="button">Remover bloco</button>
+      </header>
+      <div class="settings-checklist-question-list">
+        ${settingsChecklistQuestions(block, blockIndex) || '<div class="settings-collapsed-copy">Nenhuma pergunta neste bloco.</div>'}
+      </div>
+      <button class="settings-soft-btn" data-checklist-add-question="${blockIndex}" type="button">Adicionar pergunta</button>
+    </section>
+  `).join("");
+}
+
+function settingsChecklistPanel() {
+  const checklist = settingsChecklistData?.checklist;
+  return `
+    <div class="settings-panel settings-checklist-panel">
+      <div class="settings-panel-head">
+        <div><h2>Perguntas por bloco</h2><p>Edite a próxima versão do checklist. Auditorias já iniciadas continuam com as perguntas e pesos originais.</p></div>
+      </div>
+      <div class="settings-checklist-toolbar">
+        <label><span>Área</span><select data-checklist-area>${settingsChecklistAreaOptions()}</select></label>
+        ${checklist ? `<span class="settings-checklist-version">Versão ativa: ${escapeHtml(checklist.version_label || "Sem versão")}</span>` : ""}
+      </div>
+      ${settingsChecklistLoading ? '<div class="settings-empty-state">Carregando perguntas...</div>' : checklist ? `
+        <form data-checklist-form>
+          <div class="settings-checklist-notice">As alterações ficam em uma nova versão e só entram em auditorias iniciadas depois da publicação.</div>
+          <label class="settings-checklist-version-field"><span>Identificador da nova versão <small>(opcional)</small></span><input name="version-label" maxlength="80" placeholder="Ex.: revisão outubro/2026" /></label>
+          <div class="settings-checklist-block-list">${settingsChecklistBlocks()}</div>
+          <div class="settings-checklist-actions"><button class="settings-soft-btn" data-checklist-add-block type="button">Adicionar bloco</button><button class="settings-soft-btn settings-primary" data-checklist-publish type="button" ${settingsChecklistSaving ? "disabled" : ""}>${settingsChecklistSaving ? "Publicando..." : "Publicar nova versão"}</button></div>
+        </form>
+      ` : '<div class="settings-empty-state">Este ambiente ainda não possui um checklist ativo para esta área.</div>'}
+    </div>
+  `;
+}
+
+async function loadSettingsChecklist(areaId = state.settingsChecklistAreaId) {
+  if (currentAccessUser?.role !== "admin" || !areaId || location.protocol === "file:") return;
+  settingsChecklistLoading = true;
+  settingsChecklistData = null;
+  try {
+    settingsChecklistData = await operationalRequest(`checklists/manage?areaId=${encodeURIComponent(areaId)}`);
+    state.settingsChecklistAreaId = areaId;
+  } catch (error) {
+    accessNotice = { type: "error", text: error.message };
+  } finally {
+    settingsChecklistLoading = false;
+  }
+}
+
+function readSettingsChecklistForm() {
+  const form = document.querySelector("[data-checklist-form]");
+  if (!form || !settingsChecklistData?.checklist) return null;
+  const blocks = [...form.querySelectorAll("[data-checklist-block]")].map((blockNode, blockIndex) => ({
+    title: blockNode.querySelector('[name="block-title"]')?.value?.trim() || "",
+    displayOrder: blockIndex + 1,
+    weight: Number(blockNode.querySelector('[name="block-weight"]')?.value || 1),
+    questions: [...blockNode.querySelectorAll("[data-checklist-question]")].map((questionNode, questionIndex) => ({
+      number: Number(questionNode.querySelector('[name="question-number"]')?.value || questionIndex + 1),
+      text: questionNode.querySelector('[name="question-text"]')?.value?.trim() || "",
+      weight: Number(questionNode.querySelector('[name="question-weight"]')?.value || 1),
+      riskLevel: questionNode.querySelector('[name="question-risk"]')?.value || "low",
+      reference: questionNode.querySelector('[name="question-reference"]')?.value?.trim() || "",
+      requiredEvidenceOnNc: Boolean(questionNode.querySelector('[name="question-evidence"]')?.checked),
+      allowedAnswers: ["C", "NC", "X"]
+    }))
+  }));
+  return { blocks, versionLabel: form.querySelector('[name="version-label"]')?.value?.trim() || "" };
+}
+
+function updateSettingsChecklistDraft(mutator) {
+  const checklist = settingsChecklistData?.checklist;
+  if (!checklist) return;
+  mutator(checklist);
+  render();
+}
+
 function configuredOrganizationAreas() {
   return [...organizationAreas, ...(state.customOrganizationAreas || [])].map((area) => {
     const override = state.areaConfigOverrides?.[area.id] || {};
@@ -7241,7 +7399,8 @@ function settingsActivePanel() {
   const panels = {
     users: settingsUsersPanel,
     rules: settingsRulesPanel,
-    areas: settingsAreasPanel
+    areas: settingsAreasPanel,
+    checklists: settingsChecklistPanel
   };
   return (panels[state.settingsSection] || settingsUsersPanel)();
 }
@@ -7389,6 +7548,7 @@ function settingsPage() {
   const sectionTabs = `<div class="fichario-sub-tabs settings-section-tabs" role="tablist">${settingsSections.map((section) => `<button class="fichario-sub-tab ${state.settingsSection === section.id ? "is-active" : ""}" data-settings-section="${section.id}" type="button">${escapeHtml(section.label)}</button>`).join("")}</div>`;
   if (state.settingsSection === "new-area") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Nova área</h1><p class="panel-subtitle">Crie uma área ou use uma área existente como base.</p></div>${sectionTabs}<div class="fichario-sub-panel new-area-panel">${newAreaFormMarkup()}</div></section>`;
   if (state.settingsSection === "areas") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Configuração de áreas</h1><p class="panel-subtitle">Cadastre e organize áreas e subáreas para as próximas auditorias.</p></div>${sectionTabs}${settingsAreasPanel()}</section>`;
+  if (state.settingsSection === "checklists") return `<section class="fichario-module"><div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Perguntas por bloco</h1><p class="panel-subtitle">Mantenha perguntas e pesos para as próximas auditorias sem alterar o histórico.</p></div>${sectionTabs}${settingsChecklistPanel()}</section>`;
   return `
     <section class="fichario-module">
       <div class="fichario-module-head"><span class="eyebrow">Configurações</span><h1 class="panel-title">Parâmetros do sistema</h1><p class="panel-subtitle">Aqui ficam regras de meta, pontuação, documentação obrigatória, tabelas técnicas e ajustes visuais usados nos painéis e relatórios.</p></div>
@@ -9214,7 +9374,67 @@ document.addEventListener("click", async (event) => {
     state.settingsMenuExpanded = true;
     state.view = "settings";
     syncHashWithView("settings");
+    if (nextSection === "checklists" && currentAccessUser?.role === "admin") {
+      state.settingsChecklistAreaId = state.settingsChecklistAreaId || settingsAccessAreas[0]?.id || "";
+      await loadSettingsChecklist(state.settingsChecklistAreaId);
+    }
     render();
+    return;
+  }
+
+  const addChecklistBlock = event.target.closest("[data-checklist-add-block]");
+  if (addChecklistBlock) {
+    updateSettingsChecklistDraft((checklist) => {
+      checklist.blocks = [...(checklist.blocks || []), { title: "Novo bloco", displayOrder: (checklist.blocks || []).length + 1, weight: 1, questions: [] }];
+    });
+    return;
+  }
+
+  const addChecklistQuestion = event.target.closest("[data-checklist-add-question]");
+  if (addChecklistQuestion) {
+    const blockIndex = Number(addChecklistQuestion.dataset.checklistAddQuestion);
+    updateSettingsChecklistDraft((checklist) => {
+      const block = checklist.blocks?.[blockIndex];
+      if (!block) return;
+      const nextNumber = Math.max(0, ...(block.questions || []).map((question) => Number(question.number || question.question_number) || 0)) + 1;
+      block.questions = [...(block.questions || []), { number: nextNumber, text: "", weight: 1, riskLevel: "low", reference: "", requiredEvidenceOnNc: true, allowedAnswers: ["C", "NC", "X"] }];
+    });
+    return;
+  }
+
+  const removeChecklistQuestion = event.target.closest("[data-checklist-remove-question]");
+  if (removeChecklistQuestion) {
+    const [blockIndex, questionIndex] = removeChecklistQuestion.dataset.checklistRemoveQuestion.split(":").map(Number);
+    updateSettingsChecklistDraft((checklist) => { checklist.blocks?.[blockIndex]?.questions?.splice(questionIndex, 1); });
+    return;
+  }
+
+  const removeChecklistBlock = event.target.closest("[data-checklist-remove-block]");
+  if (removeChecklistBlock) {
+    const blockIndex = Number(removeChecklistBlock.dataset.checklistRemoveBlock);
+    updateSettingsChecklistDraft((checklist) => { checklist.blocks?.splice(blockIndex, 1); });
+    return;
+  }
+
+  const publishChecklist = event.target.closest("[data-checklist-publish]");
+  if (publishChecklist) {
+    const payload = readSettingsChecklistForm();
+    if (!payload) return;
+    settingsChecklistSaving = true;
+    render();
+    try {
+      const result = await operationalRequest("checklists/manage", {
+        method: "POST",
+        body: JSON.stringify({ areaId: state.settingsChecklistAreaId, ...payload })
+      });
+      settingsChecklistData = { checklist: result.checklist };
+      accessNotice = { type: "success", text: "Nova versão publicada. Ela será usada apenas nas próximas auditorias." };
+    } catch (error) {
+      accessNotice = { type: "error", text: error.message };
+    } finally {
+      settingsChecklistSaving = false;
+      render();
+    }
     return;
   }
 
@@ -10267,6 +10487,12 @@ function handleAuditEvidenceFileInput(evidence) {
 }
 
 document.addEventListener("change", (event) => {
+  const checklistArea = event.target.closest("[data-checklist-area]");
+  if (checklistArea) {
+    state.settingsChecklistAreaId = checklistArea.value;
+    loadSettingsChecklist(checklistArea.value).finally(() => render());
+    return;
+  }
   const executiveScope = event.target.closest("[data-executive-scope]");
   if (executiveScope) {
     executivePreviewScope = executiveScope.value;

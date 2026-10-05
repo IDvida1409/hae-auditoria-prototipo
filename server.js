@@ -293,11 +293,14 @@ function operationalAccessAllowed(user, pathname, method) {
     pathname === "/api/dashboard" ||
     pathname === "/api/action-plans" ||
     pathname === "/api/action-plan-documents" ||
+    pathname === "/api/checklists" ||
+    pathname === "/api/checklists/manage" ||
     pathname === "/api/reports" ||
     pathname === "/api/audits" ||
     pathname === "/api/notifications" ||
     /^\/api\/(?:reports|audits)\/[0-9a-f-]+(?:\/versions)?$/i.test(pathname) ||
     /^\/api\/action-plan-documents\/[0-9a-f-]+$/i.test(pathname) ||
+    /^\/api\/checklists\/[0-9a-f-]+$/i.test(pathname) ||
     /^\/api\/files\/[0-9a-f-]+\/content$/i.test(pathname)
   )) return true;
   if (method === "POST" && (
@@ -782,8 +785,10 @@ async function handleApi(request, response, url) {
           from checklists c
           left join audit_areas aa on aa.id = c.area_id
           where c.id = $1
+            and c.unit_id = $2
+            and ($3::boolean or c.area_id=any($4::uuid[]))
         `,
-        [checklistDetailMatch.id]
+        [checklistDetailMatch.id, await defaultUnitId(pool), Boolean(request.accessUser?.all_areas), request.accessUser?.area_ids || []]
       );
       if (!checklist.rows[0]) {
         sendJson(response, 404, { error: "Checklist não encontrado" });
@@ -888,16 +893,18 @@ async function handleApi(request, response, url) {
                 question_id,
                 answer,
                 score_value,
+                weight_snapshot,
                 risk_level_snapshot,
                 notes,
                 answered_at,
                 answered_by_user_id
               )
-              values ($1, $2, $3, $4, $5, $6, now(), $7)
+              values ($1, $2, $3, $4, $5, $6, $7, now(), $8)
               on conflict (audit_id, question_id)
               do update set
                 answer = excluded.answer,
                 score_value = excluded.score_value,
+                weight_snapshot = excluded.weight_snapshot,
                 risk_level_snapshot = excluded.risk_level_snapshot,
                 notes = excluded.notes,
                 answered_by_user_id = excluded.answered_by_user_id,
@@ -911,6 +918,7 @@ async function handleApi(request, response, url) {
               answer.questionId,
               answer.answer,
               answer.answer === "C" ? Number(question.rows[0].weight) : answer.answer === "NC" ? 0 : null,
+              Number(question.rows[0].weight),
               question.rows[0].risk_level,
               answer.notes || null,
               user.id
