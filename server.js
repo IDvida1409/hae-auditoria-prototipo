@@ -1021,6 +1021,8 @@ async function handleApi(request, response, url) {
             feedback.observation as feedback_observation,
             feedback.correction_summary as feedback_correction_summary,
             feedback.evidence_file_id as feedback_evidence_file_id,
+            feedback.cause_group as feedback_cause_group,
+            feedback.cause_code as feedback_cause_code,
             feedback.requested_due_at,
             feedback.delay_justification as deadline_request_reason,
             feedback.deadline_status,
@@ -1249,6 +1251,8 @@ async function handleApi(request, response, url) {
             response_file_id,
             observation,
             correction_summary,
+            cause_group,
+            cause_code,
             completion_status,
             delay_justification,
             capture_method,
@@ -1256,7 +1260,7 @@ async function handleApi(request, response, url) {
             status,
             deadline_status
           )
-          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::timestamptz,'submitted',case when $11::timestamptz is null then null else 'requested' end)
+          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamptz,'submitted',case when $13::timestamptz is null then null else 'requested' end)
           returning *
         `,
         [
@@ -1267,6 +1271,8 @@ async function handleApi(request, response, url) {
           body.responseFileId || null,
           body.observation || null,
           body.correctionSummary || null,
+          body.causeGroup || null,
+          body.causeCode || null,
           body.completionStatus || "completed",
           body.delayJustification || null,
           body.captureMethod || "upload",

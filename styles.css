@@ -2985,6 +2985,61 @@ h3 {
   background: #f4f8f5;
 }
 
+.action-plan-base-cause {
+  grid-column: 1 / -1;
+  padding: 12px 14px;
+  border: 1px solid #cfe0d6;
+  border-radius: 7px;
+  background: #fbfefd;
+}
+
+.action-plan-base-cause-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.action-plan-base-cause-head .eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #16854a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.action-plan-base-cause-head strong {
+  color: #163b2b;
+  font-size: 13px;
+}
+
+.action-plan-base-cause-head small,
+.action-plan-base-cause-help {
+  color: #61756b;
+  font-size: 11px;
+}
+
+.action-plan-base-cause-head small {
+  text-align: right;
+}
+
+.action-plan-base-cause-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.2fr);
+  gap: 10px;
+}
+
+.action-plan-base-cause-help {
+  margin: 8px 0 0;
+}
+
+.action-plan-base-cause select:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+}
+
 .action-plan-field textarea {
   min-height: 72px;
   resize: vertical;
@@ -3286,6 +3341,9 @@ h3 {
   .action-plan-response-evidence { width: 100%; height: 180px; }
   .action-plan-auditor-copy { grid-template-columns: 1fr; }
   .action-plan-response-box { grid-template-columns: 1fr; }
+  .action-plan-base-cause-head { align-items: start; flex-direction: column; gap: 4px; }
+  .action-plan-base-cause-head small { text-align: left; }
+  .action-plan-base-cause-grid { grid-template-columns: 1fr; }
   .action-plan-signature-section { grid-template-columns: 1fr; gap: 20px; padding: 20px 16px; }
   .action-plan-submit-footer { align-items: stretch; flex-direction: column; padding: 15px 16px; }
   .action-plan-form-grid { grid-template-columns: 1fr; }

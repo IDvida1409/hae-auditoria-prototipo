@@ -1186,6 +1186,7 @@ let executivePreviewSlide = 0;
 let executivePreviewScope = "all";
 let offlineBootstrap = null;
 let backendQuestionIds = new Map();
+let lastRenderedView = null;
 
 const app = document.getElementById("app");
 let executiveHelpTarget = null;
@@ -1612,6 +1613,8 @@ async function loadOperationalData(options = {}) {
       evidenceFileIds: plan.locked_original_evidence_file_ids || [],
       responseText: plan.feedback_correction_summary || plan.feedback_observation || "",
       responseEvidenceFileId: plan.feedback_evidence_file_id || null,
+      causeGroup: plan.feedback_cause_group || null,
+      causeCode: plan.feedback_cause_code || null,
       feedbackStatus: plan.feedback_status || null,
       reviewNote: plan.feedback_review_note || "",
       dueAt: plan.due_at,
@@ -7730,7 +7733,9 @@ function actionPlanPreviewItems(area, count = 3, plan = null) {
       correction: item.correction,
       evidenceFileIds: item.evidenceFileIds || [],
       responseText: item.responseText || "",
-      responseEvidenceFileId: item.responseEvidenceFileId || null
+      responseEvidenceFileId: item.responseEvidenceFileId || null,
+      causeGroup: item.causeGroup || null,
+      causeCode: item.causeCode || null
     }));
   }
   const itemCount = Math.max(1, Math.min(Number(count) || 3, 8));
@@ -7747,6 +7752,67 @@ function actionPlanInstructionFor(row, index) {
     "Adequar o item ao padrão definido e anexar evidência fotográfica após a correção."
   ];
   return instructions[index] || `Corrigir a não conformidade registrada em ${row.blockTitle}.`;
+}
+
+const actionPlanCauseGroups = [
+  {
+    value: "process_internal",
+    label: "Processos internos",
+    description: "A falha aconteceu dentro do processo da área ou da Qualidade.",
+    options: [
+      ["area_did_not_execute", "A área não executou o plano"],
+      ["internal_process_delay", "Houve demora no processo interno"],
+      ["quality_not_sent", "O plano não foi enviado pela Qualidade"],
+      ["quality_sent_late", "O envio pela Qualidade ocorreu com atraso"]
+    ]
+  },
+  {
+    value: "external_dependency",
+    label: "Dependência externa",
+    description: "A execução dependeu de outra área, fornecedor ou terceiro.",
+    options: [
+      ["other_area_call", "Chamado aberto para outra área"],
+      ["other_area_pending", "Aguardando atendimento de outra área"],
+      ["supplier_failure", "Falha de fornecedor ou terceiro"]
+    ]
+  },
+  {
+    value: "shared_responsibility",
+    label: "Responsabilidade compartilhada",
+    description: "Mais de uma parte contribuiu para o atraso ou a não execução.",
+    options: [
+      ["call_not_opened", "Chamado não foi aberto em tempo"],
+      ["request_delay", "Houve demora para solicitar o chamado"],
+      ["shared_execution_failure", "A área e outra área contribuíram para o atraso"]
+    ]
+  }
+];
+
+function actionPlanCauseGroup(value) {
+  return actionPlanCauseGroups.find((group) => group.value === value) || actionPlanCauseGroups[0];
+}
+
+function isLocalActionPlanCausePreview() {
+  return ["localhost", "127.0.0.1"].includes(location.hostname) && new URLSearchParams(location.search).get("actionPlanPreview") === "1";
+}
+
+function actionPlanCauseField(row, index, response = {}) {
+  const selectedGroup = response.causeGroup || row.causeGroup || "";
+  const group = actionPlanCauseGroup(selectedGroup);
+  const causeCode = response.causeCode || row.causeCode || "";
+  const editable = Boolean(state.actionPlanAcknowledgements?.[state.planningPlanId]);
+  return `
+    <div class="action-plan-base-cause" data-action-plan-cause-card="${index}">
+      <div class="action-plan-base-cause-head">
+        <div><span class="eyebrow">Motivo da não conclusão</span><strong>O que impediu a conclusão?</strong></div>
+        <small>Selecione o motivo para classificar o atraso no dashboard.</small>
+      </div>
+      <div class="action-plan-base-cause-grid">
+        <label class="action-plan-field"><span>Categoria principal</span><select data-action-plan-cause-group="${index}" ${editable ? "" : "disabled"}><option value="" ${selectedGroup ? "" : "selected"}>Selecione a categoria</option>${actionPlanCauseGroups.map((option) => `<option value="${option.value}" ${option.value === selectedGroup ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select></label>
+        <label class="action-plan-field"><span>Motivo específico</span><select data-action-plan-cause-code="${index}" ${editable ? "" : "disabled"}><option value="" ${causeCode ? "" : "selected"}>Selecione o motivo</option>${group.options.map(([value, label]) => `<option value="${value}" ${value === causeCode ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}<option value="other" ${causeCode === "other" ? "selected" : ""}>Outro motivo</option></select></label>
+      </div>
+      <p class="action-plan-base-cause-help">${escapeHtml(group.description)}</p>
+    </div>`;
 }
 
 function actionPlanResponseEvidence(row, responsibleView, responses, index) {
@@ -7898,6 +7964,7 @@ function planningPlanPreview() {
   const effectiveStatus = plan.deadlineRequested ? "extension_requested" : plan.status;
   const [statusLabel, statusTone] = planningStatusMeta(effectiveStatus);
   const responsibleView = isAreaResponsible();
+  const showCausePreview = responsibleView;
   const acknowledgement = state.actionPlanAcknowledgements?.[plan.id];
   const responsibleResponses = state.actionPlanResponses?.[plan.id] || {};
   const archivedPdfActions = plan.status !== "approved" ? "" : plan.pdfFileUrl
@@ -7920,7 +7987,7 @@ function planningPlanPreview() {
         <section class="action-plan-summary-row"><div><strong>${items.length}</strong><span>não conformidades</span></div><div><strong>${items.length}</strong><span>evidências esperadas</span></div><div><strong>${hasResponse ? "Respondido" : escapeHtml(plan.due || "Não definido")}</strong><span>${hasResponse ? "pelo responsável" : "prazo para resposta"}</span></div><button class="outline-btn" ${responsibleView && acknowledgement ? "data-open-deadline-modal" : ""} type="button" ${responsibleView && acknowledgement || hasResponse ? "" : "disabled"}>${svgIcon("clock")} ${plan.deadlineRequested ? "Prazo solicitado" : "Solicitar novo prazo"}</button></section>
         ${planningDeadlineRecord(plan, items)}
         <div class="action-plan-nc-list">
-          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label><div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div>${responsibleView ? actionPlanResponseEvidence(row, true, responsibleResponses, index) : ""}</div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
+          ${items.map((row, index) => `<section class="action-plan-nc-card"><div class="action-plan-nc-heading"><span class="action-plan-nc-number">NC ${String(index + 1).padStart(2, "0")}</span><div><small>${escapeHtml(row.blockTitle)}</small><h2>${escapeHtml(reportFullText(row.text))}</h2></div>${reportRiskTag(row.riskLevel)}</div><div class="action-plan-nc-body">${row.evidenceFileIds?.[0] ? `<figure class="action-plan-source-photo"><img src="${apiUrl(`/api/files/${row.evidenceFileIds[0]}/content`)}" alt="Evidência original da não conformidade ${index + 1}" /><figcaption>Foto registrada pelo auditor</figcaption></figure>` : '<div class="action-plan-pending-signature"><strong>Sem foto vinculada</strong><small>A evidência original não foi encontrada.</small></div>'}<div class="action-plan-auditor-copy"><label><span>Observação do auditor</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(row.observation || "Sem observação adicional.")}</textarea></label><label><span>Ação orientada</span><textarea ${isDraft ? "" : "readonly"}>${escapeHtml(actionPlanInstructionFor(row, index))}</textarea></label></div></div><div class="action-plan-response-box ${row.responseText || row.responseEvidenceFileId ? "has-response" : ""}"><label class="action-plan-field is-wide"><span>O que foi realizado? · preenchimento do responsável</span><textarea ${responsibleView && acknowledgement ? `data-responsible-response="${index}"` : "readonly"} placeholder="Aguardando resposta do responsável...">${responsibleView ? escapeHtml(responsibleResponses[index]?.text || "") : escapeHtml(row.responseText || "")}</textarea></label>${showCausePreview ? actionPlanCauseField(row, index, responsibleResponses[index]) : ""}<div class="action-plan-evidence-actions">${responsibleView && acknowledgement ? `<label class="outline-btn">${svgIcon("camera")} Tirar foto<input data-responsible-evidence="${index}" data-capture="camera" type="file" accept="image/*" capture="environment" hidden /></label><label class="outline-btn">${svgIcon("document")} Escolher arquivo<input data-responsible-evidence="${index}" type="file" accept="image/*" hidden /></label><small>${responsibleResponses[index]?.evidenceName || responsibleResponses[index]?.evidenceFileId ? `Evidência: ${escapeHtml(responsibleResponses[index]?.evidenceName || "arquivo enviado")}` : "Nenhuma evidência selecionada"}</small>` : `<small class="action-plan-awaiting-copy">${row.responseText || row.responseEvidenceFileId ? "Devolutiva recebida e disponível para análise." : "Aguardando devolutiva do responsável."}</small>`}</div>${responsibleView ? actionPlanResponseEvidence(row, true, responsibleResponses, index) : ""}</div>${responsibleView ? "" : planningItemReview(plan, index, row)}</section>`).join("")}
         </div>
         ${planningAuditDecisionRecord(plan)}
         <section class="action-plan-signature-section"><div><span class="eyebrow">Documento emitido por</span><div class="action-plan-auditor-signature"><strong>${escapeHtml(plan.auditorName)}</strong><span>Auditor responsável</span><small>Registro autenticado no sistema</small></div></div>${acknowledgement ? `<div><span class="eyebrow">Ciência e assinatura do responsável</span><div class="action-plan-auditor-signature is-responsible"><strong>${escapeHtml(acknowledgement.name || plan.owner)}</strong><span>Responsável pela área</span><small>Ciência registrada em ${escapeHtml(acknowledgement.signedAtLabel)}</small></div></div>` : `<div class="action-plan-pending-signature"><span class="eyebrow">Ciência do responsável</span><strong>Aguardando abertura e assinatura</strong><small>O registro será feito quando o responsável confirmar o recebimento.</small></div>`}</section>
@@ -8298,7 +8365,7 @@ function executiveRecurrenceSlide() {
         ${executiveEmptyState("Sem histórico de recorrências", "São necessários ciclos concluídos para comparar o mesmo item ao longo do tempo.")}
       </section>
       <section class="executive-card executive-origin-card">
-        <header data-executive-help="Classificação demonstrativa dos motivos associados à não execução ou ao atraso dos planos. As perguntas-base serão estruturadas depois da aprovação do conceito."><div><span>Classificação</span><h3>Origem dos atrasos e falhas de execução</h3></div></header>
+        <header data-executive-help="Classificação dos motivos informados nos planos de ação. Os resultados serão calculados a partir das seleções registradas."><div><span>Classificação</span><h3>Origem dos atrasos e falhas de execução</h3></div></header>
         <div class="executive-origin-chart">
           <div class="is-internal" data-executive-help="Falha na execução, acompanhamento ou conclusão do plano dentro do processo da área responsável."><span><b>Processo interno</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
           <div class="is-external" data-executive-help="Atraso relacionado a chamado para outra área, compra, fornecedor ou terceiro."><span><b>Fatores externos</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
@@ -8395,7 +8462,56 @@ function viewContent() {
   return placeholderPage(title, text);
 }
 
+function scrollPathFor(element) {
+  const path = [];
+  let current = element;
+  while (current && current !== document.body) {
+    const parent = current.parentElement;
+    if (!parent) break;
+    path.unshift([...parent.children].indexOf(current));
+    current = parent;
+  }
+  return path.join(".");
+}
+
+function elementAtScrollPath(path) {
+  let current = document.body;
+  for (const index of String(path).split(".").filter(Boolean)) {
+    current = current?.children?.[Number(index)];
+    if (!current) return null;
+  }
+  return current;
+}
+
+function captureScrollPositions() {
+  if (lastRenderedView !== state.view) return [];
+  const positions = [];
+  const documentScroller = document.scrollingElement;
+  if (documentScroller?.scrollTop || documentScroller?.scrollLeft) {
+    positions.push({ path: "__document__", top: documentScroller.scrollTop, left: documentScroller.scrollLeft });
+  }
+  document.querySelectorAll("*").forEach((element) => {
+    if ((element.scrollTop || element.scrollLeft) && element.scrollHeight >= element.clientHeight) {
+      positions.push({ path: scrollPathFor(element), top: element.scrollTop, left: element.scrollLeft });
+    }
+  });
+  return positions;
+}
+
+function restoreScrollPositions(positions) {
+  if (!positions.length) return;
+  requestAnimationFrame(() => {
+    for (const position of positions) {
+      const element = position.path === "__document__" ? document.scrollingElement : elementAtScrollPath(position.path);
+      if (!element) continue;
+      element.scrollTop = position.top;
+      element.scrollLeft = position.left;
+    }
+  });
+}
+
 function render(options = {}) {
+  const scrollPositions = options.preserveScroll === false ? [] : captureScrollPositions();
   document.querySelectorAll(".report-library-backdrop").forEach((modal) => modal.remove());
   app.className = "app-shell fichario-shell";
   app.innerHTML = `
@@ -8412,6 +8528,8 @@ function render(options = {}) {
   const reportModal = app.querySelector(".report-library-backdrop");
   if (reportModal) document.body.appendChild(reportModal);
   if (!options.skipSave) saveState();
+  lastRenderedView = state.view;
+  restoreScrollPositions(scrollPositions);
 }
 
 function completeAuditEvidenceButton(button) {
@@ -9296,7 +9414,9 @@ document.addEventListener("click", async (event) => {
             completionStatus: "delayed",
             delayJustification: reason,
             requestedDueAt: `${dateValue}T12:00:00.000Z`,
-            observation: document.querySelector("[data-deadline-reason-type]")?.value || "Solicitação de novo prazo"
+            observation: document.querySelector("[data-deadline-reason-type]")?.value || "Solicitação de novo prazo",
+            causeGroup: state.actionPlanResponses?.[plan.id]?.[selectedItemIndex]?.causeGroup || null,
+            causeCode: state.actionPlanResponses?.[plan.id]?.[selectedItemIndex]?.causeCode || null
           })
         });
         await Promise.all([loadOperationalData(), loadAccessNotifications()]);
@@ -9362,6 +9482,8 @@ document.addEventListener("click", async (event) => {
               correctionSummary: responses[index]?.text,
               observation: responses[index]?.text,
               evidenceFileId,
+              causeGroup: responses[index]?.causeGroup || null,
+              causeCode: responses[index]?.causeCode || null,
               completionStatus: "completed",
               captureMethod: evidenceFile?.type?.startsWith("image/") ? "mobile_camera" : "upload"
             })
@@ -10332,6 +10454,28 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const causeGroupSelect = event.target.closest("[data-action-plan-cause-group]");
+  const causeCodeSelect = event.target.closest("[data-action-plan-cause-code]");
+  if (causeGroupSelect || causeCodeSelect) {
+    const index = (causeGroupSelect || causeCodeSelect).dataset.actionPlanCauseGroup || (causeCodeSelect || {}).dataset?.actionPlanCauseCode;
+    const planId = state.planningPlanId;
+    const currentPlan = planningActionRows().find((row) => row.id === planId);
+    if (!currentPlan || index == null) return;
+    const current = state.actionPlanResponses?.[planId]?.[index] || {};
+    const groupValue = causeGroupSelect?.value || current.causeGroup || actionPlanPreviewItems(currentPlan.area, currentPlan.ncs, currentPlan)[Number(index)]?.causeGroup || "process_internal";
+    const group = actionPlanCauseGroup(groupValue);
+    const selectedCode = causeCodeSelect?.value || current.causeCode || group.options[0][0];
+    state.actionPlanResponses = {
+      ...state.actionPlanResponses,
+      [planId]: {
+        ...(state.actionPlanResponses?.[planId] || {}),
+        [index]: { ...current, causeGroup: groupValue, causeCode: selectedCode }
+      }
+    };
+    saveState();
+    render({ skipSave: true });
+    return;
+  }
   const baseArea = event.target.closest('[data-local-area-form] select[name="existingArea"]');
   if (baseArea) {
     const form = baseArea.form;
@@ -10560,7 +10704,9 @@ function applyLocalPreviewActionPlans() {
     evidenceDecision: "approved",
     backendItems: [{
       question: "Pia para higienização das mãos: limpa, em ponto estratégico, com papel toalha branca, sabonete bactericida ou neutro e antisséptico.",
-      feedbackStatus: "pending_review"
+      feedbackStatus: "pending_review",
+      causeGroup: "external_dependency",
+      causeCode: "other_area_pending"
     }]
   }];
 }
@@ -10592,6 +10738,25 @@ function applyLocalPreviewActionPlans() {
         : viewFromHash();
       resetViewForFreshLogin();
       if (requestedPreviewView) state.view = requestedPreviewView;
+      if (new URLSearchParams(location.search).get("actionPlanPreview") === "1") {
+        const previewPlan = operationalActionPlans?.[0];
+        if (previewPlan) {
+          state.view = "actions";
+          state.planningView = "plans";
+          state.actionPlanPreview = true;
+          state.planningPlanId = previewPlan.id;
+          state.planningAreaId = previewPlan.area.id;
+          state.actionPlanAcknowledgements = {
+            ...state.actionPlanAcknowledgements,
+            [previewPlan.id]: {
+              userId: "local-responsible",
+              name: "Caio Teste",
+              signedAt: new Date().toISOString(),
+              signedAtLabel: "Prévia local"
+            }
+          };
+        }
+      }
       applyCurrentUserScope();
       render();
       updateStartupProgress(100, "Prévia local carregada");
