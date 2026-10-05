@@ -6619,11 +6619,12 @@ function startAuditPage() {
       </div>
       <aside class="how-panel surface">
         <h2 style="color:#fff">Como funciona</h2>
-        <div class="how-step"><span class="nav-icon">${assetIcon("grid", "white")}</span><div><h3 style="color:#fff">Selecione a área</h3><p>Escolha o setor que será auditado no mês.</p></div></div>
+        <div class="how-step"><span class="nav-icon">${assetIcon("grid", "white")}</span><div><h3 style="color:#fff">Selecione a área</h3><p>Escolha a área e a subárea que serão auditadas no mês.</p></div></div>
         <div class="how-step"><span class="nav-icon">${assetIcon("audit", "white")}</span><div><h3 style="color:#fff">Responda o checklist</h3><p>Avalie cada item como Conforme (C), Não Conforme (NC) ou Não Avaliado (X).</p></div></div>
-        <div class="how-step"><span class="nav-icon">${icons.camera}</span><div><h3 style="color:#fff">Evidencie NCs</h3><p>A opção de foto aparece apenas ao selecionar Não Conforme.</p></div></div>
-        <div class="how-step"><span class="nav-icon">${assetIcon("action", "white")}</span><div><h3 style="color:#fff">Plano de ação</h3><p>Não conformidades geram campos para correção, ação, responsável e prazo.</p></div></div>
-        <div class="attention-note" style="background:rgba(255,255,255,.1);color:#fff">${svgIcon("warning", "tiny-icon", "white")} <span>Após o envio, a auditoria fica registrada no histórico.</span></div>
+        <div class="how-step"><span class="nav-icon">${icons.camera}</span><div><h3 style="color:#fff">Registre as evidências</h3><p>Ao marcar Não Conforme, registre a foto e a observação solicitadas.</p></div></div>
+        <div class="how-step"><span class="nav-icon">${assetIcon("action", "white")}</span><div><h3 style="color:#fff">Plano de ação</h3><p>Não conformidades geram correção, evidência, responsável, prazo e motivo da não conclusão.</p></div></div>
+        <div class="how-step"><span class="nav-icon">${svgIcon("check", "tiny-icon", "white")}</span><div><h3 style="color:#fff">Revise e envie</h3><p>Ao concluir a subárea, envie agora ou deixe pendente para revisar antes do envio.</p></div></div>
+        <div class="attention-note" style="background:rgba(255,255,255,.1);color:#fff">${svgIcon("warning", "tiny-icon", "white")} <span>Em revisão, a subárea fica pendente e pode ser ajustada antes de gerar nota e relatório.</span></div>
       </aside>
       ${state.pendingAuditTransfer ? `<div class="leave-audit-backdrop"><section class="leave-audit-modal surface" role="dialog" aria-modal="true" aria-labelledby="transfer-title">
         <h2 id="transfer-title">Auditoria em andamento</h2>
