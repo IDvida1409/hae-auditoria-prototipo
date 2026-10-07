@@ -682,10 +682,10 @@ async function handleApi(request, response, url) {
           `
             select id, name, slug, area_type, responsible_user_id, display_order
             from audit_areas
-            where unit_id = $1 and active = true
+            where unit_id = $1 and active = true and (restricted_to_master = false or $2::boolean)
             order by display_order, name
           `,
-          [unitId]
+          [unitId, Boolean(request.accessUser?.is_master)]
         ),
         pool.query(
           "select * from audit_workflow_settings where unit_id = $1 and area_id is null limit 1",
@@ -722,11 +722,11 @@ async function handleApi(request, response, url) {
           from audit_areas aa
           left join app_users u on u.id = aa.responsible_user_id
           left join checklists c on c.area_id = aa.id and c.is_active = true
-          where aa.unit_id = $1 and aa.active = true
+            where aa.unit_id = $1 and aa.active = true and (aa.restricted_to_master = false or $2::boolean)
           group by aa.id, u.full_name
           order by aa.display_order, aa.name
         `,
-        [unitId]
+        [unitId, Boolean(request.accessUser?.is_master)]
       );
       sendJson(response, 200, { areas: result.rows });
     } catch (error) {
@@ -760,12 +760,13 @@ async function handleApi(request, response, url) {
           left join checklist_questions cq on cq.block_id = cb.id and cq.active = true
           where c.unit_id = $1
             and c.is_active = true
+            and (aa.restricted_to_master = false or $4::boolean)
             and ($2::uuid is null or c.area_id = $2::uuid)
             and ($3::text is null or aa.slug = $3::text)
           group by c.id, aa.name, aa.slug
           order by aa.display_order nulls last, c.imported_at desc nulls last, c.created_at desc
         `,
-        [unitId, areaId || null, areaSlug || null]
+        [unitId, areaId || null, areaSlug || null, Boolean(request.accessUser?.is_master)]
       );
       sendJson(response, 200, { checklists: result.rows });
     } catch (error) {

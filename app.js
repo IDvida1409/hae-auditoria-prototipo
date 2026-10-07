@@ -43,7 +43,9 @@ const areaData = [
   { id: "higienizacao-cubas", name: "Higienização de Cubas", subtitle: "Higienização de cubas e utensílios", icon: "higienizacao-cubas.png" },
   { id: "higienizacao-louca", name: "Higienização de Louça", subtitle: "Higienização de louças e talheres", icon: "higienizacao-louca.png" },
   { id: "area-residuos", name: "Área de Resíduos", subtitle: "Armazenamento e segregação de resíduos", icon: "area-residuos.png" },
-  { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png" }
+  { id: "documentacao", name: "Documentação", subtitle: "Documentos e registros obrigatórios", icon: "documentacao.png" },
+  { id: "teste-1", name: "Teste 1", subtitle: "Subárea reservada para testes", icon: "area-despensa.png", restrictedToMaster: true },
+  { id: "teste-2", name: "Teste 2", subtitle: "Subárea reservada para testes", icon: "area-despensa.png", restrictedToMaster: true }
 ];
 
 const organizationAreas = (window.HAE_AREA_HIERARCHY?.groups || [
@@ -114,6 +116,16 @@ const organizationAreas = (window.HAE_AREA_HIERARCHY?.groups || [
       ["higienizacao-cubas", "Higiene de Cubas", "Higiene de cubas e utensílios", "higienizacao-cubas.png"],
       ["dml-1-andar", "DML 1º Andar", "Depósito de material de limpeza do 1º andar", "dml-produto-quimico.png"],
       ["dml-2-andar", "DML 2º Andar", "Depósito de material de limpeza do 2º andar", "dml-produto-quimico.png"]
+    ]
+  },
+  {
+    id: "teste",
+    name: "Teste",
+    icon: "area-despensa.png",
+    restrictedToMaster: true,
+    subareas: [
+      ["teste-1", "Teste 1", "Subárea reservada para testes", "area-despensa.png"],
+      ["teste-2", "Teste 2", "Subárea reservada para testes", "area-despensa.png"]
     ]
   }
 ]).map((group) => ({ ...group, subareas: group.subareas.map((subarea) => [...subarea]) }));
@@ -266,7 +278,11 @@ function organizationAreaForSubarea(areaOrId) {
 
 function subareasForOrganizationArea(parentOrId) {
   const parent = typeof parentOrId === "string" ? organizationAreaById(parentOrId) : parentOrId;
-  return parent ? parent.subareaIds.map((id) => areaData.find((area) => area.id === id)).filter(Boolean) : [];
+  return parent ? parent.subareaIds.map((id) => areaData.find((area) => area.id === id)).filter((area) => area && canAccessArea(area.id)) : [];
+}
+
+function visibleOrganizationAreas() {
+  return organizationAreas.filter((parent) => subareasForOrganizationArea(parent).length > 0);
 }
 
 function aggregateOrganizationArea(parent) {
@@ -293,17 +309,17 @@ function aggregateOrganizationArea(parent) {
 }
 
 function organizationAreaCards() {
-  return organizationAreas.map(aggregateOrganizationArea);
+  return visibleOrganizationAreas().map(aggregateOrganizationArea);
 }
 
 function standaloneAuditAreas() {
   const groupedIds = new Set(organizationAreas.flatMap((area) => area.subareaIds));
-  return areaData.filter((area) => !groupedIds.has(area.id));
+  return areaData.filter((area) => !groupedIds.has(area.id) && canAccessArea(area.id));
 }
 
 function auditGroupAreaIds(parentId) {
   const parent = organizationAreaById(parentId);
-  return parent ? parent.subareaIds.filter((id) => areaData.some((area) => area.id === id)) : [];
+  return parent ? parent.subareaIds.filter((id) => areaData.some((area) => area.id === id) && canAccessArea(id)) : [];
 }
 
 function responsibleOrganizationArea() {
@@ -321,11 +337,13 @@ function responsibleScopedAreas() {
 }
 
 function allowedAreaIds() {
-  if (!isAreaResponsible()) return areaData.map((area) => area.id);
+  if (!isAreaResponsible()) return areaData.filter((area) => !area.restrictedToMaster || currentAccessUser?.is_master).map((area) => area.id);
   return responsibleScopedAreas().map((area) => area.id);
 }
 
 function canAccessArea(areaId) {
+  const area = areaData.find((item) => item.id === areaId);
+  if (area?.restrictedToMaster && !currentAccessUser?.is_master) return false;
   return !isAreaResponsible() || allowedAreaIds().includes(areaId);
 }
 
@@ -334,7 +352,7 @@ function primaryUserArea() {
 }
 
 function orderedAreasForUser() {
-  if (!isAreaResponsible()) return areaData;
+  if (!isAreaResponsible()) return areaData.filter((area) => canAccessArea(area.id));
   return responsibleScopedAreas();
 }
 
@@ -346,6 +364,8 @@ function moduleAllowed(view) {
 
 function applyCurrentUserScope() {
   if (!moduleAllowed(state.view)) state.view = "home";
+  if (state.selectedArea && !canAccessArea(state.selectedArea)) state.selectedArea = "";
+  if (state.selectedParentArea && !visibleOrganizationAreas().some((parent) => parent.id === state.selectedParentArea)) state.selectedParentArea = "";
   if (!isAreaResponsible()) return;
   const primary = primaryUserArea();
   if (state.chartFocusArea && !canAccessArea(state.chartFocusArea)) state.chartFocusArea = null;
@@ -2448,7 +2468,7 @@ function globalSearchResults(query) {
   const add = (id, label, detail, parentId = "") => {
     if (`${label} ${detail}`.toLocaleLowerCase("pt-BR").includes(term)) results.push({ id, label, detail, parentId });
   };
-  for (const parent of organizationAreas) {
+  for (const parent of visibleOrganizationAreas()) {
     add(`parent:${parent.id}`, parent.name, "Área com subáreas", parent.id);
     for (const area of subareasForOrganizationArea(parent)) add(`area:${area.id}`, area.name, `Subárea de ${parent.name}`, parent.id);
   }
@@ -3001,7 +3021,7 @@ function dashboardHome() {
     ? visibleSubareas
     : isAreaResponsible()
       ? responsibleScopedAreas()
-      : [...organizationAreas.flatMap(subareasForOrganizationArea), ...standaloneAuditAreas()];
+      : [...visibleOrganizationAreas().flatMap(subareasForOrganizationArea), ...standaloneAuditAreas()];
   const pendingPlans = scopedAreas.reduce((sum, area) => sum + area.pending, 0);
   const criticalNcs = scopedAreas.reduce((sum, area) => sum + area.critical, 0);
   const scopedIds = new Set(scopedAreas.map((area) => area.id));
@@ -3013,7 +3033,7 @@ function dashboardHome() {
     ? visibleSubareas.map((area) => areaTile(area)).join("")
     : isAreaResponsible()
       ? `${responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area)).map((area) => areaTile(area)).join("")}${responsibleParents.map((parent) => organizationAreaTile(parent)).join("")}`
-      : `${organizationAreas.map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
+      : `${visibleOrganizationAreas().map((parent) => organizationAreaTile(parent)).join("")}${standaloneAuditAreas().map((area) => areaTile(area)).join("")}`;
   return `
     <div class="fichario-home ${hasSelection ? "has-selection" : "no-selection"}">
       <div class="fichario-panel-head">
@@ -6269,7 +6289,7 @@ function reportFolderModal({ parentId = state.reportFolderParentArea, areaId = s
 }
 
 function reportsPage() {
-  const visibleParents = isAreaResponsible() ? responsibleOrganizationAreas() : organizationAreas;
+  const visibleParents = isAreaResponsible() ? responsibleOrganizationAreas() : visibleOrganizationAreas();
   const visibleStandalone = isAreaResponsible()
     ? responsibleScopedAreas().filter((area) => !organizationAreaForSubarea(area))
     : standaloneAuditAreas();
@@ -6646,7 +6666,7 @@ function startAuditPage() {
         </section>
         ${state.auditStartError ? `<p class="audit-start-error" role="alert">${escapeHtml(state.auditStartError)}</p>` : ""}
         <div class="start-grid">
-          ${selectedParent ? areasToRender.map(areaStartMarkup).join("") : organizationAreas.map((parent) => `
+          ${selectedParent ? areasToRender.map(areaStartMarkup).join("") : visibleOrganizationAreas().map((parent) => `
             <article class="start-tile start-parent-tile">
               <button class="start-tile-main" data-audit-parent="${parent.id}" type="button">
                 <img src="assets/icons/${escapeHtml(parent.icon)}" alt="" />
@@ -7391,7 +7411,7 @@ function configuredOrganizationAreas() {
 }
 
 function settingsAreasPanel() {
-  const areas = configuredOrganizationAreas();
+  const areas = configuredOrganizationAreas().filter((area) => !area.restrictedToMaster || currentAccessUser?.is_master);
   const expandedArea = state.settingsExpandedArea || "";
   return `
     <div class="settings-panel settings-area-content">
@@ -7447,9 +7467,9 @@ function settingsActivePanel() {
 function settingsAreaChoices(selectedIds = []) {
   const selected = new Set(selectedIds.map(String));
   const used = new Set();
-  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.map((area) => ({ id: area.id, name: area.name, slug: area.id }));
+  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.filter((area) => canAccessArea(area.id)).map((area) => ({ id: area.id, name: area.name, slug: area.id }));
   const bySlug = new Map(source.map((area) => [String(area.slug || "").toLowerCase(), area]));
-  const groups = organizationAreas.map((group) => {
+  const groups = visibleOrganizationAreas().map((group) => {
     const items = group.subareas.map(([id, name]) => bySlug.get(id) || bySlug.get(`area-${id}`)).filter(Boolean);
     items.forEach((item) => used.add(item.id));
     return items.length ? `<fieldset class="fichario-area-choice-group"><legend>${escapeHtml(group.name)} <small>${items.length} subáreas</small></legend>${items.map((item) => `<label><input type="checkbox" name="areaIds" value="${escapeHtml(item.id)}" ${selected.has(String(item.id)) ? "checked" : ""} /><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.slug || "")}</small></span></label>`).join("")}</fieldset>` : "";
@@ -7464,11 +7484,11 @@ function settingsAreaAssignmentOptions(selectedIds = []) {
 
 function settingsAreaAssignmentChoices(selectedIds = []) {
   const selected = new Set(selectedIds.map(String));
-  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.map((area) => ({ id: area.id, name: area.name, slug: area.id }));
+  const source = settingsAccessAreas.length ? settingsAccessAreas : areaData.filter((area) => canAccessArea(area.id)).map((area) => ({ id: area.id, name: area.name, slug: area.id }));
   const bySlug = new Map(source.map((area) => [String(area.slug || "").toLowerCase(), area]));
   const used = new Set();
   const choices = [];
-  const groups = organizationAreas.map((group) => {
+  const groups = visibleOrganizationAreas().map((group) => {
     const items = group.subareas.map(([id]) => bySlug.get(id) || bySlug.get(`area-${id}`)).filter(Boolean);
     if (!items.length) return "";
     items.forEach((item) => used.add(item.id));
@@ -7482,8 +7502,8 @@ function settingsAreaAssignmentChoices(selectedIds = []) {
 }
 
 function newAreaFormMarkup() {
-  const subareaOptions = organizationAreas.flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
-  const existingAreaChoices = [...configuredOrganizationAreas(), ...areaData.filter((area) => ["area-residuos", "documentacao"].includes(area.id))];
+  const subareaOptions = visibleOrganizationAreas().flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
+  const existingAreaChoices = [...configuredOrganizationAreas().filter((area) => !area.restrictedToMaster || currentAccessUser?.is_master), ...areaData.filter((area) => ["area-residuos", "documentacao"].includes(area.id) && canAccessArea(area.id))];
   const areaOptions = [{ value: "", label: "Criar uma área nova" }, ...existingAreaChoices.map((area) => ({ value: area.id, label: area.name }))];
   return `<form class="new-area-form" data-local-area-form><p class="new-area-form-note">O nome final deve ser exclusivo. Você pode usar uma área já cadastrada como base.</p><div class="new-area-form-grid"><label class="settings-modal-field"><span>Nome da área</span><input name="areaName" required maxlength="120" placeholder="Ex.: Conforto Médico - Bloco B" /></label><div class="settings-modal-field"><span>Área existente como base <small>(opcional)</small></span>${customSettingsSelect("existingArea", areaOptions)}</div></div><div class="new-area-subareas"><div class="new-area-subareas-head"><div><strong>Subáreas</strong><span>Informe quantas deseja cadastrar. Em cada linha, escolha uma existente ou digite uma nova. Subáreas podem ter o mesmo nome e serão vinculadas à nova área.</span></div><label class="settings-modal-field settings-count-field"><span>Quantidade</span><input type="number" name="subareaCount" data-subarea-count min="0" max="20" value="0" /></label></div><div class="settings-subarea-rows" data-subarea-rows>${newAreaSubareaRows(0, subareaOptions)}</div></div><div class="settings-modal-actions"><button class="settings-soft-btn" data-cancel-local-area type="button">Cancelar</button><button class="settings-soft-btn settings-primary" type="submit">Salvar área</button></div></form>`;
 }
@@ -7495,7 +7515,7 @@ function customSettingsSelect(name, options, selected = "", settings = {}) {
 }
 
 function allNewAreaSubareaOptions() {
-  return organizationAreas.flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
+  return visibleOrganizationAreas().flatMap((group) => group.subareas.map(([id, name]) => ({ value: id, label: `${name} · ${group.name}` })));
 }
 
 function newAreaSubareaRows(count, options) {
@@ -10828,7 +10848,7 @@ document.addEventListener("submit", (event) => {
       return;
     }
     const chosen = data.getAll("existingSubareas").filter(Boolean);
-    const known = organizationAreas.flatMap((group) => group.subareas.map(([id, label, subtitle, icon]) => ({ id, label, subtitle, icon })));
+    const known = visibleOrganizationAreas().flatMap((group) => group.subareas.map(([id, label, subtitle, icon]) => ({ id, label, subtitle, icon })));
     const custom = data.getAll("newSubareaNames").map((value) => String(value).trim()).filter(Boolean).map((label, index) => ({ id: `local-subarea-${Date.now()}-${index}`, label, subtitle: "Subárea cadastrada", icon: "subarea-recebimento.png" }));
     const selected = known.filter((item) => chosen.includes(item.id)).concat(custom);
     const id = `local-area-${Date.now()}`;
