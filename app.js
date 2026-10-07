@@ -1452,7 +1452,11 @@ function renderReportFileRequest(request) {
 }
 
 function formatScore(value) {
-  return value != null && Number.isFinite(Number(value)) ? Number(value).toFixed(1).replace(".", ",") : "—";
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const numeric = Number(value);
+  const oneDecimal = Number(numeric.toFixed(1));
+  const precision = numeric < 10 && oneDecimal >= 10 ? 2 : 1;
+  return numeric.toFixed(precision).replace(".", ",");
 }
 
 function hasAreaResult(area) {
@@ -8423,7 +8427,7 @@ async function applyPlanningDecision(plan, decision, reason = "") {
   state.planningAreaId = "";
 }
 
-const executivePreviewScopes = [
+const executivePreviewScopeBase = [
   ["all", "Todas as áreas"],
   ["conforto-medico", "Conforto Médico"],
   ["refeitorio", "Refeitório"],
@@ -8432,6 +8436,14 @@ const executivePreviewScopes = [
   ["mda", "MDA"],
   ["limpeza-asg", "Limpeza ASG"]
 ];
+
+function executivePreviewScopes() {
+  const scopes = [...executivePreviewScopeBase];
+  if (currentAccessUser?.is_master) {
+    scopes.push(["teste-1", "Teste 1"], ["teste-2", "Teste 2"]);
+  }
+  return scopes;
+}
 
 function executiveMetric(label, value, detail, tone = "neutral") {
   const explanations = {
@@ -8455,7 +8467,7 @@ function executiveEmptyState(title = "Sem dados no período", detail = "Os resul
 }
 
 function executiveScopeLabel() {
-  return executivePreviewScopes.find(([id]) => id === executivePreviewScope)?.[1] || "Todas as áreas";
+  return executivePreviewScopes().find(([id]) => id === executivePreviewScope)?.[1] || "Todas as áreas";
 }
 
 function executiveOverviewSlide() {
@@ -8639,7 +8651,7 @@ function executiveDashboardPage() {
         <header class="executive-stage-head">
           <div class="executive-heading"><h1 data-executive-heading-title>${slideTitle}</h1><p>Resultados consolidados das auditorias e dos planos de ação.</p></div>
           <div class="executive-head-actions">
-            <label data-executive-help="Define se o painel mostra todas as áreas ou somente uma área específica."><span>Escopo</span><select data-executive-scope>${executivePreviewScopes.map(([id, label]) => `<option value="${id}" ${id === executivePreviewScope ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+            <label data-executive-help="Define se o painel mostra todas as áreas ou somente uma área específica."><span>Escopo</span><select data-executive-scope>${executivePreviewScopes().map(([id, label]) => `<option value="${id}" ${id === executivePreviewScope ? "selected" : ""}>${label}</option>`).join("")}</select></label>
             <label data-executive-help="Período utilizado em todos os números, gráficos e comparações do painel."><span>Período</span><select><option>Jan–Set 2026</option><option>Últimos 12 meses</option></select></label>
             <button type="button" data-executive-present data-executive-help="Abre o dashboard em tela cheia para apresentação.">${assetIcon("dashboard", "blue")}<span>Apresentar</span></button>
           </div>

@@ -19032,17 +19032,24 @@ button.planning-kpi:hover {
 }
 
 @media (max-width: 760px) {
-  .executive-dashboard-preview { padding: 7px; border-radius: 0 14px 14px 14px; }
+  .executive-dashboard-preview { width: 100%; min-width: 0; padding: 7px; overflow: hidden; border-radius: 0 14px 14px 14px; }
+  .executive-stage,
+  .executive-stage-head,
+  .executive-slide,
+  .executive-card { min-width: 0; max-width: 100%; }
   .executive-stage { min-height: 0; border-radius: 8px; }
   .executive-stage-head { min-height: 0; padding: 13px 12px; }
   .executive-heading h1 { font-size: 17px; }
   .executive-heading p { font-size: 9.5px; }
-  .executive-head-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; }
+  .executive-head-actions { display: grid; grid-template-columns: 1fr; gap: 7px; width: 100%; }
+  .executive-head-actions label,
+  .executive-head-actions select,
+  .executive-head-actions button { width: 100%; min-width: 0; }
   .executive-head-actions select { min-width: 0; font-size: 9px; }
-  .executive-head-actions button { width: 35px; padding: 0; justify-content: center; }
-  .executive-head-actions button span { display: none; }
-  .executive-slide-nav { display: flex; padding: 0 8px; overflow-x: auto; }
-  .executive-slide-nav button { flex: 0 0 132px; }
+  .executive-head-actions button { min-height: 38px; justify-content: center; }
+  .executive-head-actions button span { display: inline; }
+  .executive-slide-nav { display: flex; gap: 4px; padding: 0 6px; overflow-x: auto; overscroll-behavior-inline: contain; }
+  .executive-slide-nav button { flex: 0 0 124px; min-width: 0; }
   .executive-slide { min-height: 0; padding: 10px; overflow: visible; }
   .executive-kpis { display: flex; gap: 7px; margin-bottom: 9px; overflow-x: auto; scroll-snap-type: x mandatory; }
   .executive-metric { flex: 0 0 135px; min-height: 72px; scroll-snap-align: start; }
@@ -19068,10 +19075,12 @@ button.planning-kpi:hover {
   .executive-origin-card { min-height: 0; grid-column: 1; }
   .executive-result-summary { grid-template-columns: 1fr; }
   .executive-total-responses { min-height: 60px; margin: 0 13px; padding: 8px 0; border-right: 0; border-bottom: 1px solid #e3e9f0; }
-  .executive-area-table { overflow-x: auto; }
-  .executive-area-table > header,
-  .executive-area-table-head,
-  .executive-area-row { min-width: 610px; }
+  .executive-area-table { overflow: hidden; }
+  .executive-area-table-head { display: none; }
+  .executive-area-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; min-width: 0; padding: 9px 12px; }
+  .executive-area-row > span:first-child { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(55px, 1fr); }
+  .executive-area-row > strong,
+  .executive-area-row > em { font-size: 10px; }
   .executive-area-focus-head { align-items: flex-start; }
   .executive-focus-score { min-width: 105px; }
   .executive-contributors-card,

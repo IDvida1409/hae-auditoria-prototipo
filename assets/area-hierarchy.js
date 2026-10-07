@@ -72,6 +72,16 @@
         ["dml-1-andar", "DML 1º Andar", "Depósito de material de limpeza do 1º andar", "dml-produto-quimico.png"],
         ["dml-2-andar", "DML 2º Andar", "Depósito de material de limpeza do 2º andar", "dml-produto-quimico.png"]
       ]
+    },
+    {
+      id: "teste",
+      name: "Teste",
+      icon: "area-despensa.png",
+      restrictedToMaster: true,
+      subareas: [
+        ["teste-1", "Teste 1", "Subárea reservada para testes", "area-despensa.png"],
+        ["teste-2", "Teste 2", "Subárea reservada para testes", "area-despensa.png"]
+      ]
     }
   ];
 
