@@ -8511,6 +8511,11 @@ function executivePercent(value, total) {
   return total ? `${Math.round((value / total) * 100)}%` : "—";
 }
 
+function executiveNcLabel(value) {
+  const count = Number(value) || 0;
+  return `${count} ${count === 1 ? "NC" : "NCs"}`;
+}
+
 function executiveSummary() {
   const areas = executiveLeafAreas().filter(hasAreaResult);
   const rows = areas.flatMap((area) => questionRowsForArea(area));
@@ -8589,7 +8594,7 @@ function executiveAreaSlide() {
       </section>
       <section class="executive-card executive-contributors-card">
         <header data-executive-help="Distribui as não conformidades da área entre suas subáreas ou operações."><div><span>Origem dos impactos</span><h3>Quais operações mais influenciam o resultado</h3></div></header>
-        ${areas.length ? areas.map((area) => `<div class="executive-impact-row"><span>${escapeHtml(area.name)}</span><b>${area.ncs || 0} NCs</b></div>`).join("") : executiveEmptyState("Sem operações para comparar", "As operações aparecerão após a conclusão das auditorias.")}
+        ${areas.length ? areas.map((area) => `<div class="executive-impact-row"><span>${escapeHtml(area.name)}</span><b>${executiveNcLabel(area.ncs)}</b></div>`).join("") : executiveEmptyState("Sem operações para comparar", "As operações aparecerão após a conclusão das auditorias.")}
       </section>
       <aside class="executive-decision-note"><b>Análise do período</b><p>${score == null ? "Ainda não há resultado para este escopo." : `A nota consolidada do escopo no ${reportMonthLabel(currentMonthId)} é ${formatScore(score)}.`}</p></aside>
     </div>`;
