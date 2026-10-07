@@ -8491,108 +8491,152 @@ function executiveScopeLabel() {
   return executivePreviewScopes().find(([id]) => id === executivePreviewScope)?.[1] || "Todas as áreas";
 }
 
+function executiveScopeAreas() {
+  if (executivePreviewScope === "all") return chartScopeAreas();
+  const parent = organizationAreaById(executivePreviewScope);
+  if (parent) return [aggregateOrganizationArea(parent)];
+  const area = areaById(executivePreviewScope);
+  return area && canAccessArea(area.id) ? [area] : [];
+}
+
+function executiveLeafAreas() {
+  return executiveScopeAreas().flatMap((area) => area.isParentArea ? subareasForOrganizationArea(area.id) : [area]);
+}
+
+function executiveCurrentPeriodLabel() {
+  return `Mês atual · ${reportMonthLabel(currentMonthId)}`;
+}
+
+function executivePercent(value, total) {
+  return total ? `${Math.round((value / total) * 100)}%` : "—";
+}
+
+function executiveSummary() {
+  const areas = executiveLeafAreas().filter(hasAreaResult);
+  const rows = areas.flatMap((area) => questionRowsForArea(area));
+  const counts = countsFromRows(rows);
+  const plans = areas.flatMap((area) => actionPlansForArea(area));
+  const approved = plans.filter((plan) => ["approved", "concluido"].includes(plan.status)).length;
+  const rejected = plans.filter((plan) => ["rejected", "reopened", "atrasado"].includes(plan.status)).length;
+  const overdue = plans.filter((plan) => plan.status === "atrasado").length;
+  const recurrent = plans.filter((plan) => plan.recurrent).length;
+  const score = areas.length ? areas.reduce((sum, area) => sum + Number(area.score || 0), 0) / areas.length : null;
+  return { areas, rows, counts, plans, approved, rejected, overdue, recurrent, score };
+}
+
 function executiveOverviewSlide() {
+  const summary = executiveSummary();
+  const total = summary.rows.length;
+  const focus = [...summary.areas].sort((a, b) => Number(b.ncs || 0) - Number(a.ncs || 0))[0];
   return `
     <div class="executive-kpis">
-      ${executiveMetric("Nota média", "—", "Sem auditorias concluídas", "score")}
-      ${executiveMetric("Devolutivas aprovadas", "—", "Sem devolutivas analisadas", "positive")}
-      ${executiveMetric("Devolutivas reprovadas", "—", "Sem devolutivas analisadas", "critical")}
-      ${executiveMetric("Planos fora do prazo", "—", "Sem planos no período", "warning")}
-      ${executiveMetric("Itens recorrentes", "—", "Sem histórico comparável", "neutral")}
+      ${executiveMetric("Nota média", summary.score == null ? "—" : formatScore(summary.score), summary.areas.length ? `${summary.areas.length} áreas avaliadas` : "Sem auditorias concluídas", "score")}
+      ${executiveMetric("Devolutivas aprovadas", summary.approved, `${summary.plans.length} planos no período`, "positive")}
+      ${executiveMetric("Devolutivas reprovadas", summary.rejected, `${summary.plans.length} planos no período`, "critical")}
+      ${executiveMetric("Planos fora do prazo", summary.overdue, summary.overdue ? "Exigem acompanhamento" : "Nenhum plano vencido", "warning")}
+      ${executiveMetric("Itens recorrentes", summary.recurrent, summary.recurrent ? "Voltaram a apresentar NC" : "Nenhuma recorrência registrada", "neutral")}
     </div>
     <div class="executive-overview-grid">
       <section class="executive-card executive-result-card">
         <header data-executive-help="Distribuição de todas as respostas das auditorias concluídas no período selecionado."><div><span>Resultado do período</span><h3>Total de respostas analisadas</h3></div></header>
         <div class="executive-result-summary">
-          <div class="executive-total-responses" data-executive-help="Soma de todas as respostas registradas nas auditorias concluídas do período." tabindex="0"><span>Total de respostas</span><strong>0</strong><small>Nenhuma auditoria concluída</small></div>
+          <div class="executive-total-responses" data-executive-help="Soma de todas as respostas registradas nas auditorias concluídas do período." tabindex="0"><span>Total de respostas</span><strong>${total}</strong><small>${summary.areas.length} áreas avaliadas</small></div>
           <div class="executive-result-breakdown">
             <div class="executive-distribution" aria-label="Distribuição das respostas">
-              <i class="is-conform" style="width:0%"></i>
-              <i class="is-nonconform" style="width:0%"></i>
-              <i class="is-na" style="width:0%"></i>
+              <i class="is-conform" style="width:${total ? (summary.counts.C / total) * 100 : 0}%"></i>
+              <i class="is-nonconform" style="width:${total ? (summary.counts.NC / total) * 100 : 0}%"></i>
+              <i class="is-na" style="width:${total ? (summary.counts.X / total) * 100 : 0}%"></i>
             </div>
             <div class="executive-distribution-legend">
-              <span data-executive-help="Respostas que atenderam ao requisito avaliado." tabindex="0"><i class="is-conform"></i><b>0</b> Conformes <em>—</em></span>
-              <span data-executive-help="Respostas que geraram não conformidade e podem originar plano de ação." tabindex="0"><i class="is-nonconform"></i><b>0</b> Não conformes <em>—</em></span>
-              <span data-executive-help="Perguntas não aplicáveis ou que não receberam avaliação no período." tabindex="0"><i class="is-na"></i><b>0</b> Não avaliadas <em>—</em></span>
+              <span data-executive-help="Respostas que atenderam ao requisito avaliado." tabindex="0"><i class="is-conform"></i><b>${summary.counts.C}</b> Conformes <em>${executivePercent(summary.counts.C, total)}</em></span>
+              <span data-executive-help="Respostas que geraram não conformidade e podem originar plano de ação." tabindex="0"><i class="is-nonconform"></i><b>${summary.counts.NC}</b> Não conformes <em>${executivePercent(summary.counts.NC, total)}</em></span>
+              <span data-executive-help="Perguntas não aplicáveis ou que não receberam avaliação no período." tabindex="0"><i class="is-na"></i><b>${summary.counts.X}</b> Não avaliadas <em>${executivePercent(summary.counts.X, total)}</em></span>
             </div>
           </div>
         </div>
       </section>
       <section class="executive-card executive-reading-card">
         <header data-executive-help="Até três fatos do período que merecem atenção da gestão."><div><span>Destaques do período</span><h3>Ocorrências relevantes</h3></div></header>
-        ${executiveEmptyState("Nenhuma ocorrência disponível", "Os destaques serão calculados quando houver resultados no período.")}
+        ${focus ? `<ul class="executive-highlight-list"><li><strong>${escapeHtml(focus.name)}</strong><span>${focus.ncs || 0} não conformidades registradas</span></li><li><strong>${summary.overdue ? "Planos fora do prazo" : "Controle de prazos"}</strong><span>${summary.overdue ? `${summary.overdue} plano(s) vencido(s)` : "Nenhum plano vencido no período"}</span></li></ul>` : executiveEmptyState("Nenhuma ocorrência disponível", "As ocorrências serão exibidas após a conclusão de uma auditoria.")}
       </section>
     </div>
     <section class="executive-card executive-area-table">
       <header data-executive-help="Compara nota, variação, não conformidades e planos atrasados de cada área."><div><span>Comparativo</span><h3>Desempenho das áreas</h3></div></header>
       <div class="executive-area-table-head"><span>Área</span><span>Nota</span><span>Tendência</span><span>NCs</span><span>Planos em atraso</span></div>
-      ${executiveEmptyState("Nenhum resultado por área", "As áreas serão exibidas após a primeira auditoria concluída.")}
+      ${summary.areas.length ? summary.areas.map((area) => `<div class="executive-area-table-row"><strong>${escapeHtml(area.name)}</strong><span>${formatScore(area.score)}</span><span>${Number.isFinite(area.last) ? formatScore(area.score - area.last) : "—"}</span><span>${area.ncs || 0}</span><span>${actionPlanStats(area).late}</span></div>`).join("") : executiveEmptyState("Nenhum resultado por área", "As áreas serão exibidas após a primeira auditoria concluída.")}
     </section>`;
 }
 
 function executiveAreaSlide() {
   const scopeLabel = executiveScopeLabel();
+  const selected = executiveScopeAreas()[0];
+  const areas = executiveLeafAreas().filter(hasAreaResult);
+  const score = selected?.score;
+  const blocks = areas.flatMap((area) => blockSummaries(area).filter((block) => Number.isFinite(block.score))).sort((a, b) => a.score - b.score).slice(0, 4);
   return `
     <div class="executive-area-focus-head">
-      <div data-executive-help="Todos os componentes abaixo apresentarão somente os resultados do escopo selecionado."><span>ESCOPO SELECIONADO</span><h2>${escapeHtml(scopeLabel)}</h2><p>Nenhuma operação avaliada no período</p></div>
-      <div class="executive-focus-score" data-executive-help="Última nota consolidada da área e sua variação no período."><span>Nota atual</span><strong>—</strong><em>Sem dados no período</em></div>
+      <div data-executive-help="Todos os componentes abaixo apresentarão somente os resultados do escopo selecionado."><span>ESCOPO SELECIONADO</span><h2>${escapeHtml(scopeLabel)}</h2><p>${areas.length} operação(ões) avaliada(s) em ${executiveCurrentPeriodLabel()}</p></div>
+      <div class="executive-focus-score" data-executive-help="Última nota consolidada da área e sua variação no período."><span>Nota atual</span><strong>${score == null ? "—" : formatScore(score)}</strong><em>${score == null ? "Sem dados no período" : "Resultado do mês atual"}</em></div>
     </div>
     <div class="executive-area-analysis">
       <section class="executive-card executive-trend-card">
-        <header data-executive-help="Mostra a evolução mensal da nota da área e sua posição em relação à meta 90."><div><span>Evolução do resultado</span><h3>Nota consolidada da área</h3></div><b>Meta 90</b></header>
-        ${executiveEmptyState("Sem evolução disponível", "O gráfico será preenchido após auditorias concluídas em períodos comparáveis.")}
+        <header data-executive-help="Mostra a evolução mensal da nota da área e sua posição em relação à meta 8,0."><div><span>Evolução do resultado</span><h3>Nota consolidada da área</h3></div><b>Meta 8,0</b></header>
+        ${selected && hasAreaResult(selected) ? dashboardEvolution(selected) : executiveEmptyState("Sem evolução disponível", "O gráfico será preenchido após auditorias concluídas.")}
       </section>
       <section class="executive-card executive-block-card">
         <header data-executive-help="Categorias ordenadas pela quantidade de não conformidades registradas na área."><div><span>Impacto na nota</span><h3>Fatores com maior impacto no resultado</h3></div></header>
-        ${executiveEmptyState("Sem fatores identificados", "Os fatores de impacto aparecerão quando houver não conformidades registradas.")}
+        ${blocks.length ? blocks.map((block) => `<div class="executive-impact-row"><span>${escapeHtml(block.label)}</span><b>${formatScore(block.score)}</b></div>`).join("") : executiveEmptyState("Sem fatores identificados", "Os fatores aparecerão quando houver respostas avaliadas.")}
       </section>
       <section class="executive-card executive-contributors-card">
         <header data-executive-help="Distribui as não conformidades da área entre suas subáreas ou operações."><div><span>Origem dos impactos</span><h3>Quais operações mais influenciam o resultado</h3></div></header>
-        ${executiveEmptyState("Sem operações para comparar", "A participação das subáreas aparecerá após a conclusão das auditorias.")}
+        ${areas.length ? areas.map((area) => `<div class="executive-impact-row"><span>${escapeHtml(area.name)}</span><b>${area.ncs || 0} NCs</b></div>`).join("") : executiveEmptyState("Sem operações para comparar", "As operações aparecerão após a conclusão das auditorias.")}
       </section>
-      <aside class="executive-decision-note"><b>Análise do período</b><p>A análise será gerada quando houver resultados suficientes no escopo e período selecionados.</p></aside>
+      <aside class="executive-decision-note"><b>Análise do período</b><p>${score == null ? "Ainda não há resultado para este escopo." : `A nota consolidada do escopo no ${reportMonthLabel(currentMonthId)} é ${formatScore(score)}.`}</p></aside>
     </div>`;
 }
 
 function executivePlansSlide() {
+  const summary = executiveSummary();
+  const received = summary.plans.filter((plan) => plan.backendItems?.some((item) => item.responseText || item.responseEvidenceFileId)).length;
+  const awaitingArea = summary.plans.filter((plan) => !plan.backendItems?.some((item) => item.responseText || item.responseEvidenceFileId) && !["approved", "concluido"].includes(plan.status)).length;
+  const awaitingAuditor = summary.plans.filter((plan) => plan.status === "pending_review").length;
   return `
     <div class="executive-plan-layout">
       <section class="executive-card executive-plan-flow-card">
-        <header data-executive-help="Acompanha os mesmos planos desde a criação até o resultado da análise da devolutiva."><div><span>Fluxo do período</span><h3>Do plano gerado à decisão do auditor</h3></div><small>Sem dados</small></header>
+        <header data-executive-help="Acompanha os mesmos planos desde a criação até o resultado da análise da devolutiva."><div><span>Fluxo do período</span><h3>Do plano gerado à decisão do auditor</h3></div><small>${summary.plans.length} planos</small></header>
         <div class="executive-plan-flow">
           <article class="executive-plan-stage is-created" data-executive-help="Total de planos de ação gerados pelas não conformidades no período." tabindex="0">
-            <span>Planos gerados</span><strong>0</strong><small>Nenhum plano no período</small>
+            <span>Planos gerados</span><strong>${summary.plans.length}</strong><small>${summary.plans.length ? "No período atual" : "Nenhum plano no período"}</small>
           </article>
           <i class="executive-flow-arrow" aria-hidden="true">${icons.arrow}</i>
           <article class="executive-plan-stage is-received" data-executive-help="Planos para os quais a área responsável já enviou resposta e evidências." tabindex="0">
-            <span>Devolutivas recebidas</span><strong>0</strong><small>Nenhuma devolutiva recebida</small>
+            <span>Devolutivas recebidas</span><strong>${received}</strong><small>${received ? "Respostas recebidas" : "Nenhuma devolutiva recebida"}</small>
           </article>
           <i class="executive-flow-arrow" aria-hidden="true">${icons.arrow}</i>
           <article class="executive-plan-stage is-decision" data-executive-help="Resultado das devolutivas já analisadas pelo auditor." tabindex="0">
             <span>Resultado da análise</span>
-            <div><b class="is-approved"><strong>0</strong><small>Aprovadas · —</small></b><b class="is-rejected"><strong>0</strong><small>Reprovadas · —</small></b></div>
+            <div><b class="is-approved"><strong>${summary.approved}</strong><small>Aprovadas · ${executivePercent(summary.approved, summary.plans.length)}</small></b><b class="is-rejected"><strong>${summary.rejected}</strong><small>Reprovadas · ${executivePercent(summary.rejected, summary.plans.length)}</small></b></div>
           </article>
         </div>
         <div class="executive-plan-flags">
-          <span data-executive-help="Planos enviados que ainda não receberam a primeira devolutiva da área responsável." tabindex="0"><b>0</b><small>Aguardam devolutiva da área</small></span>
-          <span data-executive-help="Devolutivas recebidas que ainda não foram analisadas pelo auditor." tabindex="0"><b>0</b><small>Aguardam análise do auditor</small></span>
-          <span class="is-overdue" data-executive-help="Planos que ultrapassaram o prazo definido e ainda exigem conclusão." tabindex="0"><b>0</b><small>Fora do prazo</small></span>
+          <span data-executive-help="Planos enviados que ainda não receberam a primeira devolutiva da área responsável." tabindex="0"><b>${awaitingArea}</b><small>Aguardam devolutiva da área</small></span>
+          <span data-executive-help="Devolutivas recebidas que ainda não foram analisadas pelo auditor." tabindex="0"><b>${awaitingAuditor}</b><small>Aguardam análise do auditor</small></span>
+          <span class="is-overdue" data-executive-help="Planos que ultrapassaram o prazo definido e ainda exigem conclusão." tabindex="0"><b>${summary.overdue}</b><small>Fora do prazo</small></span>
         </div>
       </section>
 
       <div class="executive-plan-detail-grid">
         <section class="executive-card executive-overdue-area-card">
-          <header data-executive-help="Compara o número e a taxa de planos fora do prazo em cada área."><div><span>Concentração dos atrasos</span><h3>Planos fora do prazo por área</h3></div><small>0 planos</small></header>
+          <header data-executive-help="Compara o número e a taxa de planos fora do prazo em cada área."><div><span>Concentração dos atrasos</span><h3>Planos fora do prazo por área</h3></div><small>${summary.overdue} planos</small></header>
           <div class="executive-overdue-area-head"><span>Área</span><span>Planos</span><span>Fora do prazo</span><span>Taxa</span></div>
-          ${executiveEmptyState("Nenhum plano fora do prazo", "As áreas aparecerão aqui quando houver planos vencidos no período.")}
+          ${summary.overdue ? summary.areas.filter((area) => actionPlanStats(area).late > 0).map((area) => `<div class="executive-area-table-row"><strong>${escapeHtml(area.name)}</strong><span>${actionPlanStats(area).total}</span><span>${actionPlanStats(area).late}</span><span>${executivePercent(actionPlanStats(area).late, actionPlanStats(area).total)}</span></div>`).join("") : executiveEmptyState("Nenhum plano fora do prazo", "As áreas aparecerão aqui quando houver planos vencidos no período.")}
         </section>
 
         <section class="executive-card executive-next-action-card">
           <header data-executive-help="Identifica quem precisa agir para que cada plano avance à próxima etapa."><div><span>Pendências atuais</span><h3>Quem precisa realizar a próxima ação</h3></div><small>0 planos</small></header>
           <div class="executive-next-action-list">
-            <div class="is-area" data-executive-help="Planos que aguardam a primeira devolutiva ou uma nova correção da área responsável."><span><b>Área responsável</b><small>Nenhuma ação pendente</small></span><strong>0</strong></div>
-            <div class="is-auditor" data-executive-help="Devolutivas já enviadas pela área que ainda aguardam decisão do auditor."><span><b>Auditor</b><small>Nenhuma devolutiva aguardando análise</small></span><strong>0</strong></div>
+            <div class="is-area" data-executive-help="Planos que aguardam a primeira devolutiva ou uma nova correção da área responsável."><span><b>Área responsável</b><small>${awaitingArea ? "Aguardando devolutiva" : "Nenhuma ação pendente"}</small></span><strong>${awaitingArea}</strong></div>
+            <div class="is-auditor" data-executive-help="Devolutivas já enviadas pela área que ainda aguardam decisão do auditor."><span><b>Auditor</b><small>${awaitingAuditor ? "Aguardando análise" : "Nenhuma devolutiva aguardando análise"}</small></span><strong>${awaitingAuditor}</strong></div>
           </div>
           <p><b>Leitura:</b> não há pendências para analisar no período selecionado.</p>
         </section>
@@ -8604,21 +8648,31 @@ function executivePlansSlide() {
 
 function executiveRecurrenceSlide() {
   const scopeLabel = executiveScopeLabel();
+  const summary = executiveSummary();
+  const causes = summary.plans.reduce((result, plan) => {
+    for (const item of plan.backendItems || []) {
+      const key = item.causeGroup || item.causeCode;
+      if (key) result[key] = (result[key] || 0) + 1;
+    }
+    return result;
+  }, {});
+  const totalCauses = Object.values(causes).reduce((sum, value) => sum + value, 0);
+  const recurrenceRows = summary.plans.filter((plan) => plan.recurrent).slice(0, 5);
   return `
     <div class="executive-recurrence-layout">
       <section class="executive-card executive-recurrence-card">
-        <header data-executive-help="Acompanha o resultado da mesma pergunta entre ciclos e mostra em qual área e subárea ela foi avaliada."><div><span>Histórico</span><h3>Histórico de recorrências</h3></div><b>0 itens recorrentes</b></header>
+        <header data-executive-help="Acompanha o resultado da mesma pergunta entre ciclos e mostra em qual área e subárea ela foi avaliada."><div><span>Histórico</span><h3>Histórico de recorrências</h3></div><b>${summary.recurrent} itens recorrentes</b></header>
         <p class="executive-card-description">Escopo selecionado: <b>${escapeHtml(scopeLabel)}</b>.</p>
-        ${executiveEmptyState("Sem histórico de recorrências", "São necessários ciclos concluídos para comparar o mesmo item ao longo do tempo.")}
+        ${recurrenceRows.length ? recurrenceRows.map((plan) => `<div class="executive-impact-row"><span>${escapeHtml(plan.area?.name || "Área")}</span><b>${escapeHtml(plan.title || "Plano recorrente")}</b></div>`).join("") : executiveEmptyState("Sem histórico de recorrências", "São necessários ciclos concluídos para comparar o mesmo item ao longo do tempo.")}
       </section>
       <section class="executive-card executive-origin-card">
         <header data-executive-help="Classificação dos motivos informados nos planos de ação. Os resultados serão calculados a partir das seleções registradas."><div><span>Classificação</span><h3>Origem dos atrasos e falhas de execução</h3></div></header>
         <div class="executive-origin-chart">
-          <div class="is-internal" data-executive-help="Falha na execução, acompanhamento ou conclusão do plano dentro do processo da área responsável."><span><b>Processo interno</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
-          <div class="is-external" data-executive-help="Atraso relacionado a chamado para outra área, compra, fornecedor ou terceiro."><span><b>Fatores externos</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
-          <div class="is-shared" data-executive-help="O atraso envolveu falhas ou demora de mais de uma das partes participantes do processo."><span><b>Processo compartilhado</b><em>—</em></span><i><strong style="width:0%"></strong></i></div>
+          <div class="is-internal" data-executive-help="Falha na execução, acompanhamento ou conclusão do plano dentro do processo da área responsável."><span><b>Processo interno</b><em>${executivePercent(causes.interno || causes.internal || 0, totalCauses)}</em></span><i><strong style="width:${totalCauses ? ((causes.interno || causes.internal || 0) / totalCauses) * 100 : 0}%"></strong></i></div>
+          <div class="is-external" data-executive-help="Atraso relacionado a chamado para outra área, compra, fornecedor ou terceiro."><span><b>Fatores externos</b><em>${executivePercent(causes.externo || causes.external || 0, totalCauses)}</em></span><i><strong style="width:${totalCauses ? ((causes.externo || causes.external || 0) / totalCauses) * 100 : 0}%"></strong></i></div>
+          <div class="is-shared" data-executive-help="O atraso envolveu falhas ou demora de mais de uma das partes participantes do processo."><span><b>Processo compartilhado</b><em>${executivePercent(causes.compartilhado || causes.shared || 0, totalCauses)}</em></span><i><strong style="width:${totalCauses ? ((causes.compartilhado || causes.shared || 0) / totalCauses) * 100 : 0}%"></strong></i></div>
         </div>
-        <p>Sem classificações registradas no período.</p>
+        <p>${totalCauses ? `${totalCauses} classificação(ões) registrada(s) nos planos.` : "Sem classificações registradas no período."}</p>
       </section>
       <section class="executive-card executive-priority-card">
         <header data-executive-help="Prioridades derivadas dos itens recorrentes, persistentes e ainda pendentes no período."><div><span>Prioridades</span><h3>Três decisões para o próximo ciclo</h3></div></header>
@@ -8673,7 +8727,7 @@ function executiveDashboardPage() {
           <div class="executive-heading"><h1 data-executive-heading-title>${slideTitle}</h1><p>Resultados consolidados das auditorias e dos planos de ação.</p></div>
           <div class="executive-head-actions">
             <label data-executive-help="Define se o painel mostra todas as áreas ou somente uma área específica."><span>Escopo</span><select data-executive-scope>${executivePreviewScopes().map(([id, label]) => `<option value="${id}" ${id === executivePreviewScope ? "selected" : ""}>${label}</option>`).join("")}</select></label>
-            <label data-executive-help="Período utilizado em todos os números, gráficos e comparações do painel."><span>Período</span><select><option>Jan–Set 2026</option><option>Últimos 12 meses</option></select></label>
+            <label data-executive-help="Período utilizado em todos os números, gráficos e comparações do painel."><span>Período</span><select><option>${executiveCurrentPeriodLabel()}</option><option>Últimos 12 meses</option></select></label>
             <button type="button" data-executive-present data-executive-help="Abre o dashboard em tela cheia para apresentação.">${assetIcon("dashboard", "blue")}<span>Apresentar</span></button>
           </div>
         </header>
