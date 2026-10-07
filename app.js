@@ -347,6 +347,10 @@ function canAccessArea(areaId) {
   return !isAreaResponsible() || allowedAreaIds().includes(areaId);
 }
 
+function accessibleAreaData() {
+  return areaData.filter((area) => canAccessArea(area.id));
+}
+
 function primaryUserArea() {
   return areaData.find((area) => canAccessArea(area.id)) || areaData[0];
 }
@@ -1464,7 +1468,7 @@ function hasAreaResult(area) {
 }
 
 function areasWithResults() {
-  return areaData.filter(hasAreaResult);
+  return accessibleAreaData().filter(hasAreaResult);
 }
 
 function hasAnyAuditResult() {
@@ -2198,7 +2202,7 @@ function ncRowsForArea(area) {
 
 function ncRiskCounts(area = null) {
   const base = { baixo: 0, moderado: 0, medio: 0, critico: 0 };
-  const rows = area ? ncRowsForArea(area) : areaData.flatMap((entry) => ncRowsForArea(entry));
+  const rows = area ? ncRowsForArea(area) : accessibleAreaData().flatMap((entry) => ncRowsForArea(entry));
   rows.forEach((question) => {
     if (base[question.riskLevel] !== undefined) base[question.riskLevel] += 1;
   });
@@ -2282,9 +2286,15 @@ function generalScore() {
 }
 
 function chartScopeAreas() {
-  return isAreaResponsible()
+  const scope = isAreaResponsible()
     ? responsibleScopedAreas()
     : organizationAreaCards();
+  if (!currentAccessUser?.is_master) return scope;
+
+  // Teste 1 e Teste 2 são exibidos individualmente nos gráficos do master.
+  // As demais áreas continuam consolidadas por grupo, como no painel inicial.
+  const testAreas = subareasForOrganizationArea("teste");
+  return [...scope.filter((area) => area.id !== "teste"), ...testAreas];
 }
 
 function chartScoreForMonth(area, monthId) {
@@ -2300,7 +2310,7 @@ function chartScoreForMonth(area, monthId) {
 }
 
 function monthAverage(monthId) {
-  const values = (monthLines[monthId] || []).filter(Number.isFinite);
+  const values = (monthLines[monthId] || []).filter((value, index) => canAccessArea(areaData[index]?.id) && Number.isFinite(value));
   if (!values.length) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -3612,7 +3622,7 @@ function reportShortMonthLabel(monthId) {
 }
 
 function reportQuestionTotals() {
-  return areaData.reduce(
+  return accessibleAreaData().reduce(
     (totals, area) => {
       const counts = countsFromRows(questionRowsForArea(area));
       totals.C += counts.C;
@@ -3625,7 +3635,7 @@ function reportQuestionTotals() {
 }
 
 function reportActionTotals() {
-  return areaData.reduce(
+  return accessibleAreaData().reduce(
     (totals, area) => {
       const stats = actionPlanStats(area);
       totals.total += stats.total;
@@ -3737,6 +3747,7 @@ function reportComparisonStatus(area, stats, delta) {
 
 function reportBarChart({ comparison = false } = {}) {
   const previousId = reportPreviousMonthId();
+  const reportAreas = accessibleAreaData();
   const currentValues = monthLines[currentMonthId] || areaData.map((area) => area.score);
   const previousValues = monthLines[previousId] || areaData.map((area) => area.last);
   const width = 1080;
@@ -3745,7 +3756,7 @@ function reportBarChart({ comparison = false } = {}) {
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
   const plotBottom = pad.top + innerH;
-  const slotW = innerW / areaData.length;
+  const slotW = innerW / Math.max(1, reportAreas.length);
   const yFor = (value) => pad.top + innerH - (value / 10) * innerH;
   const ticks = [0, 2, 4, 6, 8, 10];
   const currentLabel = reportMonthLabel(currentMonthId);
@@ -3776,11 +3787,12 @@ function reportBarChart({ comparison = false } = {}) {
               <text x="${pad.left + 30}" y="19" fill="#425474" font-size="12" font-weight="700">${currentLabel}</text>
             `}
         </g>
-        ${areaData
+        ${reportAreas
           .map((area, index) => {
+            const areaIndex = areaData.findIndex((item) => item.id === area.id);
             const center = pad.left + index * slotW + slotW / 2;
-            const current = currentValues[index] ?? area.score;
-            const previous = previousValues[index] ?? area.last;
+            const current = currentValues[areaIndex] ?? area.score;
+            const previous = previousValues[areaIndex] ?? area.last;
             const currentBarWidth = comparison ? 20 : 34;
             const previousBarWidth = 20;
             const currentX = comparison ? center + 4 : center - currentBarWidth / 2;
@@ -3806,7 +3818,7 @@ function reportBarChart({ comparison = false } = {}) {
 }
 
 function reportMonthlyAreaRows() {
-  return areaData
+  return accessibleAreaData()
     .map((area) => {
       const stats = actionPlanStats(area);
       return `
@@ -3826,9 +3838,10 @@ function reportMonthlyAreaRows() {
 function reportComparativeAreaRows() {
   const previousId = reportPreviousMonthId();
   const previousValues = monthLines[previousId] || areaData.map((area) => area.last);
-  return areaData
-    .map((area, index) => {
-      const previous = previousValues[index] ?? area.last;
+  return accessibleAreaData()
+    .map((area) => {
+      const areaIndex = areaData.findIndex((item) => item.id === area.id);
+      const previous = previousValues[areaIndex] ?? area.last;
       const delta = area.score - previous;
       const stats = actionPlanStats(area);
       const deltaClass = delta >= 0 ? "positive" : "danger";
@@ -3853,7 +3866,7 @@ function reportPlanRows() {
     concluido: "Concluído",
     atrasado: "Atrasado"
   };
-  return areaData
+  return accessibleAreaData()
     .flatMap((area) =>
       actionPlansForArea(area).slice(0, 2).map((plan) => ({
         area,
@@ -3894,7 +3907,8 @@ function reportPriorityRows() {
 function legacyOverviewMonthlyReportPage() {
   const totals = reportQuestionTotals();
   const actionTotals = reportActionTotals();
-  const belowMeta = areaData.filter((area) => area.score < 8).length;
+  const reportAreas = accessibleAreaData();
+  const belowMeta = reportAreas.filter((area) => area.score < 8).length;
   const openActions = actionTotals.pending + actionTotals.inProgress + actionTotals.late;
   const priority = actionImpactRows()[0];
 
@@ -3909,7 +3923,7 @@ function legacyOverviewMonthlyReportPage() {
       ${reportAuditInfo()}
       <section class="report-kpi-grid">
         ${reportKpiCard("Nota geral", formatScore(generalScore()), "média das 12 áreas", "good")}
-        ${reportKpiCard("Áreas auditadas", areaData.length, "setores avaliados no mês", "blue")}
+        ${reportKpiCard("Áreas auditadas", reportAreas.length, "setores avaliados no mês", "blue")}
         ${reportKpiCard("Não conformidades", totals.NC, "itens classificados como NC", "warning")}
         ${reportKpiCard("Planos abertos", openActions, "pendentes, em andamento ou atrasados", "blue")}
         ${reportKpiCard("Abaixo da meta", belowMeta, "áreas abaixo de 8,0", belowMeta ? "danger" : "good")}
@@ -3969,8 +3983,15 @@ function comparativeReportPage() {
   const previousAverage = monthAverage(previousId) ?? generalScore();
   const currentAverage = monthAverage(currentMonthId) ?? generalScore();
   const delta = currentAverage - previousAverage;
-  const improvedAreas = areaData.filter((area, index) => area.score > (previousValues[index] ?? area.last)).length;
-  const worsenedAreas = areaData.filter((area, index) => area.score < (previousValues[index] ?? area.last)).length;
+  const reportAreas = accessibleAreaData();
+  const improvedAreas = reportAreas.filter((area) => {
+    const areaIndex = areaData.findIndex((item) => item.id === area.id);
+    return area.score > (previousValues[areaIndex] ?? area.last);
+  }).length;
+  const worsenedAreas = reportAreas.filter((area) => {
+    const areaIndex = areaData.findIndex((item) => item.id === area.id);
+    return area.score < (previousValues[areaIndex] ?? area.last);
+  }).length;
   const actionTotals = reportActionTotals();
   const priority = actionImpactRows()[0];
 

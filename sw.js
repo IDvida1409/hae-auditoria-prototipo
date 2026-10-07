@@ -1,4 +1,4 @@
-const CACHE_NAME = "idauditor-v78-dashboard-mobile";
+const CACHE_NAME = "idauditor-v79-dashboard-scope";
 const APP_SHELL = [
   "/",
   "/index.html",
