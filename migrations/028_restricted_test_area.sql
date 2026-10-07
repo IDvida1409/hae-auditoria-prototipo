@@ -58,7 +58,7 @@ begin
 
     if new_checklist_id is null then
       insert into checklists (unit_id, area_id, name, version_label, legal_base, active_from, is_active, source_key, imported_at)
-      values (v_unit_id, target_area.id, 'Checklist de testes', 'Versão inicial', source_checklist.legal_base, current_date, true, 'restricted-test-copy', now())
+      values (v_unit_id, target_area.id, 'Checklist de testes - ' || target_area.slug, 'Versão inicial', source_checklist.legal_base, current_date, true, 'restricted-test-copy-' || target_area.slug, now())
       returning id into new_checklist_id;
 
       for source_block in
