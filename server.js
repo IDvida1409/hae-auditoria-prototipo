@@ -11,7 +11,6 @@ const resourceApi = require("./lib/resource-api");
 const { migrate: runMigrations } = require("./lib/database");
 const reportWorker = require("./lib/report-worker");
 const accessApi = require("./lib/access-api");
-const clinicalInterviews = require("./lib/clinical-interviews");
 const { importChecklistData } = require("./lib/checklist-import");
 const { notify } = require("./lib/notifications");
 const actionPlanService = require("./lib/action-plan-service");
@@ -388,8 +387,7 @@ function staticPathFor(urlPath) {
   ]);
   if (vendorFiles.has(relativePath)) return vendorFiles.get(relativePath);
   const publicFiles = new Set(["index.html", "styles.css", "checklist-data.js", "offline-store.js", "live-update.js", "app.js", "manifest.webmanifest", "sw.js", "login.html", "login.css", "login.js", "plano-acao-preview.html", "icon-concepts-hierarchy.html", "idauditor-web.zip", "report-review.html", "report-review.css", "report-review.js"]);
-  const interviewFiles = new Set(["interview/index.html", "interview/admin.html", "interview/styles.css", "interview/schema.js", "interview/form.js", "interview/admin.js"]);
-  if (!publicFiles.has(relativePath) && !interviewFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
+  if (!publicFiles.has(relativePath) && !relativePath.startsWith("assets/")) return null;
   const resolved = path.resolve(root, relativePath);
   if (!resolved.startsWith(root + path.sep)) return null;
   if (relativePath.startsWith("assets/") && !resolved.startsWith(path.join(root, "assets") + path.sep)) return null;
@@ -451,7 +449,6 @@ async function handleApi(request, response, url) {
     return true;
   }
   if (await accessApi.handle(request, response, url, { getPool, sendJson, readJsonBody, requireDatabase })) return true;
-  if (await clinicalInterviews.handle(request, response, url, { getPool, sendJson, readJsonBody, requireDatabase, authenticated: accessApi.authenticated, verifyPassword: accessApi.verifyPassword })) return true;
   const isPublicReportReview = url.pathname === "/api/report-review" && ["GET", "POST", "PUT"].includes(request.method);
   if (isPublicReportReview) {
     if (await operationalApi.handle(request, response, url, {
