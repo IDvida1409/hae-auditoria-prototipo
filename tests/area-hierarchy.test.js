@@ -25,6 +25,15 @@ test("Catering pertence somente a Conforto Médico", () => {
   assert.equal(classification.group.id, "conforto-medico");
 });
 
+test("Teste 1 e Teste 2 ficam restritos ao usuário master", () => {
+  const group = hierarchy.groupById("teste");
+  assert.equal(group.restrictedToMaster, true);
+  assert.deepEqual(group.subareaIds, ["teste-1", "teste-2"]);
+  for (const id of group.subareaIds) {
+    assert.equal(hierarchy.classifyArea(id).group.id, "teste");
+  }
+});
+
 test("identificadores desconhecidos não caem em uma área padrão", () => {
   assert.deepEqual(hierarchy.classifyArea("area-inexistente"), { kind: "unknown", group: null });
 });

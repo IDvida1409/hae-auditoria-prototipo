@@ -5267,7 +5267,7 @@ function reportComparisonLegendBlock() {
 function reportActionFootnote() {
   return `
     <p class="report-footnote">
-      Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da subárea.
+      Nota: os planos de ação vigentes gerados nesta auditoria serão avaliados na próxima auditoria mensal, para verificar se as medidas implantadas reduziram as não conformidades e impactaram a evolução da nota da área.
     </p>
   `;
 }
@@ -5301,11 +5301,11 @@ function reportMonthlyInsight(area) {
     .slice(0, 2)
     .map((block) => block.title);
   const metaText = area.score >= 8
-    ? "A subárea permanece dentro da meta mínima definida para o ciclo mensal."
-    : "A subárea está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
+    ? "A área permanece dentro da meta mínima definida para o ciclo mensal."
+    : "A área está abaixo da meta mínima de 8,0 e deve permanecer em acompanhamento no próximo ciclo.";
   return `
     <div class="report-note-box">
-      <strong>Síntese técnica da subárea</strong>
+      <strong>Síntese técnica</strong>
       <p>${metaText} Foram registradas ${reportPlural(totals.NC, "não conformidade", "não conformidades")} e ${reportPlural(stats.total, "plano de ação vinculado", "planos de ação vinculados")}; ${worstBlocks.length ? `os blocos que exigem atenção neste mês são ${escapeHtml(worstBlocks.join(" e "))}` : "não há bloco com não conformidade no ciclo"}.</p>
     </div>
   `;
@@ -5608,7 +5608,7 @@ function reportConclusion(area) {
   return `
     <div class="report-note-box">
       <strong>Conclusão técnica</strong>
-      <p>A subárea ${escapeHtml(area.name)} apresentou ${statusText} e registrou ${reportPlural(totals.NC, "não conformidade", "não conformidades")}. ${escapeHtml(previousPlanText)} ${escapeHtml(currentPlanText)} A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
+      <p>${escapeHtml(area.name)} apresentou ${statusText} e registrou ${reportPlural(totals.NC, "não conformidade", "não conformidades")}. ${escapeHtml(previousPlanText)} ${escapeHtml(currentPlanText)} A validação final deve ocorrer na auditoria subsequente, com conferência das evidências e da efetividade das ações registradas.</p>
     </div>
     <div class="report-signatures is-signed-report">
       <span><strong>${escapeHtml(reportAuditorName())}</strong>Auditor responsável<small>Assinado eletronicamente em ${escapeHtml(reportAuditWindow().signedAt)}</small></span>
@@ -5975,7 +5975,7 @@ function monthlyReportPage() {
   const area = reportSelectedArea();
   const needsExtraPage = reportMonthlyNeedsExtraPage(area);
   const pages = needsExtraPage ? 4 : 3;
-  const title = "Relatório Individual da Auditoria do Mês";
+  const title = "Relatório Auditoria do Mensal";
   const titleWithMonth = `${title} - ${reportMonthLabel(currentMonthId)}`;
   const ncSection = reportSection("5", "Não conformidades registradas", `
     ${reportDocTable(["Item", "Bloco", "Requisito avaliado", "Risco", "Evidência/observação", "Plano vinculado"], reportNcDetailRows(area), "is-ncs")}
@@ -5996,7 +5996,7 @@ function monthlyReportPage() {
     <div class="technical-report">
       ${reportMonthlyPage(title, area, 1, pages, `
         <h1>${titleWithMonth}</h1>
-        <p class="report-doc-lead">Relatório mensal individual da subárea auditada, com resultado do período, blocos do checklist, não conformidades, evidências fotográficas e planos de ação vinculados.</p>
+        <p class="report-doc-lead">Relatório mensal individual da área auditada, com resultado do período, blocos do checklist, não conformidades, evidências fotográficas e planos de ação vinculados.</p>
         ${reportMiniKpis(area)}
         ${reportMonthlyLegendBlock()}
         ${reportSection("1", "Síntese executiva da subárea", `
@@ -6034,13 +6034,13 @@ function monthlyReportPage() {
 function comparativeReportPage() {
   const area = reportSelectedArea();
   const pages = 4;
-  const title = "Relatório Comparativo Analítico da Subárea";
+  const title = "Relatório Comparativo Analítico da Área";
 
   return `
     <div class="technical-report">
       ${reportComparisonPage(area, 1, pages, `
         <h1>${title}</h1>
-        <p class="report-doc-lead">Este relatório analítico compara o desempenho da subárea ${escapeHtml(area.name)} entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}. A análise considera a nota final, a variação dos blocos do checklist, as não conformidades recorrentes e a efetividade dos planos de ação, sem reproduzir as evidências fotográficas do relatório individual.</p>
+        <p class="report-doc-lead">Este relatório analítico compara o desempenho da área ${escapeHtml(area.name)} entre ${reportMonthLabel(reportPreviousMonthId())} e ${reportMonthLabel(currentMonthId)}. A análise considera a nota final, a variação dos blocos do checklist, as não conformidades recorrentes e a efetividade dos planos de ação, sem reproduzir as evidências fotográficas do relatório individual.</p>
         ${reportComparisonIntroNote()}
         ${reportMiniKpis(area, "comparison")}
         ${reportComparisonLegendBlock()}
