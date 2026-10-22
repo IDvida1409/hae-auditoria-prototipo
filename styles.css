@@ -19177,3 +19177,74 @@ button.planning-kpi:hover {
   .executive-stage-foot > b { grid-column: 1; grid-row: 1; justify-self: start; }
   .executive-stage-foot > div { grid-column: 2; }
 }
+
+/* Cabeçalho responsivo: mantém a identificação e a busca disponíveis em telas estreitas. */
+@media (max-width: 1180px) {
+  .fichario-shell .topbar.fichario-topbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .fichario-topbar .unit-copy {
+    display: inline-flex;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .fichario-topbar .top-search {
+    order: 3;
+    flex: 1 1 100%;
+    width: auto;
+    margin-left: 0;
+  }
+
+  .fichario-topbar .top-search input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .fichario-shell .topbar.fichario-topbar {
+    align-items: center;
+  }
+
+  .fichario-topbar .brand-row {
+    flex: 1 1 auto;
+  }
+
+  .fichario-topbar .unit-copy {
+    order: 1;
+    flex: 0 1 100%;
+    max-width: 100%;
+    font-size: 11px;
+  }
+
+  .fichario-topbar .hospital-mark {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .fichario-topbar .top-search {
+    order: 2;
+    min-height: 40px;
+    padding-inline: 11px;
+    border-radius: 10px;
+  }
+
+  .fichario-home .home-intro h1,
+  .fichario-home .home-intro p {
+    display: block;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .fichario-home .home-intro h1 {
+    font-size: 18px;
+  }
+
+  .fichario-home .home-intro p {
+    font-size: 12px;
+  }
+}
