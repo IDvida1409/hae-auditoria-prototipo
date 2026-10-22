@@ -9514,12 +9514,6 @@ document.addEventListener("click", async (event) => {
   const settingsSection = event.target.closest("[data-settings-section]");
   if (settingsSection) {
     const nextSection = settingsSection.dataset.settingsSection;
-    if (state.settingsSection !== nextSection) {
-      state.settingsUserView = "active";
-      state.settingsRulesView = "goals";
-      state.settingsUsersExpanded = false;
-      state.settingsExpandedArea = "";
-    }
     state.settingsSection = nextSection;
     state.settingsNewAreaOpen = nextSection === "new-area";
     state.settingsMenuExpanded = true;
@@ -9595,7 +9589,6 @@ document.addEventListener("click", async (event) => {
 
   const settingsUserView = event.target.closest("[data-settings-user-view]");
   if (settingsUserView) {
-    state.settingsSection = "users";
     state.settingsUserView = settingsUserView.dataset.settingsUserView;
     state.settingsEditingUserId = "";
     state.settingsUsersExpanded = false;
