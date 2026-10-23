@@ -19213,21 +19213,42 @@ button.planning-kpi:hover {
 /* Cabeçalho responsivo: mantém a identificação e a busca disponíveis em telas estreitas. */
 @media (max-width: 1180px) {
   .fichario-shell .topbar.fichario-topbar {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto auto;
+    grid-template-areas:
+      "brand unit notifications user"
+      "search search search search";
+    column-gap: 10px;
     row-gap: 8px;
   }
 
+  .fichario-topbar .brand-row {
+    grid-area: brand;
+    min-width: 0;
+  }
+
   .fichario-topbar .unit-copy {
+    grid-area: unit;
     display: inline-flex;
     min-width: 0;
     margin-left: 0;
   }
 
   .fichario-topbar .top-search {
-    order: 3;
-    flex: 1 1 100%;
+    grid-area: search;
+    order: initial;
+    justify-self: stretch;
+    min-width: 0;
     width: auto;
     margin-left: 0;
+  }
+
+  .fichario-topbar .notifications-anchor {
+    grid-area: notifications;
+  }
+
+  .fichario-topbar .user-mini {
+    grid-area: user;
   }
 
   .fichario-topbar .top-search input {
@@ -19238,6 +19259,11 @@ button.planning-kpi:hover {
 
 @media (max-width: 760px) {
   .fichario-shell .topbar.fichario-topbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "brand notifications user"
+      "unit unit unit"
+      "search search search";
     align-items: center;
   }
 
@@ -19247,7 +19273,8 @@ button.planning-kpi:hover {
 
   .fichario-topbar .unit-copy {
     order: 1;
-    flex: 0 1 100%;
+    justify-self: start;
+    flex: initial;
     max-width: 100%;
     font-size: 11px;
   }

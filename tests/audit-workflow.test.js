@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const checklistImporter = fs.readFileSync(path.join(__dirname, "..", "lib", "checklist-import.js"), "utf8");
 const resetMigration = fs.readFileSync(path.join(__dirname, "..", "migrations", "019_reset_operational_data_for_field_test.sql"), "utf8");
 const masterMigration = fs.readFileSync(path.join(__dirname, "..", "migrations", "023_master_user_visibility.sql"), "utf8");
 
@@ -60,4 +61,10 @@ test("usuário master é persistido sem alterar a limpeza operacional", () => {
   assert.match(fieldReset, /audit_cycles/);
   assert.doesNotMatch(fieldReset, /truncate table[\s\S]*reports/i);
   assert.doesNotMatch(fieldReset, /truncate table[\s\S]*stored_files/i);
+});
+
+test("todas as áreas recebem uma cópia independente do checklist de referência", () => {
+  assert.match(checklistImporter, /cloneChecklistToMissingAreas/);
+  assert.match(checklistImporter, /not exists \([\s\S]*from checklists c[\s\S]*c\.area_id=a\.id/);
+  assert.match(checklistImporter, /shared-reference-\$\{source\.area_id\}/);
 });

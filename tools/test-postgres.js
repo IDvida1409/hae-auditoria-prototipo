@@ -179,10 +179,15 @@ async function main() {
     assert.ok(offlineBootstrap.checklists.every((checklistItem) =>
       offlineBootstrap.areas.some((item) => item.id === checklistItem.area_id) && checklistItem.blocks.length
     ));
-    assert.equal(
-      offlineBootstrap.checklists.reduce((total, checklistItem) => total + checklistItem.blocks.reduce((areaTotal, block) => areaTotal + block.questions.length, 0), 0),
-      424
+    assert.equal(offlineBootstrap.checklists.length, expectedAreaSlugs.length);
+    const referenceChecklist = offlineBootstrap.checklists.find((item) =>
+      offlineBootstrap.areas.find((areaItem) => areaItem.id === item.area_id)?.slug === "cozinha-catering"
     );
+    assert.ok(referenceChecklist);
+    const referenceQuestionCount = referenceChecklist.blocks.reduce((total, block) => total + block.questions.length, 0);
+    assert.ok(offlineBootstrap.checklists.every((checklistItem) =>
+      checklistItem.blocks.reduce((total, block) => total + block.questions.length, 0) === referenceQuestionCount
+    ));
     const token = "";
     const deviceUid = crypto.randomUUID();
     const localAuditId = crypto.randomUUID();
