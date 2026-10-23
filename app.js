@@ -2107,6 +2107,18 @@ function areaChecklist(areaOrId) {
   return runtimeChecklistData[areaId] || checklistData[areaId] || checklistData[area?.checklistSource] || { sheetName: "", totalQuestions: 0, blocks: [] };
 }
 
+function backendChecklistForArea(areaId) {
+  const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === areaId);
+  if (!backendArea) return null;
+  return backendArea.checklist || (offlineBootstrap?.checklists || []).find((checklist) => String(checklist.area_id) === String(backendArea.id)) || null;
+}
+
+function areaHasStartableChecklist(areaId) {
+  if (offlineBootstrap) return Boolean(backendChecklistForArea(areaId));
+  const localChecklist = areaChecklist(areaId);
+  return Boolean(localChecklist?.blocks?.length);
+}
+
 function blocksForArea(areaOrId) {
   return areaChecklist(areaOrId).blocks || [];
 }
@@ -6655,6 +6667,7 @@ function startAuditPage() {
   const areasToRender = selectedParent ? groupedAreas : standaloneAreas;
   const areaStartMarkup = (area) => {
     const backendArea = (offlineBootstrap?.areas || []).find((item) => item.slug === area.id);
+    const checklistAvailable = areaHasStartableChecklist(area.id);
     const remoteAudit = (operationalAudits || []).find((audit) => String(audit.area_id) === String(backendArea?.id) && auditIsCurrentMonth(audit.started_at || audit.created_at));
     const localAudit = localAuditStateFor(area.id);
     const finished = remoteAudit?.status === "finished" || localAudit?.status === "finished";
@@ -6668,12 +6681,14 @@ function startAuditPage() {
     const inProgress = remoteEditable || localAudit?.status === "in_progress";
     const label = finished ? "Auditoria finalizada" : transferredHere ? `Transferida para ${remoteAudit.auditor_name || "outro auditor"}` : pendingSync ? "Aguardando sincronização" : otherAuditor ? `Com ${remoteAudit.auditor_name || "outro auditor"} · Assumir` : reviewPending ? "Revisar e enviar" : inProgress ? "Continuar auditoria" : "Iniciar auditoria";
     return `
-      <article class="start-tile">
+      <article class="start-tile${checklistAvailable ? "" : " is-unavailable"}">
         <div class="start-tile-main">
           <img src="assets/icons/${escapeHtml(area.icon)}" alt="" />
           <div><h3>${escapeHtml(area.name)}</h3><p>${escapeHtml(area.subtitle || "Checklist da área")}</p></div>
         </div>
-        ${finished
+        ${!checklistAvailable
+          ? '<p class="audit-unavailable-message" role="status">Checklist não configurado</p>'
+          : finished
           ? '<p class="audit-finished-message" role="status">Auditoria finalizada</p>'
           : `<button class="outline-btn" ${pendingSync || transferredHere ? "disabled" : `data-start-area="${area.id}"`}>${escapeHtml(label)} ${pendingSync || transferredHere ? "" : svgIcon("arrow")}</button>`}
       </article>
@@ -9366,6 +9381,11 @@ document.addEventListener("click", async (event) => {
   const start = event.target.closest("[data-start-area]");
   if (start) {
     const areaId = start.dataset.startArea;
+    if (!areaHasStartableChecklist(areaId)) {
+      state.auditStartError = "Esta área ainda não possui um checklist ativo configurado.";
+      render();
+      return;
+    }
     start.disabled = true;
     try {
       await ensureLocalAudit(areaId, true);

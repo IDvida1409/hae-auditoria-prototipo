@@ -2310,6 +2310,38 @@ h3 {
   background: #ffffff;
 }
 
+.start-tile.is-unavailable {
+  border-color: #dbe3ec;
+  background: #f8fafc;
+  box-shadow: none;
+}
+
+.start-tile.is-unavailable img {
+  opacity: .58;
+  filter: grayscale(.35);
+}
+
+.start-tile.is-unavailable h3,
+.start-tile.is-unavailable p {
+  color: var(--ink-500);
+}
+
+.audit-unavailable-message {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 14px;
+  padding: 7px 10px;
+  border: 1px dashed #bdc9d6;
+  border-radius: 7px;
+  color: var(--ink-600);
+  background: #eef3f8;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+}
+
 .start-tile-main {
   display: grid;
   justify-items: center;
