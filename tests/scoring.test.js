@@ -21,6 +21,17 @@ test("not evaluated answers do not change the weighted denominator", () => {
   assert.equal(weightedScore([{ answer: "X", weight: 64 }]), null);
 });
 
+test("sem risco vale como conforme e não reduz a nota", () => {
+  assert.equal(weightedScore([
+    { answer: "SR", weight: 32 },
+    { answer: "X", weight: 64 }
+  ]), 10);
+  assert.equal(weightedScore([
+    { answer: "SR", weight: 32 },
+    { answer: "NC", weight: 32 }
+  ]), 5);
+});
+
 test("all six workbook weights follow the same approved formula", () => {
   const weights = [2, 4, 8, 16, 32, 64];
   const rows = weights.map((weight, index) => ({ weight, answer: index % 3 === 0 ? "C" : index % 3 === 1 ? "NC" : "X" }));

@@ -678,12 +678,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-46",
             "number": 46,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -1369,12 +1370,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-46",
             "number": 46,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -1948,12 +1950,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-38",
             "number": 38,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -2639,12 +2642,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-46",
             "number": 46,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -3260,12 +3264,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-41",
             "number": 41,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -3909,12 +3914,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-43",
             "number": 43,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -4558,12 +4564,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-43",
             "number": 43,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -5123,12 +5130,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-37",
             "number": 37,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -5688,12 +5696,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-37",
             "number": 37,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 32.0,
             "riskLevel": "critico",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -5893,12 +5902,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-13",
             "number": 13,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 0.0,
             "riskLevel": "none",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -6112,12 +6122,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-1",
             "number": 1,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 0.0,
             "riskLevel": "none",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"
@@ -6597,12 +6608,13 @@ window.HAE_CHECKLIST_DATA = {
           {
             "id": "risco-a-saude-do-consumidor-33",
             "number": 33,
-            "text": "Ausência de risco à saúde do consumidor (DIGITAR SOMENTE \"X\" OU \"N\")",
+            "text": "Ausência de risco à saúde do consumidor",
             "risk": 0.0,
             "riskLevel": "none",
             "sourceAnswer": "X",
             "allowedAnswers": [
               "NC",
+              "SR",
               "X"
             ],
             "reference": "Portaria SMS nº 2.619/2011"

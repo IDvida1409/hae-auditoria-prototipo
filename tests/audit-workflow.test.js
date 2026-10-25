@@ -21,6 +21,34 @@ test("a decisão de enviar ou revisar pertence ao fim do checklist completo", ()
   assert.match(source, /reviewPending: true/);
 });
 
+test("perguntas sem resposta são listadas antes da finalização", () => {
+  assert.match(source, /Há perguntas sem resposta/);
+  assert.match(source, /data-go-unanswered-question/);
+  assert.match(source, /state\.auditPendingQuestions = unansweredQuestions\.map/);
+  assert.doesNotMatch(source, /data-finalize-audit disabled/);
+});
+
+test("sem risco é uma resposta positiva no checklist", () => {
+  const checklistData = fs.readFileSync(path.join(__dirname, "..", "checklist-data.js"), "utf8");
+  const syncSource = fs.readFileSync(path.join(__dirname, "..", "lib", "sync-service.js"), "utf8");
+  const scoreSource = fs.readFileSync(path.join(__dirname, "..", "lib", "scoring.js"), "utf8");
+  assert.match(checklistData, /"text": "Ausência de risco à saúde do consumidor"/);
+  assert.match(checklistData, /"SR"/);
+  assert.match(syncSource, /"SR"/);
+  assert.match(scoreSource, /row\.answer === "SR"/);
+});
+
+test("a limpeza completa preserva as estruturas de configuração", () => {
+  const fullReset = fs.readFileSync(path.join(__dirname, "..", "migrations", "031_clear_all_audit_test_data.sql"), "utf8");
+  assert.match(fullReset, /reports/);
+  assert.match(fullReset, /action_plans/);
+  assert.match(fullReset, /stored_files/);
+  assert.match(fullReset, /audit_cycles/);
+  assert.doesNotMatch(fullReset, /truncate table[\s\S]*app_users/i);
+  assert.doesNotMatch(fullReset, /truncate table[\s\S]*audit_areas/i);
+  assert.doesNotMatch(fullReset, /truncate table[\s\S]*checklist_questions/i);
+});
+
 test("planos só são perguntados quando existem não conformidades", () => {
   assert.match(source, /hasNonConformities/);
   assert.match(source, /if \(hasNonConformities\)/);

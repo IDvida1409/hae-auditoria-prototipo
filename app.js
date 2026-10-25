@@ -871,7 +871,7 @@ const monthIds = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set",
 const today = new Date();
 const currentMonthId = `${monthIds[today.getMonth()]}/${String(today.getFullYear()).slice(-2)}`;
 const futureMonthIds = new Set(months.map(([id]) => id).filter((id) => months.findIndex(([month]) => month === id) > months.findIndex(([month]) => month === currentMonthId)));
-const stateStorageKey = "hae-auditoria-state-v4";
+const stateStorageKey = "hae-auditoria-state-v5";
 
 const monthLines = Object.fromEntries(months.map(([id]) => [id, null]));
 
@@ -881,7 +881,8 @@ const runtimeChecklistData = {};
 const answerMeta = {
   C: { label: "Conforme", short: "C", color: "var(--green)" },
   NC: { label: "Não Conforme", short: "NC", color: "var(--red)" },
-  X: { label: "Não Avaliado", short: "X", color: "var(--ink-600)" }
+  X: { label: "Não Avaliado", short: "X", color: "var(--ink-600)" },
+  SR: { label: "Sem risco", short: "SR", color: "var(--green)" }
 };
 
 const riskMeta = {
@@ -1059,7 +1060,8 @@ function defaultState() {
     reportPdfSource: false,
     leaveAuditConfirm: false,
     auditFinalizeModal: false,
-    auditPlanModeModal: false
+    auditPlanModeModal: false,
+    auditPendingQuestions: []
   };
 }
 
@@ -1181,7 +1183,8 @@ function normalizeSavedState(saved = {}) {
     settingsMenuExpanded: Boolean(merged.settingsMenuExpanded),
     leaveAuditConfirm: false,
     auditFinalizeModal: false,
-    auditPlanModeModal: false
+    auditPlanModeModal: false,
+    auditPendingQuestions: []
   };
 }
 
@@ -2188,11 +2191,11 @@ function weightedScoreFromRows(rows) {
   let achieved = 0;
   let possible = 0;
   for (const row of rows) {
-    if (!["C", "NC"].includes(row.answer)) continue;
+    if (!["C", "NC", "SR"].includes(row.answer)) continue;
     const weight = Number(row.risk);
     if (!Number.isFinite(weight) || weight <= 0) continue;
     possible += weight;
-    if (row.answer === "C") achieved += weight;
+    if (row.answer === "C" || row.answer === "SR") achieved += weight;
   }
   return possible ? Number(((achieved / possible) * 10).toFixed(2)) : null;
 }
@@ -2200,7 +2203,8 @@ function weightedScoreFromRows(rows) {
 function countsFromRows(rows) {
   return rows.reduce(
     (counts, row) => {
-      counts[row.answer] = (counts[row.answer] || 0) + 1;
+      const countKey = row.answer === "SR" ? "C" : row.answer;
+      counts[countKey] = (counts[countKey] || 0) + 1;
       return counts;
     },
     { C: 0, NC: 0, X: 0 }
@@ -6721,7 +6725,7 @@ function startAuditPage() {
       <aside class="how-panel surface">
         <h2 style="color:#fff">Como funciona</h2>
         <div class="how-step"><span class="nav-icon">${assetIcon("grid", "white")}</span><div><h3 style="color:#fff">Selecione a área</h3><p>Escolha a área e a subárea que serão auditadas no mês.</p></div></div>
-        <div class="how-step"><span class="nav-icon">${assetIcon("audit", "white")}</span><div><h3 style="color:#fff">Responda o checklist</h3><p>Avalie cada item como Conforme (C), Não Conforme (NC) ou Não Avaliado (X).</p></div></div>
+        <div class="how-step"><span class="nav-icon">${assetIcon("audit", "white")}</span><div><h3 style="color:#fff">Responda o checklist</h3><p>Avalie cada item como Conforme (C), Não Conforme (NC), Não Avaliado (X) ou Sem risco (SR).</p></div></div>
         <div class="how-step"><span class="nav-icon">${icons.camera}</span><div><h3 style="color:#fff">Registre as evidências</h3><p>Ao marcar Não Conforme, registre a foto e a observação solicitadas.</p></div></div>
         <div class="how-step"><span class="nav-icon">${assetIcon("action", "white")}</span><div><h3 style="color:#fff">Plano de ação</h3><p>Não conformidades geram correção, evidência, responsável, prazo e motivo da não conclusão.</p></div></div>
         <div class="how-step"><span class="nav-icon">${svgIcon("check", "tiny-icon", "white")}</span><div><h3 style="color:#fff">Revise e envie</h3><p>Ao concluir a subárea, envie agora ou deixe pendente para revisar antes do envio.</p></div></div>
@@ -6780,6 +6784,7 @@ function checklistPage() {
   const nextIncompleteBlock = blocks.slice(currentBlockIndex + 1).find((block) => (block.questions || []).some((question) => !areaAnswers[question.id]))
     || blocks.find((block, index) => index !== currentBlockIndex && (block.questions || []).some((question) => !areaAnswers[question.id]));
   const allAnswered = answeredCount === questions.length && questions.length > 0;
+  const pendingQuestions = questions.filter((question) => state.auditPendingQuestions?.includes(question.id));
   const missingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && !state.auditEvidence?.[area.id]?.[question.id]).length;
   const pendingEvidenceCount = questions.filter((question) => areaAnswers[question.id] === "NC" && state.auditEvidence?.[area.id]?.[question.id] && !auditEvidenceIsSynced(area.id, question.id)).length;
 
@@ -6902,7 +6907,7 @@ function checklistPage() {
         <section class="audit-footer surface" style="margin-top:12px">
           <button class="outline-btn" data-request-leave-audit><span class="desktop-action-label">Voltar para áreas</span><span class="mobile-action-label">Áreas</span></button>
           <span class="audit-total-summary"><b>${questions.length}</b> perguntas <i>•</i> <b>${blocks.length}</b> blocos</span>
-          <button class="primary-btn" data-finalize-audit ${allAnswered ? "" : "disabled"}><span class="desktop-action-label">${!allAnswered ? "Responda todo o checklist" : missingEvidenceCount ? `Anexar ${missingEvidenceCount} foto(s)` : "Concluir checklist da subárea"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length}` : missingEvidenceCount ? `Falta ${missingEvidenceCount} foto` : "Concluir checklist"}</span> ${allAnswered ? svgIcon("arrow") : ""}</button>
+          <button class="primary-btn" data-finalize-audit><span class="desktop-action-label">${!allAnswered ? "Ver perguntas pendentes" : missingEvidenceCount ? `Anexar ${missingEvidenceCount} foto(s)` : "Concluir checklist da subárea"}</span><span class="mobile-action-label">${!allAnswered ? `${answeredCount}/${questions.length} pendentes` : missingEvidenceCount ? `Falta ${missingEvidenceCount} foto` : "Concluir checklist"}</span> ${allAnswered ? svgIcon("arrow") : ""}</button>
         </section>
       </div>
       ${showAllBlocks ? '<button class="mobile-blocks-backdrop" data-checklist-blocks type="button" aria-label="Fechar lista de blocos"></button>' : ""}
@@ -6967,6 +6972,25 @@ function checklistPage() {
               <button class="primary-btn" data-confirm-finalize-mode="automatic">Gerar e enviar automaticamente</button>
               <button class="outline-btn" data-confirm-finalize-mode="automatic_reviewed">Preparar para minha revisão</button>
               <button class="outline-btn" data-cancel-plan-mode>Voltar</button>
+            </div>
+          </section>
+        </div>
+      ` : ""}
+      ${pendingQuestions.length ? `
+        <div class="leave-audit-backdrop">
+          <section class="leave-audit-modal unanswered-questions-modal surface" role="dialog" aria-modal="true" aria-labelledby="unanswered-questions-title">
+            <h2 id="unanswered-questions-title">Há perguntas sem resposta</h2>
+            <p>Responda os itens abaixo antes de concluir o checklist. Você pode abrir cada pergunta diretamente.</p>
+            <div class="unanswered-question-list">
+              ${pendingQuestions.map((question) => `
+                <button class="outline-btn unanswered-question-button" type="button" data-go-unanswered-question="${escapeHtml(question.id)}">
+                  <strong>Pergunta ${escapeHtml(globalQuestionNumbers.get(question.id) || question.number)}</strong>
+                  <span>${escapeHtml(question.text)}</span>
+                </button>
+              `).join("")}
+            </div>
+            <div class="unanswered-question-actions">
+              <button class="outline-btn" type="button" data-close-unanswered-questions>Fechar</button>
             </div>
           </section>
         </div>
@@ -7413,7 +7437,7 @@ function readSettingsChecklistForm() {
       riskLevel: questionNode.querySelector('[name="question-risk"]')?.value || "low",
       reference: questionNode.querySelector('[name="question-reference"]')?.value?.trim() || "",
       requiredEvidenceOnNc: Boolean(questionNode.querySelector('[name="question-evidence"]')?.checked),
-      allowedAnswers: ["C", "NC", "X"]
+      allowedAnswers: sourceBlock?.questions?.[questionIndex]?.allowedAnswers || sourceBlock?.questions?.[questionIndex]?.answer_options || ["C", "NC", "X"]
     })) : (sourceBlock?.questions || []).map((question) => ({
       number: Number(question.number ?? question.question_number),
       text: question.text ?? question.requirement_text ?? "",
@@ -7421,7 +7445,7 @@ function readSettingsChecklistForm() {
       riskLevel: question.riskLevel ?? question.risk_level ?? "low",
       reference: question.reference ?? question.legal_reference ?? "",
       requiredEvidenceOnNc: question.requiredEvidenceOnNc !== false && question.required_evidence_on_nc !== false,
-      allowedAnswers: ["C", "NC", "X"]
+      allowedAnswers: question.allowedAnswers || question.answer_options || ["C", "NC", "X"]
     }))
   });
   const blocks = sourceBlocks.map((sourceBlock, blockIndex) => readBlock(blockIndex === selectedIndex ? visibleBlock : null, sourceBlock, blockIndex));
@@ -8937,6 +8961,7 @@ function enterAudit(areaId) {
   openFirstIncompleteQuestion(areaId);
   state.checklistBlocksOpen = false;
   state.leaveAuditConfirm = false;
+  state.auditPendingQuestions = [];
   state.view = "checklist";
   render();
 }
@@ -10318,6 +10343,7 @@ document.addEventListener("click", async (event) => {
 
   if (event.target.closest("[data-confirm-leave-audit]")) {
     state.leaveAuditConfirm = false;
+    state.auditPendingQuestions = [];
     state.view = "start";
     render();
     return;
@@ -10338,6 +10364,27 @@ document.addEventListener("click", async (event) => {
     state.checklistPage = Number(checklistPage.dataset.checklistPage) || 0;
     state.actionPlanNoticeQuestion = null;
     render();
+    return;
+  }
+
+  if (event.target.closest("[data-close-unanswered-questions]")) {
+    state.auditPendingQuestions = [];
+    render();
+    return;
+  }
+
+  const unansweredQuestion = event.target.closest("[data-go-unanswered-question]");
+  if (unansweredQuestion) {
+    const area = areaById(state.selectedArea);
+    const questionId = unansweredQuestion.dataset.goUnansweredQuestion;
+    const pendingBlock = blocksForArea(area).find((block) => (block.questions || []).some((question) => question.id === questionId));
+    const questionIndex = Math.max(0, (pendingBlock?.questions || []).findIndex((question) => question.id === questionId));
+    state.auditPendingQuestions = [];
+    if (pendingBlock) state.checklistBlock = pendingBlock.id;
+    state.checklistPage = Math.floor(questionIndex / 3);
+    state.actionPlanNoticeQuestion = null;
+    render();
+    requestAnimationFrame(() => document.querySelector(`[data-question-card="${CSS.escape(questionId)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
     return;
   }
 
@@ -10455,9 +10502,10 @@ document.addEventListener("click", async (event) => {
     const area = areaById(areaId);
     const questions = questionsForArea(area);
     const answered = answersForArea(areaId);
-    const missing = questions.filter((question) => !answered[question.id]).length;
-    if (missing) {
-      setOfflineNotice({ phase: "error", message: `Ainda faltam ${missing} perguntas para finalizar.` });
+    const unansweredQuestions = questions.filter((question) => !answered[question.id]);
+    if (unansweredQuestions.length) {
+      state.auditPendingQuestions = unansweredQuestions.map((question) => question.id);
+      render();
       return;
     }
     const missingEvidence = questions.filter((question) => answered[question.id] === "NC" && !state.auditEvidence?.[areaId]?.[question.id]);
